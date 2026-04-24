@@ -206,7 +206,7 @@ export default function ContasPagar() {
         descricao: `Lançamento NF: ${nfeForm.fornecedor}${nfeForm.chaveAcesso ? ` - Chave: ${nfeForm.chaveAcesso}` : ''}`,
         categoria: categoria?.nome || 'Despesa Variável',
         category_id: categoria?.id || '',
-        valor: nfeForm.valorOriginal,
+        valor: Number(nfeForm.valorOriginal.toFixed(2)),
         vencimento: nfeForm.vencimento || null,
         payment_date: null,
         status: 'pendente'
@@ -225,8 +225,12 @@ export default function ContasPagar() {
     try {
       const payload = { 
         ...form,
+        valor: Number(Number(form.valor).toFixed(2)),
         vencimento: form.vencimento || null,
-        payment_date: form.payment_date || null
+        payment_date: form.payment_date || null,
+        category_id: form.category_id || null,
+        bank_account_id: (form as any).bank_account_id || null,
+        bank_transaction_id: (form as any).bank_transaction_id || null
       }
       if (payload.category_id) {
         payload.categoria = categories.find(c => c.id === payload.category_id)?.nome || (payload.categoria || '')
@@ -300,9 +304,9 @@ export default function ContasPagar() {
         }
       }
       setDialogOpen(false)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao salvar:', error)
-      alert('Erro ao salvar conta')
+      alert(`Erro ao salvar conta: ${error.message || 'Erro desconhecido'}`)
     }
   }
 

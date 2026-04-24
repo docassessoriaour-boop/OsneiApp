@@ -70,8 +70,12 @@ export default function ContasReceber() {
     try {
       const payload = { 
         ...form,
+        valor: Number(Number(form.valor).toFixed(2)),
         vencimento: form.vencimento || null,
-        payment_date: form.payment_date || null
+        payment_date: form.payment_date || null,
+        category_id: form.category_id || null,
+        bank_account_id: form.bank_account_id || null,
+        bank_transaction_id: form.bank_transaction_id || null
       }
       if (payload.category_id) {
         payload.categoria = categories.find(c => c.id === payload.category_id)?.nome || payload.categoria
@@ -109,9 +113,9 @@ export default function ContasReceber() {
         await insert(payload)
       }
       setDialogOpen(false)
-    } catch (error) {
+    } catch (error: any) {
       console.error('Erro ao salvar:', error)
-      alert('Erro ao salvar receita')
+      alert(`Erro ao salvar receita: ${error.message || 'Erro desconhecido'}`)
     }
   }
 

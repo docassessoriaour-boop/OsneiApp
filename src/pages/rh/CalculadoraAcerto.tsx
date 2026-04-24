@@ -45,6 +45,8 @@ export default function CalculadoraAcerto() {
     workSchedule: '44h',
     workedDays: 30,
     hasExpiredVacation: false,
+    hasInsalubridade: false,
+    insalubridadePercent: 20,
     fgtsBalance: 0,
     employeeId: ''
   })
@@ -64,15 +66,19 @@ export default function CalculadoraAcerto() {
   }
 
   const results = useMemo(() => {
-    const { salary, admissionDate, terminationDate, terminationType, workedDays, hasExpiredVacation } = form
+    const { salary, admissionDate, terminationDate, terminationType, workedDays, hasExpiredVacation, hasInsalubridade, insalubridadePercent } = form
     if (!salary || !admissionDate || !terminationDate) return null
+
+    const insalubridadeMensal = hasInsalubridade ? (salary * (insalubridadePercent / 100)) : 0
+    const baseCalculo = salary + insalubridadeMensal
 
     const start = new Date(admissionDate)
     const end = new Date(terminationDate)
     
     // 1. Saldo de Salário
     // Usamos workedDays (que agora é auto-calculado pelo dia do desligamento)
-    const saldoSalario = (salary / 30) * workedDays
+    const saldoSalario = (baseCalculo / 30) * workedDays
+    const saldoInsalubridade = (insalubridadeMensal / 30) * workedDays
 
     // 4. Aviso Prévio
     const totalMonthsSinceStart = (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth())
@@ -80,9 +86,9 @@ export default function CalculadoraAcerto() {
     const avisoPrevioDays = Math.min(30 + (completeYears * 3), 90)
     let avisoPrevioValue = 0
     if (terminationType === 'dispensa_sem_justa') {
-      avisoPrevioValue = (salary / 30) * avisoPrevioDays
+      avisoPrevioValue = (baseCalculo / 30) * avisoPrevioDays
     } else if (terminationType === 'acordo_mutuo') {
-      avisoPrevioValue = ((salary / 30) * avisoPrevioDays) * 0.5
+      avisoPrevioValue = ((baseCalculo / 30) * avisoPrevioDays) * 0.5
     }
 
     // Projeção do Aviso Prévio para cálculos de avos (13º e Férias)
@@ -140,11 +146,11 @@ export default function CalculadoraAcerto() {
     }
 
     const monthsInYear = calculate13thAvos()
-    const decimoTerceiro = (salary / 12) * monthsInYear
+    const decimoTerceiro = (baseCalculo / 12) * monthsInYear
 
     const feriasPropMeses = calculateVacationAvos()
-    const feriasProporcionais = (salary / 12) * feriasPropMeses
-    const feriasVencidas = hasExpiredVacation ? salary : 0
+    const feriasProporcionais = (baseCalculo / 12) * feriasPropMeses
+    const feriasVencidas = hasExpiredVacation ? baseCalculo : 0
     const umTercoConstitucional = (feriasProporcionais + feriasVencidas) / 3
 
     // 4. Aviso Prévio (Já calculado acima para uso na projeção)
@@ -174,24 +180,27 @@ export default function CalculadoraAcerto() {
     const netTotal = liquidOnly + (terminationType === 'dispensa_com_justa' ? 0 : fgtsPenalty) + fgtsOnTermination
 
     return {
-      saldoSalario,
-      decimoTerceiro,
+      baseCalculo: Number(baseCalculo.toFixed(2)),
+      insalubridadeMensal: Number(insalubridadeMensal.toFixed(2)),
+      saldoSalario: Number(saldoSalario.toFixed(2)),
+      saldoInsalubridade: Number(saldoInsalubridade.toFixed(2)),
+      decimoTerceiro: Number(decimoTerceiro.toFixed(2)),
       monthsInYear,
-      feriasProporcionais,
+      feriasProporcionais: Number(feriasProporcionais.toFixed(2)),
       feriasPropMeses,
-      feriasVencidas,
-      umTercoConstitucional,
-      avisoPrevioValue,
+      feriasVencidas: Number(feriasVencidas.toFixed(2)),
+      umTercoConstitucional: Number(umTercoConstitucional.toFixed(2)),
+      avisoPrevioValue: Number(avisoPrevioValue.toFixed(2)),
       avisoPrevioDays,
-      irrf,
-      extraAdditions,
-      extraDeductions,
-      grossTotal,
-      deductionsTotal,
-      fgtsPenalty,
-      fgtsOnTermination,
-      liquidOnly,
-      netTotal
+      irrf: Number(irrf.toFixed(2)),
+      extraAdditions: Number(extraAdditions.toFixed(2)),
+      extraDeductions: Number(extraDeductions.toFixed(2)),
+      grossTotal: Number(grossTotal.toFixed(2)),
+      deductionsTotal: Number(deductionsTotal.toFixed(2)),
+      fgtsPenalty: Number(fgtsPenalty.toFixed(2)),
+      fgtsOnTermination: Number(fgtsOnTermination.toFixed(2)),
+      liquidOnly: Number(liquidOnly.toFixed(2)),
+      netTotal: Number(netTotal.toFixed(2))
     }
   }, [form, extras])
 
@@ -227,7 +236,7 @@ export default function CalculadoraAcerto() {
       await insertBill({
         id: crypto.randomUUID(),
         descricao: `RESCISÃO: ${form.name}`,
-        valor: results.netTotal,
+        valor: Number(results.netTotal.toFixed(2)),
         vencimento: form.terminationDate, // Vencimento na data de desligamento (ou pode ser +10 dias)
         status: 'pendente'
       } as Bill)
@@ -241,19 +250,23 @@ export default function CalculadoraAcerto() {
     }
   }
 
-  const printReport = () => {
+  const printReport = (isOfficial = false) => {
     if (!results) return
+    const title = isOfficial ? 'Recibo de Rescisão' : 'Simulação de Rescisão'
+    
     const content = `
       <div class="report-header">
-        <h2>Recibo de Rescisão - ${form.name || 'Cálculo Simulado'}</h2>
+        <h2>${title} - ${form.name || (isOfficial ? '---' : 'Cálculo Simulado')}</h2>
         <p>CPF: ${form.cpf || '---'} | Cargo: ${form.role || '---'}</p>
+        ${isOfficial ? `<p>Data Admissão: ${form.admissionDate ? new Date(form.admissionDate).toLocaleDateString() : '---'} | Data Desligamento: ${form.terminationDate ? new Date(form.terminationDate).toLocaleDateString() : '---'}</p>` : ''}
       </div>
       <table class="w-full">
         <thead>
           <tr><th>Descrição</th><th class="text-right">Proventos</th><th class="text-right">Descontos</th></tr>
         </thead>
         <tbody>
-          <tr><td>Saldo de Salário (${form.workedDays} dias)</td><td class="text-right">${formatCurrency(results.saldoSalario)}</td><td></td></tr>
+          <tr><td>Saldo de Salário (${form.workedDays} dias)</td><td class="text-right">${formatCurrency(results.saldoSalario - results.saldoInsalubridade)}</td><td></td></tr>
+          ${results.saldoInsalubridade > 0 ? `<tr><td>Adicional Insalubridade s/ Saldo</td><td class="text-right">${formatCurrency(results.saldoInsalubridade)}</td><td></td></tr>` : ''}
           <tr><td>13º Salário Proporcional (${results.monthsInYear}/12)</td><td class="text-right">${formatCurrency(results.decimoTerceiro)}</td><td></td></tr>
           <tr><td>Férias Proporcionais (${results.feriasPropMeses}/12)</td><td class="text-right">${formatCurrency(results.feriasProporcionais)}</td><td></td></tr>
           ${results.feriasVencidas > 0 ? `<tr><td>Férias Vencidas</td><td class="text-right">${formatCurrency(results.feriasVencidas)}</td><td></td></tr>` : ''}
@@ -280,8 +293,21 @@ export default function CalculadoraAcerto() {
       <div style="margin-top: 20px; text-align: right; font-size: 1.2rem; font-weight: 700;">
         <p>VALOR LÍQUIDO A RECEBER: ${formatCurrency(results.netTotal)}</p>
       </div>
+
+      ${isOfficial ? `
+      <div style="margin-top: 80px; display: flex; justify-content: space-around;">
+        <div style="text-align: center; border-top: 1px solid #000; width: 250px; padding-top: 5px;">
+          <p>${form.name || 'Nome do Funcionário'}</p>
+          <p style="font-size: 10px;">Funcionário</p>
+        </div>
+        <div style="text-align: center; border-top: 1px solid #000; width: 250px; padding-top: 5px;">
+          <p>${clinic.razao_social || clinic.name}</p>
+          <p style="font-size: 10px;">Empregador</p>
+        </div>
+      </div>
+      ` : ''}
     `
-    printPDF('Simulação de Rescisão', content, clinic)
+    printPDF(title, content, clinic)
   }
 
   const printSavedTermination = (t: Termination) => {
@@ -313,7 +339,8 @@ export default function CalculadoraAcerto() {
           <tr><th>Descrição</th><th class="text-right">Proventos</th><th class="text-right">Descontos</th></tr>
         </thead>
         <tbody>
-          ${res.saldoSalario > 0 ? `<tr><td>Verbas Rescisórias / Saldo</td><td class="text-right">${formatCurrency(res.saldoSalario)}</td><td></td></tr>` : ''}
+          ${res.saldoSalario > 0 ? `<tr><td>Verbas Rescisórias / Saldo</td><td class="text-right">${formatCurrency(res.saldoSalario - (res.saldoInsalubridade || 0))}</td><td></td></tr>` : ''}
+          ${res.saldoInsalubridade > 0 ? `<tr><td>Adicional Insalubridade s/ Saldo</td><td class="text-right">${formatCurrency(res.saldoInsalubridade)}</td><td></td></tr>` : ''}
           ${res.decimoTerceiro > 0 ? `<tr><td>13º Salário</td><td class="text-right">${formatCurrency(res.decimoTerceiro)}</td><td></td></tr>` : ''}
           ${res.feriasProporcionais > 0 ? `<tr><td>Férias + 1/3</td><td class="text-right">${formatCurrency(res.feriasProporcionais + (res.umTercoConstitucional || 0))}</td><td></td></tr>` : ''}
           ${res.avisoPrevioValue > 0 ? `<tr><td>Aviso Prévio</td><td class="text-right">${formatCurrency(res.avisoPrevioValue)}</td><td></td></tr>` : ''}
@@ -466,6 +493,8 @@ export default function CalculadoraAcerto() {
                                 cpf: emp.cpf,
                                 role: emp.cargo,
                                 salary: emp.salario,
+                                hasInsalubridade: emp.tem_insalubridade,
+                                insalubridadePercent: emp.insalubridade_percentual || 0,
                                 admissionDate: emp.dataAdmissao || '',
                                 employeeId: emp.id,
                                 workedDays: form.terminationDate 
@@ -559,15 +588,40 @@ export default function CalculadoraAcerto() {
                 <Label>Dias Trabalhados no Mês</Label>
                 <Input type="number" max="31" value={form.workedDays} onChange={e => setForm({...form, workedDays: Number(e.target.value)})} className="mt-1" />
               </div>
-              <div className="flex items-center gap-3 pt-6">
-                 <input 
-                  type="checkbox" 
-                  id="expiredVacation"
-                  checked={form.hasExpiredVacation} 
-                  onChange={e => setForm({...form, hasExpiredVacation: e.target.checked})}
-                  className="w-4 h-4 text-primary rounded border-gray-300"
-                 />
-                 <Label htmlFor="expiredVacation" className="cursor-pointer">Possui Férias Vencidas?</Label>
+              <div className="flex flex-col gap-3 pt-4 border-t border-dashed mt-2">
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="checkbox" 
+                    id="hasInsalubridade"
+                    checked={form.hasInsalubridade} 
+                    onChange={e => setForm({...form, hasInsalubridade: e.target.checked})}
+                    className="w-4 h-4 text-primary rounded border-gray-300"
+                  />
+                  <Label htmlFor="hasInsalubridade" className="cursor-pointer">Adicional de Insalubridade</Label>
+                  
+                  {form.hasInsalubridade && (
+                    <div className="flex items-center gap-2 ml-4">
+                      <Input 
+                        type="number" 
+                        className="w-20 h-8" 
+                        value={form.insalubridadePercent} 
+                        onChange={e => setForm({...form, insalubridadePercent: Number(e.target.value)})}
+                      />
+                      <span className="text-sm text-muted-foreground">%</span>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="checkbox" 
+                    id="expiredVacation"
+                    checked={form.hasExpiredVacation} 
+                    onChange={e => setForm({...form, hasExpiredVacation: e.target.checked})}
+                    className="w-4 h-4 text-primary rounded border-gray-300"
+                  />
+                  <Label htmlFor="expiredVacation" className="cursor-pointer">Possui Férias Vencidas?</Label>
+                </div>
               </div>
             </div>
           </Card>
@@ -626,8 +680,14 @@ export default function CalculadoraAcerto() {
               <div className="space-y-4">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Saldo de Salário:</span>
-                  <span className="font-medium">{formatCurrency(results.saldoSalario)} <span className="text-[10px] text-muted-foreground">({form.workedDays}d)</span></span>
+                  <span className="font-medium">{formatCurrency(results.saldoSalario - results.saldoInsalubridade)} <span className="text-[10px] text-muted-foreground">({form.workedDays}d)</span></span>
                 </div>
+                {results.saldoInsalubridade > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Insalubridade s/ Saldo:</span>
+                    <span className="font-medium">{formatCurrency(results.saldoInsalubridade)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Aviso Prévio:</span>
                   <span className="font-medium text-green-600">+{formatCurrency(results.avisoPrevioValue)}</span>
@@ -675,9 +735,14 @@ export default function CalculadoraAcerto() {
                   <Button className="w-full gap-2 border-primary bg-primary/90 hover:bg-primary shadow-lg" onClick={handleSave} disabled={saving}>
                     {saving ? 'Salvando...' : <Save className="h-4 w-4" />} {saving ? 'Processando...' : 'Salvar e Gerar Contas a Pagar'}
                   </Button>
-                  <Button variant="outline" className="w-full gap-2" onClick={printReport}>
-                    <Printer className="h-4 w-4" /> Gerar Relatório PDF
-                  </Button>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" className="w-full gap-2 text-xs" onClick={() => printReport(false)}>
+                      <Calculator className="h-3 w-3" /> Gerar Simulação
+                    </Button>
+                    <Button variant="outline" className="w-full gap-2 text-xs border-primary text-primary hover:bg-primary/5" onClick={() => printReport(true)}>
+                      <Printer className="h-3 w-3" /> Recibo Oficial
+                    </Button>
+                  </div>
                 </div>
                 
                 <div className="p-3 bg-blue-50 text-[10px] text-blue-700 rounded-md border border-blue-200 mt-4 leading-relaxed">
