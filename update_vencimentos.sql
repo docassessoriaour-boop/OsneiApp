@@ -1,0 +1,14 @@
+BEGIN;
+UPDATE incomes SET vencimento = '2026-04-07' WHERE category_id = '1b81d999-be40-48a5-88cc-dbcb5389df44' AND vencimento::text LIKE '2026-04-%';
+UPDATE incomes SET vencimento = '2026-05-07' WHERE category_id = '1b81d999-be40-48a5-88cc-dbcb5389df44' AND vencimento::text LIKE '2026-05-%';
+UPDATE incomes SET vencimento = '2026-06-05' WHERE category_id = '1b81d999-be40-48a5-88cc-dbcb5389df44' AND vencimento::text LIKE '2026-06-%';
+UPDATE incomes SET vencimento = '2026-07-07' WHERE category_id = '1b81d999-be40-48a5-88cc-dbcb5389df44' AND vencimento::text LIKE '2026-07-%';
+UPDATE incomes SET vencimento = '2026-08-07' WHERE category_id = '1b81d999-be40-48a5-88cc-dbcb5389df44' AND vencimento::text LIKE '2026-08-%';
+UPDATE incomes SET vencimento = '2026-09-07' WHERE category_id = '1b81d999-be40-48a5-88cc-dbcb5389df44' AND vencimento::text LIKE '2026-09-%';
+UPDATE incomes SET vencimento = '2026-10-07' WHERE category_id = '1b81d999-be40-48a5-88cc-dbcb5389df44' AND vencimento::text LIKE '2026-10-%';
+UPDATE incomes SET vencimento = '2026-11-06' WHERE category_id = '1b81d999-be40-48a5-88cc-dbcb5389df44' AND vencimento::text LIKE '2026-11-%';
+UPDATE incomes SET vencimento = '2026-12-07' WHERE category_id = '1b81d999-be40-48a5-88cc-dbcb5389df44' AND vencimento::text LIKE '2026-12-%';
+UPDATE incomes SET vencimento = '2027-01-07' WHERE category_id = '1b81d999-be40-48a5-88cc-dbcb5389df44' AND vencimento::text LIKE '2027-01-%';
+UPDATE incomes SET vencimento = '2027-02-05' WHERE category_id = '1b81d999-be40-48a5-88cc-dbcb5389df44' AND vencimento::text LIKE '2027-02-%';
+UPDATE incomes SET vencimento = '2027-03-05' WHERE category_id = '1b81d999-be40-48a5-88cc-dbcb5389df44' AND vencimento::text LIKE '2027-03-%';
+COMMIT;
