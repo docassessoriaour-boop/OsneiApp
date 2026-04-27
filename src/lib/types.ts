@@ -94,6 +94,8 @@ export interface Medication {
   estoque_minimo?: number
   qtd_por_dose?: number
   unidade_medida?: string
+  tipo_escala?: 'regular' | 'dias_impares' | 'dias_pares' | 'dias_semana' | 'se_necessario'
+  dias_semana?: string[]
 }
 
 export interface Appointment {

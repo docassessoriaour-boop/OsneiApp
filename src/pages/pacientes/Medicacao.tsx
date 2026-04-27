@@ -19,131 +19,21 @@ import { Pencil, Trash2, Loader2, FileText } from 'lucide-react'
 
 export default function Medicacao() {
   const [clinic] = useClinic()
-  const { data: patients } = useDb<Patient>('patients')
-  const { data: medications, loading, insert, update, remove, reload } = useDb<Medication>('medications')
+  const { data: rawPatients } = useDb<Patient>('patients')
+  const { data: rawMedications, loading } = useDb<Medication>('medications')
+
+  const patients = rawPatients.filter(p => p.status !== 'inativo')
+  const activePatientIds = patients.map(p => p.id)
+  const medications = rawMedications.filter(m => activePatientIds.includes(m.pacienteId))
   const [search, setSearch] = useState('')
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [deleteId, setDeleteId] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
-  const [form, setForm] = useState({
-    pacienteId: '', 
-    medicamento: '', 
-    dosagem: '', 
-    horario: '', 
-    frequencia: '', 
-    observacoes: '',
-    estoque_atual: 0,
-    estoque_minimo: 0,
-    qtd_por_dose: 1,
-    unidade_medida: 'comprimido'
-  })
-  const [genStartTime, setGenStartTime] = useState('08:00')
-  const [genFrequency, setGenFrequency] = useState('1')
+
+  const [selectedPatientId, setSelectedPatientId] = useState('all')
 
   const filtered = medications.filter(m =>
     (m.pacienteNome || '').toLowerCase().includes(search.toLowerCase()) ||
     m.medicamento.toLowerCase().includes(search.toLowerCase())
   )
-
-  function openNew() {
-    setForm({ 
-      pacienteId: patients[0]?.id || '', 
-      medicamento: '', 
-      dosagem: '', 
-      horario: '', 
-      frequencia: '', 
-      observacoes: '',
-      estoque_atual: 0,
-      estoque_minimo: 0,
-      qtd_por_dose: 1,
-      unidade_medida: 'comprimido'
-    })
-    setEditingId(null)
-    setDialogOpen(true)
-  }
-
-  async function handleSave() {
-    const patient = patients.find(p => p.id === form.pacienteId)
-    if (!patient || !form.medicamento) {
-      alert('Selecione um paciente e informe o medicamento.')
-      return
-    }
-
-    setSaving(true)
-    try {
-      const { pacienteId, ...restForm } = form
-      const medData = {
-        pacienteId,
-        pacienteNome: patient.nome,
-        ...restForm,
-      }
-      
-      if (editingId) {
-        await update(editingId, medData as any)
-      } else {
-        await insert(medData as any)
-      }
-      setDialogOpen(false)
-    } catch (error) {
-      console.error(error)
-      alert('Erro ao salvar medicação.')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  async function executeDelete() {
-    if (!deleteId) return
-    try {
-      await remove(deleteId)
-      await reload()
-      setDeleteId(null)
-      // Removed native alert to prevent browser blocking
-    } catch (error: any) {
-      console.error(error)
-      alert(`Erro ao excluir medicação: ${error.message || 'Erro desconhecido'}`)
-    }
-  }
-
-  function openEdit(m: Medication) {
-    setForm({ 
-      pacienteId: m.pacienteId, 
-      medicamento: m.medicamento, 
-      dosagem: m.dosagem, 
-      horario: m.horario, 
-      frequencia: m.frequencia, 
-      observacoes: m.observacoes,
-      estoque_atual: m.estoque_atual || 0,
-      estoque_minimo: m.estoque_minimo || 0,
-      qtd_por_dose: m.qtd_por_dose || 1,
-      unidade_medida: m.unidade_medida || 'comprimido'
-    })
-    setEditingId(m.id)
-    setDialogOpen(true)
-  }
-
-  function generateSchedule(startTime: string, timesPerDay: number) {
-    if (!startTime || !timesPerDay) return
-
-    const [hour, minute] = startTime.split(':').map(Number)
-    const interval = 24 / timesPerDay
-    const schedule = []
-
-    for (let i = 0; i < timesPerDay; i++) {
-      const totalHours = hour + (i * interval)
-      const h = Math.floor(totalHours % 24)
-      const time = `${String(h).padStart(2, '0')}:${String(minute).padStart(2, '0')}`
-      schedule.push(time)
-    }
-
-    setForm({
-      ...form,
-      horario: schedule.join(', '),
-      frequencia: `${timesPerDay}x ao dia`
-    })
-  }
 
   function calculateDailyConsumption(m: Medication) {
     if (!m.horario) return 0
@@ -157,74 +47,133 @@ export default function Medicacao() {
     return Math.floor(m.estoque_atual / consumption)
   }
 
-  function getPeriodColumn(patientMeds: Medication[], periodNum: number) {
-    const medsInPeriod: { time: string, med: string, dosagem: string }[] = []
-    
-    patientMeds.forEach(m => {
-      if (!m.horario) return
-      m.horario.split(',').forEach(h => {
-        const timeStr = h.trim()
-        const hour = parseInt(timeStr.split(':')[0])
-        if (isNaN(hour)) return
-        
-        const isMadrugada = hour >= 0 && hour < 6
-        const isManha = hour >= 6 && hour < 12
-        const isTarde = hour >= 12 && hour < 18
-        const isNoite = hour >= 18 && hour <= 23
-        
-        if (periodNum === 0 && isMadrugada) medsInPeriod.push({ time: timeStr, med: m.medicamento, dosagem: m.dosagem })
-        if (periodNum === 1 && isManha) medsInPeriod.push({ time: timeStr, med: m.medicamento, dosagem: m.dosagem })
-        if (periodNum === 2 && isTarde) medsInPeriod.push({ time: timeStr, med: m.medicamento, dosagem: m.dosagem })
-        if (periodNum === 3 && isNoite) medsInPeriod.push({ time: timeStr, med: m.medicamento, dosagem: m.dosagem })
-      })
-    })
-
-    // Sort chronologically
-    return medsInPeriod.sort((a, b) => a.time.localeCompare(b.time))
-  }
-
   function printReport() {
-    const periods = [
-      { name: 'Madrugada (00h-05h)', id: 0 },
-      { name: 'Manhã (06h-11h)', id: 1 },
-      { name: 'Tarde (12h-17h)', id: 2 },
-      { name: 'Noite (18h-23h)', id: 3 },
-    ]
+    let targetPatients = patients
+    
+    if (selectedPatientId !== 'all') {
+      targetPatients = patients.filter(p => p.id === selectedPatientId)
+    } else if (search) {
+      targetPatients = patients.filter(p => p.nome.toLowerCase().includes(search.toLowerCase()))
+    }
 
-    const rows = patients
-      .filter(p => !search || p.nome.toLowerCase().includes(search.toLowerCase()))
-      .map(patient => {
-        const patientMeds = medications.filter(m => m.pacienteId === patient.id)
-        if (patientMeds.length === 0) return ''
+    const htmlContent = targetPatients.map(patient => {
+      const patientMeds = medications.filter(m => m.pacienteId === patient.id)
+      if (patientMeds.length === 0) return ''
 
-        const cells = periods.map(period => {
-            const meds = getPeriodColumn(patientMeds, period.id)
-            const htmlMeds = meds.map(m => `<div style="margin-bottom:6px; background:#fff; border:1px solid #ddd; padding:4px; border-radius:4px;"><span style="background:#e0f2fe; color:#0369a1; padding:2px 4px; border-radius:2px; font-weight:bold; margin-right:4px;">${m.time}</span> <b>${m.med}</b><br/><span style="color:#4b5563">${m.dosagem}</span></div>`).join('')
-            return `<td style="background:#f9fafb;">${htmlMeds}</td>`
-        }).join('')
+      const standardTimes = ['06:00', '08:00', '12:00', '14:00', '18:00', '20:30'];
+      const standardGroups: Record<string, Medication[]> = {};
+      standardTimes.forEach(st => { standardGroups[st] = []; });
+      const specialItems: { med: Medication, timeStr: string }[] = [];
 
-        return `<tr><td style="font-weight:bold; width:150px; background:#fff;">${patient.nome}</td>${cells}</tr>`
-      }).join('')
+      patientMeds.forEach(m => {
+          // Send all non-regular or special cases directly to the special (red) list
+          if (m.tipo_escala !== 'regular' && m.tipo_escala !== null && m.tipo_escala !== undefined) {
+              let timeStr = m.horario || '-';
+              if (m.tipo_escala === 'se_necessario') timeStr = 'Se Necessário';
+              else if (m.tipo_escala === 'dias_impares') timeStr += ' (Ímpares)';
+              else if (m.tipo_escala === 'dias_pares') timeStr += ' (Pares)';
+              else if (m.tipo_escala === 'dias_semana') timeStr += ` (${m.dias_semana?.join(', ')})`;
+              
+              specialItems.push({ med: m, timeStr });
+              return;
+          }
 
-    printPDF('Escala de Medicação por Turnos', `
+          const times = m.horario ? m.horario.split(',').map(t => t.trim()) : [];
+          
+          if (times.length === 0) {
+              specialItems.push({ med: m, timeStr: 'Horário não definido' });
+              return;
+          }
+
+          times.forEach(t => {
+              if (standardTimes.includes(t)) {
+                  standardGroups[t].push(m);
+              } else {
+                  specialItems.push({ med: m, timeStr: t });
+              }
+          });
+      });
+
+      let mainTableHtml = '';
+      standardTimes.forEach(st => {
+          const meds = standardGroups[st];
+          if (meds.length > 0) {
+              mainTableHtml += `
+                  <div style="margin-bottom: 6px; page-break-inside: avoid; break-inside: avoid;">
+                      <h4 style="margin: 0; background: #f8fafc; padding: 3px; border: 1px solid #cbd5e1; border-bottom: none; text-align: center; color: #1e293b; font-size: 11px;">${st}</h4>
+                      <table style="width: 100%; border-collapse: collapse; margin-top: 0;">
+                          <thead>
+                              <tr>
+                                  <th style="border: 1px solid #cbd5e1; padding: 3px 4px; width: 40%; font-size:10px; background: #fff;">Medicamento</th>
+                                  <th style="border: 1px solid #cbd5e1; padding: 3px 4px; width: 30%; font-size:10px; background: #fff;">Dosagem</th>
+                                  <th style="border: 1px solid #cbd5e1; padding: 3px 4px; width: 30%; font-size:10px; background: #fff;">Posologia</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                              ${meds.map(m => `
+                                  <tr>
+                                      <td style="border: 1px solid #cbd5e1; padding: 3px 4px; font-weight: bold; font-size:11px;">${m.medicamento}</td>
+                                      <td style="border: 1px solid #cbd5e1; padding: 3px 4px; font-size:11px;">${m.dosagem || '-'}</td>
+                                      <td style="border: 1px solid #cbd5e1; padding: 3px 4px; font-size:11px;">${m.qtd_por_dose || 1} ${m.unidade_medida || 'un'}</td>
+                                  </tr>
+                              `).join('')}
+                          </tbody>
+                      </table>
+                  </div>
+              `;
+          }
+      });
+
+      if (!mainTableHtml) {
+          mainTableHtml = `<p style="font-size: 11px; color: #666; margin-bottom: 8px;">Nenhum medicamento nos horários padrão.</p>`;
+      }
+
+      const specialHtml = specialItems.length > 0 ? `
+          <div style="margin-top: 8px; border: 2px solid #fee2e2; background: #fff5f5; padding: 6px; border-radius: 4px; page-break-inside: avoid; break-inside: avoid;">
+              <h4 style="color: #dc2626; margin: 0 0 6px 0; font-size: 11px; text-transform: uppercase;">Atenção: Horários Fora do Padrão / Especiais</h4>
+              <table style="width: 100%; border-collapse: collapse; margin-top: 0;">
+                  <thead>
+                      <tr>
+                          <th style="color: #dc2626; background: #fee2e2; padding: 3px 4px; border: 1px solid #fca5a5; width: 25%; font-size:10px;">Horário</th>
+                          <th style="color: #dc2626; background: #fee2e2; padding: 3px 4px; border: 1px solid #fca5a5; width: 30%; font-size:10px;">Medicamento</th>
+                          <th style="color: #dc2626; background: #fee2e2; padding: 3px 4px; border: 1px solid #fca5a5; width: 15%; font-size:10px;">Quantidade</th>
+                          <th style="color: #dc2626; background: #fee2e2; padding: 3px 4px; border: 1px solid #fca5a5; font-size:10px;">Observações</th>
+                      </tr>
+                  </thead>
+                  <tbody>
+                      ${specialItems.map(item => `
+                          <tr>
+                              <td style="color: #dc2626; font-weight: bold; padding: 3px 4px; border: 1px solid #fca5a5; font-size:11px;">${item.timeStr}</td>
+                              <td style="color: #dc2626; padding: 3px 4px; border: 1px solid #fca5a5; font-size:11px;"><b>${item.med.medicamento}</b><br/><span style="font-size:9px;">${item.med.dosagem || ''}</span></td>
+                              <td style="color: #dc2626; font-weight: bold; padding: 3px 4px; border: 1px solid #fca5a5; text-align:center; font-size:11px;">${item.med.qtd_por_dose || 1} ${item.med.unidade_medida || ''}</td>
+                              <td style="color: #dc2626; font-size: 10px; padding: 3px 4px; border: 1px solid #fca5a5;">${item.med.observacoes || '-'}</td>
+                          </tr>
+                      `).join('')}
+                  </tbody>
+              </table>
+          </div>
+      ` : '';
+
+      return `
+          <div style="margin-bottom: 20px; page-break-inside: avoid;">
+              <h3 style="background: #e2e8f0; padding: 6px; border-radius: 4px; margin-bottom: 8px; font-size: 14px; border-left: 4px solid #334155;">
+                  Paciente: ${patient.nome}
+              </h3>
+              ${mainTableHtml}
+              ${specialHtml}
+          </div>
+      `;
+    }).join('')
+
+    printPDF('Escala de Medicação', `
       <style>
-        table { width: 100%; border-collapse: collapse; margin-top: 10px; table-layout: fixed; }
-        th, td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; vertical-align: top; overflow: hidden; }
-        th { background-color: #f1f5f9; font-size: 10px; font-weight: bold; text-align:center; color:#334155; }
-        td { font-size: 9px; line-height: 1.2; }
+        table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+        th, td { border: 1px solid #cbd5e1; padding: 4px; text-align: left; vertical-align: middle; }
+        th { background-color: #f8fafc; font-size: 11px; font-weight: bold; color:#334155; }
+        td { line-height: 1.2; font-size: 11px; }
       </style>
-      <table>
-        <thead>
-          <tr>
-            <th style="width:150px;">Paciente</th>
-            ${periods.map(p => `<th>${p.name}</th>`).join('')}
-          </tr>
-        </thead>
-        <tbody>
-          ${rows}
-        </tbody>
-      </table>
-    `, clinic)
+      ${htmlContent || '<p>Nenhuma medicação encontrada para o filtro selecionado.</p>'}
+    `, clinic, { hideClinicHeader: true, compactLayout: true })
   }
 
   function printStockReport() {
@@ -264,12 +213,12 @@ export default function Medicacao() {
           ${rows || '<tr><td colspan="6" style="text-align:center;">Nenhum alerta de estoque crítico no momento.</td></tr>'}
         </tbody>
       </table>
-    `, clinic)
+    `, clinic, { hideClinicHeader: true })
   }
 
   return (
     <div>
-      <PageHeader title="Medicação" description="Controle de medicação dos pacientes" actionLabel="Nova Medicação" onAction={openNew} />
+      <PageHeader title="Medicação" description="Relatórios e escalas de medicação (Gerenciamento individual no cadastro do paciente)" />
 
       <Card className="p-6">
         <div className="flex flex-col md:flex-row gap-4 mb-6 items-center justify-between">
@@ -295,6 +244,12 @@ export default function Medicacao() {
             </Button>
           </div>
           <div className="flex gap-2">
+            <Select value={selectedPatientId} onChange={(e) => setSelectedPatientId(e.target.value)} className="h-9 w-48 text-sm">
+              <option value="all">Todos os Pacientes</option>
+              {patients.map(p => (
+                <option key={p.id} value={p.id}>{p.nome}</option>
+              ))}
+            </Select>
             <Button variant="outline" size="sm" onClick={printStockReport} className="gap-2 h-9 text-red-600 border-red-200 hover:bg-red-50">
                 <FileText className="h-4 w-4" /> Alertas de Estoque
             </Button>
@@ -315,7 +270,6 @@ export default function Medicacao() {
                 <TableHead>Estoque</TableHead>
                 <TableHead>Consumo Diário</TableHead>
                 <TableHead>Previsão</TableHead>
-                <TableHead>Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -351,12 +305,6 @@ export default function Medicacao() {
                         {calculateDaysRemaining(m)} dias
                       </Badge>
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(m)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => setDeleteId(m.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                      </div>
-                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -364,170 +312,64 @@ export default function Medicacao() {
           </Table>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
+          <div className="overflow-x-auto pb-4">
+            <Table className="w-max min-w-full relative">
                 <TableHeader>
                     <TableRow className="bg-muted/50 border-b-2 border-primary/20">
-                        <TableHead className="min-w-[200px] sticky left-0 bg-background z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] text-primary">Paciente</TableHead>
-                        <TableHead className="text-center font-bold text-slate-700 min-w-[200px]">Madrugada<br/><span className="text-[10px] font-normal text-muted-foreground">00h às 05:59</span></TableHead>
-                        <TableHead className="text-center font-bold text-amber-700 min-w-[200px]">Manhã<br/><span className="text-[10px] font-normal text-muted-foreground">06h às 11:59</span></TableHead>
-                        <TableHead className="text-center font-bold text-orange-700 min-w-[200px]">Tarde<br/><span className="text-[10px] font-normal text-muted-foreground">12h às 17:59</span></TableHead>
-                        <TableHead className="text-center font-bold text-indigo-700 min-w-[200px]">Noite<br/><span className="text-[10px] font-normal text-muted-foreground">18h às 23:59</span></TableHead>
+                        <TableHead className="min-w-[180px] sticky left-0 bg-muted/95 z-20 backdrop-blur-sm shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Paciente</TableHead>
+                        <TableHead className="min-w-[220px] sticky left-[180px] bg-muted/95 z-20 border-r backdrop-blur-sm shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Medicamento</TableHead>
+                        {Array.from({ length: 24 }).map((_, i) => (
+                            <TableHead key={i} className="text-center font-bold min-w-[45px] px-1">{String(i).padStart(2, '0')}h</TableHead>
+                        ))}
+                        <TableHead className="text-center font-bold min-w-[120px]">Outros</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {patients.filter(p => !search || p.nome.toLowerCase().includes(search.toLowerCase())).map(patient => {
-                        const patientMeds = medications.filter(m => m.pacienteId === patient.id)
-                        if (patientMeds.length === 0) return null
+                    {filtered.length === 0 ? (
+                        <TableRow><TableCell colSpan={27}><EmptyState message="Nenhuma medicação encontrada" /></TableCell></TableRow>
+                    ) : (
+                        filtered.map(m => {
+                            const times = m.horario ? m.horario.split(',').map(t => t.trim()) : [];
+                            const timesObj: Record<number, string> = {};
+                            times.forEach(t => {
+                                const h = parseInt(t.split(':')[0]);
+                                if(!isNaN(h)) timesObj[h] = t;
+                            });
+                            
+                            let outros = '';
+                            if (m.tipo_escala === 'se_necessario') outros = 'Se Necessário';
+                            else if (m.tipo_escala === 'dias_impares') outros = 'Dias Ímpares';
+                            else if (m.tipo_escala === 'dias_pares') outros = 'Dias Pares';
+                            else if (m.tipo_escala === 'dias_semana') outros = m.dias_semana?.join(', ') || '';
 
-                        const periods = [0, 1, 2, 3]
-
-                        return (
-                            <TableRow key={patient.id} className="hover:bg-muted/30 transition-colors">
-                                <TableCell className="font-bold border-r sticky left-0 bg-background z-10 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                  {patient.nome}
-                                </TableCell>
-                                {periods.map(periodId => {
-                                    const meds = getPeriodColumn(patientMeds, periodId)
-                                    return (
-                                        <TableCell key={periodId} className={`p-3 border-r align-top ${periodId%2===0 ? 'bg-slate-50/50' : ''}`}>
-                                            <div className="flex flex-col gap-2">
-                                                {meds.map((m, idx) => (
-                                                    <div key={idx} className="text-xs bg-white text-slate-800 p-2.5 rounded-md border shadow-sm flex flex-col hover:border-primary/50 transition-colors">
-                                                        <div className="flex items-start justify-between gap-2 mb-1.5">
-                                                            <span className="font-bold leading-tight">{m.med}</span>
-                                                            <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20 shrink-0 font-bold tracking-wider">{m.time}</Badge>
-                                                        </div>
-                                                        <span className="text-muted-foreground text-[11px] font-medium">{m.dosagem}</span>
-                                                    </div>
-                                                ))}
-                                                {meds.length === 0 && (
-                                                  <div className="text-[10px] text-muted-foreground/50 italic text-center py-4">S/ Medicação</div>
-                                                )}
-                                            </div>
+                            return (
+                                <TableRow key={m.id} className="hover:bg-muted/30 transition-colors">
+                                    <TableCell className="font-bold sticky left-0 bg-background z-10 border-b shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                      {m.pacienteNome}
+                                    </TableCell>
+                                    <TableCell className="sticky left-[180px] bg-background z-10 border-r border-b shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                      <div className="font-bold text-[13px]">{m.medicamento}</div>
+                                      <div className="text-[10px] text-muted-foreground">{m.dosagem || '-'} • {m.qtd_por_dose || 1} {m.unidade_medida || 'un'}</div>
+                                    </TableCell>
+                                    {Array.from({ length: 24 }).map((_, i) => (
+                                        <TableCell key={i} className={`p-1 text-center border-r border-b ${i%2===0 ? 'bg-slate-50/30' : ''}`}>
+                                            {timesObj[i] ? (
+                                                <Badge variant="default" className="px-1.5 py-0.5 text-[9px] bg-primary/90 hover:bg-primary">{timesObj[i]}</Badge>
+                                            ) : null}
                                         </TableCell>
-                                    )
-                                })}
-                            </TableRow>
-                        )
-                    })}
+                                    ))}
+                                    <TableCell className="p-2 text-center text-[10px] font-medium border-b text-slate-600">
+                                        {outros}
+                                    </TableCell>
+                                </TableRow>
+                            )
+                        })
+                    )}
                 </TableBody>
             </Table>
           </div>
         )}
       </Card>
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogHeader>
-          <DialogTitle>{editingId ? 'Editar Medicação' : 'Nova Medicação'}</DialogTitle>
-          <DialogClose onClose={() => setDialogOpen(false)} />
-        </DialogHeader>
-        <DialogContent>
-          <div className="grid gap-4">
-            <div>
-              <Label>Paciente</Label>
-              <Select value={form.pacienteId} onChange={(e) => setForm({ ...form, pacienteId: e.target.value })} className="mt-1">
-                <option value="">Selecionar...</option>
-                {patients.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div><Label>Medicamento</Label><Input value={form.medicamento} onChange={(e) => setForm({ ...form, medicamento: e.target.value })} className="mt-1" /></div>
-              <div><Label>Dosagem</Label><Input value={form.dosagem} onChange={(e) => setForm({ ...form, dosagem: e.target.value })} className="mt-1" /></div>
-            </div>
-            <div className="bg-muted/30 p-3 rounded-lg border">
-              <p className="text-xs font-semibold mb-2 text-primary uppercase">Gerador de Escala</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-[10px]">Horário Inicial</Label>
-                  <Input type="time" value={genStartTime} onChange={(e) => setGenStartTime(e.target.value)} className="h-8 text-sm" />
-                </div>
-                <div>
-                  <Label className="text-[10px]">Vezes ao dia</Label>
-                  <Select value={genFrequency} onChange={(e) => setGenFrequency(e.target.value)} className="h-8 text-sm">
-                    <option value="1">1x ao dia</option>
-                    <option value="2">2x ao dia</option>
-                    <option value="3">3x ao dia</option>
-                    <option value="4">4x ao dia</option>
-                    <option value="6">6x ao dia</option>
-                    <option value="8">8x ao dia</option>
-                    <option value="12">12x ao dia</option>
-                  </Select>
-                </div>
-              </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="w-full mt-2 h-7 text-[10px]"
-                onClick={() => generateSchedule(genStartTime, Number(genFrequency))}
-              >
-                Gerar Escala de Horários
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div><Label>Horário (Final)</Label><Input value={form.horario} onChange={(e) => setForm({ ...form, horario: e.target.value })} placeholder="08:00, 14:00, 20:00" className="mt-1" /></div>
-              <div><Label>Frequência (Final)</Label><Input value={form.frequencia} onChange={(e) => setForm({ ...form, frequencia: e.target.value })} placeholder="3x ao dia" className="mt-1" /></div>
-            </div>
-
-            <div className="bg-primary/5 p-3 rounded-lg border border-primary/20">
-              <p className="text-xs font-semibold mb-3 text-primary uppercase">Controle de Estoque</p>
-              <div className="grid grid-cols-2 gap-4 mb-4">
-                <div>
-                  <Label className="text-xs">Qtd. por Dose ({form.unidade_medida})</Label>
-                  <Input type="number" step="0.5" value={form.qtd_por_dose} onChange={(e) => setForm({ ...form, qtd_por_dose: Number(e.target.value) })} className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs">Unidade de Medida</Label>
-                  <Select value={form.unidade_medida} onChange={(e) => setForm({ ...form, unidade_medida: e.target.value })} className="mt-1">
-                    <option value="comprimido">Comprimido</option>
-                    <option value="ml">ml</option>
-                    <option value="gotas">Gotas</option>
-                    <option value="ampola">Ampola</option>
-                    <option value="frasco">Frasco</option>
-                  </Select>
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-xs">Estoque Atual</Label>
-                  <Input type="number" value={form.estoque_atual} onChange={(e) => setForm({ ...form, estoque_atual: Number(e.target.value) })} className="mt-1" />
-                </div>
-                <div>
-                  <Label className="text-xs">Estoque Mínimo (Alerta)</Label>
-                  <Input type="number" value={form.estoque_minimo} onChange={(e) => setForm({ ...form, estoque_minimo: Number(e.target.value) })} className="mt-1" />
-                </div>
-              </div>
-              <div className="mt-3 p-2 bg-white rounded border text-[10px] text-muted-foreground">
-                Consumo diário estimado: <strong>{calculateDailyConsumption(form as any)} {form.unidade_medida}s</strong><br/>
-                O estoque durará aproximadamente <strong>{calculateDaysRemaining(form as any)} dias</strong>.
-              </div>
-            </div>
-
-            <div><Label>Observações</Label><Textarea value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} className="mt-1" /></div>
-          </div>
-        </DialogContent>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Salvar
-          </Button>
-        </DialogFooter>
-      </Dialog>
-
-      <Dialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
-        <DialogHeader>
-          <DialogTitle>Confirmar Exclusão</DialogTitle>
-        </DialogHeader>
-        <DialogContent>
-          <p className="py-4">Tem certeza que deseja excluir esta medicação? Esta ação não pode ser desfeita.</p>
-        </DialogContent>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setDeleteId(null)}>Cancelar</Button>
-          <Button variant="destructive" onClick={executeDelete}>Excluir</Button>
-        </DialogFooter>
-      </Dialog>
     </div>
   )
 }

@@ -4,14 +4,16 @@ import type { CompanySettings, Invoice, Patient } from './types'
  * Opens a styled print window with the provided HTML content.
  * Works for both "Print" and "Save as PDF" via the browser's native dialog.
  */
-export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettings) {
+export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettings, options?: { hideLogo?: boolean, hideClinicHeader?: boolean, compactLayout?: boolean }) {
   const win = window.open('', '_blank', 'width=900,height=700')
   if (!win) return
 
-  const clinicHeader = clinic
+  const logoHtml = options?.hideLogo ? '' : `<img src="/logo.png" alt="Logo" style="max-height:120px; width: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;" />`
+
+  const clinicHeader = (clinic && !options?.hideClinicHeader)
     ? `
       <div style="text-align:center;margin-bottom:24px;border-bottom:2px solid #1a1f2e;padding-bottom:16px;">
-        <img src="/logo.png" alt="Logo" style="max-height:120px; width: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;" />
+        ${logoHtml}
         <h1 style="margin:0;font-size:22px;color:#1a1f2e;">${clinic.razao_social || (clinic as any).name || (clinic as any).nome_fantasia || ''}</h1>
         <p style="margin:4px 0 0;font-size:12px;color:#555;">CNPJ: ${clinic.cnpj || ''} ${clinic.inscricao_estadual ? ` | IE: ${clinic.inscricao_estadual}` : ''}</p>
         <p style="margin:2px 0 0;font-size:12px;color:#555;">${clinic.address || (clinic as any).endereco || ''}</p>
@@ -19,6 +21,8 @@ export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettin
       </div>
     `
     : ''
+
+  const bodyPadding = options?.compactLayout ? '1.0cm' : '3.5cm 2.0cm 2.5cm 2.0cm';
 
   win.document.write(`<!DOCTYPE html>
 <html lang="pt-BR">
@@ -29,7 +33,8 @@ export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettin
     @page { margin: 0 !important; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      padding: 3.5cm 2.0cm 2.5cm 2.0cm; /* Margens: Superior (3.5cm), Direita (2.0cm), Inferior (2.5cm), Esquerda (2.0cm) */
+      padding: ${bodyPadding};
+
       font-family: Arial, Helvetica, sans-serif;
       color: #000;
       font-size: 12pt;
