@@ -402,61 +402,94 @@ export default function Medicacao() {
           </Table>
           </div>
         ) : (
-          <div className="overflow-x-auto pb-4">
-            <Table className="w-max min-w-full relative">
-                <TableHeader>
-                    <TableRow className="bg-muted/50 border-b-2 border-primary/20">
-                        <TableHead className="min-w-[180px] sticky left-0 bg-muted/95 z-20 backdrop-blur-sm shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Paciente</TableHead>
-                        <TableHead className="min-w-[220px] sticky left-[180px] bg-muted/95 z-20 border-r backdrop-blur-sm shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Medicamento</TableHead>
-                        {Array.from({ length: 24 }).map((_, i) => (
-                            <TableHead key={i} className="text-center font-bold min-w-[45px] px-1">{String(i).padStart(2, '0')}h</TableHead>
-                        ))}
-                        <TableHead className="text-center font-bold min-w-[120px]">Outros</TableHead>
-                    </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {filtered.length === 0 ? (
-                        <TableRow><TableCell colSpan={27}><EmptyState message="Nenhuma medicação encontrada" /></TableCell></TableRow>
-                    ) : (
-                        filtered.map(m => {
-                            const times = m.horario ? m.horario.split(',').map(t => t.trim()) : [];
-                            const timesObj: Record<number, string> = {};
-                            times.forEach(t => {
-                                const h = parseInt(t.split(':')[0]);
-                                if(!isNaN(h)) timesObj[h] = t;
-                            });
-                            
-                            let outros = '';
-                            if (m.tipo_escala === 'se_necessario') outros = 'Se Necessário';
-                            else if (m.tipo_escala === 'dias_impares') outros = 'Dias Ímpares';
-                            else if (m.tipo_escala === 'dias_pares') outros = 'Dias Pares';
-                            else if (m.tipo_escala === 'dias_semana') outros = m.dias_semana?.join(', ') || '';
+          <div className="overflow-x-auto pb-4 mt-4">
+            {(() => {
+              // Identificar todos os horários únicos que possuem medicamentos (apenas para escala regular)
+              const activeTimes = Array.from(new Set(
+                filtered
+                  .filter(m => m.tipo_escala === 'regular' || !m.tipo_escala)
+                  .flatMap(m => m.horario ? m.horario.split(',').map(t => t.trim()) : [])
+              )).sort((a, b) => a.localeCompare(b));
 
-                            return (
-                                <TableRow key={m.id} className="hover:bg-muted/30 transition-colors">
-                                    <TableCell className="font-bold sticky left-0 bg-background z-10 border-b shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                      {m.pacienteNome}
-                                    </TableCell>
-                                    <TableCell className="sticky left-[180px] bg-background z-10 border-r border-b shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                      <div className="font-bold text-[13px]">{m.medicamento}</div>
-                                      <div className="text-[10px] text-muted-foreground">{m.dosagem || '-'} • {m.qtd_por_dose || 1} {m.unidade_medida || 'un'}</div>
-                                    </TableCell>
-                                    {Array.from({ length: 24 }).map((_, i) => (
-                                        <TableCell key={i} className={`p-1 text-center border-r border-b ${i%2===0 ? 'bg-slate-50/30' : ''}`}>
-                                            {timesObj[i] ? (
-                                                <Badge variant="default" className="px-1.5 py-0.5 text-[9px] bg-primary/90 hover:bg-primary">{timesObj[i]}</Badge>
-                                            ) : null}
-                                        </TableCell>
+              // Agrupar por paciente
+              const medsByPatient: Record<string, { patientName: string, meds: Medication[] }> = {};
+              filtered.forEach(m => {
+                if (!medsByPatient[m.pacienteId]) {
+                  medsByPatient[m.pacienteId] = { patientName: m.pacienteNome || 'Desconhecido', meds: [] };
+                }
+                medsByPatient[m.pacienteId].meds.push(m);
+              });
+
+              const patientIds = Object.keys(medsByPatient).sort((a, b) => 
+                medsByPatient[a].patientName.localeCompare(medsByPatient[b].patientName)
+              );
+
+              return (
+                <Table className="w-max min-w-full border-separate border-spacing-0">
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="min-w-[200px] sticky left-0 bg-muted z-30 border-b-2 border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Paciente</TableHead>
+                      {activeTimes.map(time => (
+                        <TableHead key={time} className="text-center font-bold min-w-[160px] border-b-2 border-r bg-muted/80">{time}</TableHead>
+                      ))}
+                      <TableHead className="text-center font-bold min-w-[180px] border-b-2 bg-muted/80">Outros / Especiais</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {patientIds.length === 0 ? (
+                      <TableRow><TableCell colSpan={activeTimes.length + 2} className="h-32"><EmptyState message="Nenhuma medicação encontrada" /></TableCell></TableRow>
+                    ) : (
+                      patientIds.map(pId => {
+                        const { patientName, meds } = medsByPatient[pId];
+                        return (
+                          <TableRow key={pId} className="hover:bg-muted/30 transition-colors">
+                            <TableCell className="font-bold sticky left-0 bg-background z-10 border-b border-r shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] py-4">
+                              {patientName}
+                            </TableCell>
+                            {activeTimes.map(time => {
+                              const medsAtTime = meds.filter(m => 
+                                (m.tipo_escala === 'regular' || !m.tipo_escala) && 
+                                m.horario?.split(',').map(t => t.trim()).includes(time)
+                              );
+
+                              return (
+                                <TableCell key={time} className="p-2 border-r border-b align-top">
+                                  <div className="flex flex-col gap-2">
+                                    {medsAtTime.map(m => (
+                                      <div key={m.id} className="p-2 bg-primary/5 rounded-md border border-primary/10 shadow-sm">
+                                        <div className="font-bold text-[11px] leading-tight text-primary">{m.medicamento}</div>
+                                        <div className="text-[10px] text-muted-foreground mt-1">{m.dosagem} • {m.qtd_por_dose} {m.unidade_medida}</div>
+                                        {m.observacoes && <div className="text-[9px] text-muted-foreground/70 italic mt-1 border-t pt-1 line-clamp-2">{m.observacoes}</div>}
+                                      </div>
                                     ))}
-                                    <TableCell className="p-2 text-center text-[10px] font-medium border-b text-slate-600">
-                                        {outros}
-                                    </TableCell>
-                                </TableRow>
-                            )
-                        })
+                                  </div>
+                                </TableCell>
+                              );
+                            })}
+                            <TableCell className="p-2 border-b align-top bg-amber-50/20">
+                              <div className="flex flex-col gap-2">
+                                {meds.filter(m => m.tipo_escala && m.tipo_escala !== 'regular').map(m => (
+                                  <div key={m.id} className="p-2 bg-amber-50 rounded-md border border-amber-200 shadow-sm">
+                                    <div className="font-bold text-[11px] leading-tight text-amber-900">{m.medicamento}</div>
+                                    <div className="text-[10px] text-amber-700 font-semibold mt-1">
+                                      {m.tipo_escala === 'se_necessario' ? 'Se Necessário' : 
+                                       m.tipo_escala === 'dias_impares' ? 'Dias Ímpares' :
+                                       m.tipo_escala === 'dias_pares' ? 'Dias Pares' :
+                                       `Dias: ${m.dias_semana?.join(', ')}`}
+                                    </div>
+                                    <div className="text-[9px] text-amber-600 mt-1">{m.dosagem} • {m.qtd_por_dose} {m.unidade_medida}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
-                </TableBody>
-            </Table>
+                  </TableBody>
+                </Table>
+              );
+            })()}
           </div>
         )}
       </Card>
