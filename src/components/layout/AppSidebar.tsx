@@ -60,6 +60,7 @@ export function AppSidebar({ open, onClose }: SidebarProps) {
       items: [
         { name: 'Cadastro', href: '/pacientes/cadastro', icon: Heart },
         { name: 'Medicação', href: '/pacientes/medicacao', icon: Pill },
+        { name: 'Catálogo de Medicamentos', href: '/pacientes/catalogo-medicos', icon: ClipboardList },
         { name: 'Agendamentos', href: '/pacientes/agendamentos', icon: Calendar },
         { name: 'Contratos', href: '/pacientes/contratos', icon: FileText },
       ],
@@ -70,7 +71,7 @@ export function AppSidebar({ open, onClose }: SidebarProps) {
         { name: 'Contas a Pagar', href: '/financeiro/contas-pagar', icon: CreditCard },
         { name: 'Contas a Receber', href: '/financeiro/contas-receber', icon: HandCoins },
         { name: 'Faturamento', href: '/financeiro/faturamento', icon: Receipt },
-        { name: 'Conciliação', href: '/financeiro/conciliacao', icon: Building2 },
+        { name: 'Movimentação Financeira', href: '/financeiro/conciliacao', icon: Building2 },
         { name: 'Balanço / DRE', href: '/financeiro/balanco-dre', icon: BarChart3 },
         { name: 'Contas Bancárias', href: '/financeiro/bancos', icon: Landmark },
         { name: 'Categorias', href: '/financeiro/categorias', icon: Tag },

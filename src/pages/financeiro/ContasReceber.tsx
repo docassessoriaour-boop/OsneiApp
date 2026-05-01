@@ -3,7 +3,7 @@ import { useDb } from '@/hooks/useDb'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF, formatCurrencyPDF, formatDatePDF } from '@/lib/pdf'
-import type { Income, TransactionCategory, Patient, BankAccount } from '@/lib/types'
+import type { Income, TransactionCategory, Patient, BankAccount, BankTransaction, Invoice } from '@/lib/types'
 import { SearchBar } from '@/components/shared/SearchBar'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Card } from '@/components/ui/card'
@@ -14,7 +14,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, Loader2, ArrowUp, ArrowDown } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, ArrowUp, ArrowDown, Split } from 'lucide-react'
 
 const emptyIncome: Omit<Income, 'id'> = {
   descricao: '', 
@@ -33,6 +33,7 @@ export default function ContasReceber() {
   const { data: patients } = useDb<Patient>('patients')
   const { data: bankAccounts } = useDb<BankAccount>('bank_accounts')
   const { insert: insertBankTransaction, update: updateBankTransaction, remove: removeBankTransaction } = useDb<BankTransaction>('bank_transactions')
+  const { data: invoices, update: updateInvoice, insert: insertInvoice, remove: removeInvoice } = useDb<Invoice>('invoices')
   
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
@@ -42,6 +43,9 @@ export default function ContasReceber() {
   const [selectedPatient, setSelectedPatient] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [partialDialogOpen, setPartialDialogOpen] = useState(false)
+  const [partialIncome, setPartialIncome] = useState<Income | null>(null)
+  const [partialForm, setPartialForm] = useState({ valorPago: 0, dataPagamento: new Date().toISOString().slice(0, 10), bank_account_id: '' })
   const [form, setForm] = useState(emptyIncome)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
 
@@ -64,6 +68,99 @@ export default function ContasReceber() {
   function openNew() { setForm(emptyIncome); setEditingId(null); setDialogOpen(true) }
 
   function openEdit(i: Income) { setForm(i); setEditingId(i.id); setDialogOpen(true) }
+
+  function openPartial(i: Income) {
+    setPartialIncome(i)
+    setPartialForm({
+      valorPago: 0,
+      dataPagamento: new Date().toISOString().slice(0, 10),
+      bank_account_id: ''
+    })
+    setPartialDialogOpen(true)
+  }
+
+  const handlePartialPayment = async () => {
+    if (!partialIncome || partialForm.valorPago <= 0 || partialForm.valorPago >= partialIncome.valor) {
+      alert("O valor recebido deve ser maior que zero e menor que o valor total.")
+      return
+    }
+    if (!partialForm.bank_account_id) {
+      alert("Selecione uma conta bancária.")
+      return
+    }
+
+    try {
+      const remainingValue = partialIncome.valor - partialForm.valorPago
+
+      // 1. Criar transação bancária
+      const bt = await insertBankTransaction({
+        data: partialForm.dataPagamento,
+        descricao: `Recebimento Parcial: ${partialIncome.descricao}`,
+        valor: partialForm.valorPago,
+        tipo: 'credito',
+        origem: 'manual',
+        bank_account_id: partialForm.bank_account_id,
+        categoria: partialIncome.categoria,
+        category_id: partialIncome.category_id
+      } as any)
+
+      // 2. Atualizar a conta atual para refletir o valor pago
+      await update(partialIncome.id, {
+        ...partialIncome,
+        valor: partialForm.valorPago,
+        status: 'recebido',
+        payment_date: partialForm.dataPagamento,
+        bank_account_id: partialForm.bank_account_id,
+        bank_transaction_id: bt.id,
+        descricao: `${partialIncome.descricao} (Parcial)`
+      })
+
+      // 3. Criar a nova conta com o saldo restante
+      const novaConta = await insert({
+        ...partialIncome,
+        id: undefined, // ensure new ID
+        valor: remainingValue,
+        status: 'pendente',
+        descricao: `${partialIncome.descricao} (Restante)`,
+        payment_date: null,
+        bank_account_id: null,
+        bank_transaction_id: null
+      } as any)
+
+      // 4. Sincronizar Faturamento (Invoice) se existir
+      const relatedInvoice = invoices.find(inv => inv.income_id === partialIncome.id)
+      if (relatedInvoice) {
+        // Atualiza a fatura original para o valor pago
+        await updateInvoice(relatedInvoice.id, {
+          status: 'pago',
+          payment_date: partialForm.dataPagamento,
+          bank_account_id: partialForm.bank_account_id,
+          bank_transaction_id: bt.id,
+          total_amount: partialForm.valorPago,
+          items: (relatedInvoice.items || []).map(i => ({...i, price: (i.price / relatedInvoice.total_amount) * partialForm.valorPago}))
+        })
+        
+        // Cria uma nova fatura com o restante pendente
+        await insertInvoice({
+          ...relatedInvoice,
+          id: undefined,
+          status: 'pendente',
+          total_amount: remainingValue,
+          income_id: novaConta.id,
+          payment_date: null,
+          bank_account_id: null,
+          bank_transaction_id: null,
+          items: (relatedInvoice.items || []).map(i => ({...i, price: (i.price / relatedInvoice.total_amount) * remainingValue}))
+        } as any)
+      }
+
+      setPartialDialogOpen(false)
+      alert("Baixa parcial efetuada com sucesso!")
+    } catch (e: any) {
+      console.error(e)
+      alert("Erro ao realizar baixa parcial: " + e.message)
+    }
+  }
 
   async function handleSave() {
     if (!form.descricao) return
@@ -109,6 +206,28 @@ export default function ContasReceber() {
 
       if (editingId) {
         await update(editingId, payload)
+
+        // Sincronizar faturamento (Invoice) se existir
+        const relInv = invoices.find(inv => inv.income_id === editingId)
+        if (relInv) {
+          if (payload.status === 'recebido') {
+            await updateInvoice(relInv.id, { 
+               status: 'pago', 
+               payment_date: payload.payment_date, 
+               bank_account_id: payload.bank_account_id, 
+               bank_transaction_id: payload.bank_transaction_id,
+               total_amount: payload.valor
+            })
+          } else {
+            await updateInvoice(relInv.id, { 
+               status: payload.status === 'vencido' ? 'pendente' : payload.status,
+               payment_date: null,
+               bank_account_id: null,
+               bank_transaction_id: null,
+               total_amount: payload.valor
+            })
+          }
+        }
       } else {
         await insert(payload)
       }
@@ -120,8 +239,12 @@ export default function ContasReceber() {
   }
 
   async function handleDelete(id: string) {
-    if (confirm('Deseja excluir esta receita?')) {
+    if (confirm('Deseja excluir esta receita? O faturamento (recibo) vinculado também será excluído.')) {
       try {
+        const relInv = invoices.find(inv => inv.income_id === id)
+        if (relInv) {
+          await removeInvoice(relInv.id)
+        }
         await remove(id)
       } catch (error) {
         console.error('Erro ao excluir:', error)
@@ -160,15 +283,15 @@ export default function ContasReceber() {
       </div>
 
       <Card className="p-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-          <div className="lg:col-span-1">
-            <Label className="text-xs mb-1 block text-muted-foreground uppercase tracking-wider font-semibold">Busca</Label>
-            <SearchBar value={search} onChange={setSearch} placeholder="Buscar descrição..." />
+        <div className="flex flex-col md:flex-row gap-4 mb-4 items-end">
+          <div className="flex-1 w-full">
+            <Label className="text-xs text-muted-foreground">Buscar</Label>
+            <SearchBar value={search} onChange={setSearch} placeholder="Buscar por descrição..." />
           </div>
           
-          <div>
-            <Label className="text-xs mb-1 block text-muted-foreground uppercase tracking-wider font-semibold">Paciente</Label>
-            <Select value={selectedPatient} onChange={e => setSelectedPatient(e.target.value)}>
+          <div className="w-full md:w-48">
+            <Label className="text-xs text-muted-foreground">Paciente</Label>
+            <Select value={selectedPatient} onChange={e => setSelectedPatient(e.target.value)} className="h-9">
               <option value="">Todos Pacientes</option>
               {patients.map(p => (
                 <option key={p.id} value={p.nome}>{p.nome}</option>
@@ -176,9 +299,18 @@ export default function ContasReceber() {
             </Select>
           </div>
 
-          <div>
-            <Label className="text-xs mb-1 block text-muted-foreground uppercase tracking-wider font-semibold">Status</Label>
-            <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)}>
+          <div className="w-full md:w-32">
+            <Label className="text-xs text-muted-foreground">Início</Label>
+            <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="h-9" />
+          </div>
+          <div className="w-full md:w-32">
+            <Label className="text-xs text-muted-foreground">Fim</Label>
+            <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="h-9" />
+          </div>
+
+          <div className="w-full md:w-40">
+            <Label className="text-xs text-muted-foreground">Status</Label>
+            <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} className="h-9">
                 <option value="todos">Todos Status</option>
                 <option value="pendente">Pendentes</option>
                 <option value="recebido">Recebidos</option>
@@ -187,14 +319,28 @@ export default function ContasReceber() {
           </div>
 
           <div className="flex gap-2">
-            <div className="flex-1">
-              <Label className="text-xs mb-1 block text-muted-foreground uppercase tracking-wider font-semibold">Início</Label>
-              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} size={1} />
-            </div>
-            <div className="flex-1">
-              <Label className="text-xs mb-1 block text-muted-foreground uppercase tracking-wider font-semibold">Fim</Label>
-              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} size={1} />
-            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => {
+                const now = new Date()
+                const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+                const end = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10)
+                setStartDate(start)
+                setEndDate(end)
+              }}
+              className="h-9"
+            >
+              Mês Atual
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => { setStartDate(''); setEndDate(''); setSearch(''); setStatusFilter('todos'); setSelectedPatient('') }}
+              className="h-9 text-muted-foreground"
+            >
+              Limpar
+            </Button>
           </div>
         </div>
 
@@ -234,8 +380,13 @@ export default function ContasReceber() {
                   <TableCell>{statusBadge(i.status)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(i)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(i.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      {(i.status === 'pendente' || i.status === 'vencido') && (
+                        <Button variant="ghost" size="icon" onClick={() => openPartial(i)} title="Baixa Parcial">
+                          <Split className="h-4 w-4 text-blue-600" />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(i)} title="Editar"><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(i.id)} title="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -310,6 +461,64 @@ export default function ContasReceber() {
         <DialogFooter>
           <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
           <Button onClick={handleSave}>Salvar</Button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={partialDialogOpen} onOpenChange={setPartialDialogOpen}>
+        <DialogHeader>
+          <DialogTitle>Baixa Parcial</DialogTitle>
+          <DialogClose onClose={() => setPartialDialogOpen(false)} />
+        </DialogHeader>
+        <DialogContent>
+          {partialIncome && (
+            <div className="grid gap-4">
+              <div className="bg-muted/50 p-3 rounded-lg text-sm mb-2">
+                <p><strong>Conta:</strong> {partialIncome.descricao}</p>
+                <p><strong>Valor Total:</strong> {formatCurrency(partialIncome.valor)}</p>
+              </div>
+
+              <div>
+                <Label>Valor Recebido Agora</Label>
+                <Input 
+                  type="number" 
+                  value={partialForm.valorPago || ''} 
+                  onChange={(e) => setPartialForm({ ...partialForm, valorPago: Number(e.target.value) })} 
+                  className="mt-1" 
+                  max={partialIncome.valor - 0.01}
+                />
+                <p className="text-xs text-muted-foreground mt-1">O valor restante será gerado como uma nova conta pendente.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Data do Recebimento</Label>
+                  <Input 
+                    type="date" 
+                    value={partialForm.dataPagamento} 
+                    onChange={(e) => setPartialForm({ ...partialForm, dataPagamento: e.target.value })} 
+                    className="mt-1" 
+                  />
+                </div>
+                <div>
+                  <Label>Banco / Destino</Label>
+                  <Select
+                    value={partialForm.bank_account_id}
+                    onChange={(e) => setPartialForm({ ...partialForm, bank_account_id: e.target.value })}
+                    className="mt-1"
+                  >
+                    <option value="">-- Selecione o Banco --</option>
+                    {bankAccounts.map(ba => (
+                      <option key={ba.id} value={ba.id}>{ba.nome} {ba.banco ? `(${ba.banco})` : ''}</option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setPartialDialogOpen(false)}>Cancelar</Button>
+          <Button onClick={handlePartialPayment}>Confirmar Baixa Parcial</Button>
         </DialogFooter>
       </Dialog>
     </div>

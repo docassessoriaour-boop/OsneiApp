@@ -13,6 +13,7 @@ import Cadastro from '@/pages/pacientes/Cadastro'
 import Medicacao from '@/pages/pacientes/Medicacao'
 import Agendamentos from '@/pages/pacientes/Agendamentos'
 import Contratos from '@/pages/pacientes/Contratos'
+import MedicamentosBase from '@/pages/pacientes/MedicamentosBase'
 import ContasPagar from '@/pages/financeiro/ContasPagar'
 import ContasReceber from '@/pages/financeiro/ContasReceber'
 import Faturamento from '@/pages/financeiro/Faturamento'
@@ -56,6 +57,7 @@ export default function App() {
           {/* Pacientes */}
           <Route path="/pacientes/cadastro" element={<Cadastro />} />
           <Route path="/pacientes/medicacao" element={<Medicacao />} />
+          <Route path="/pacientes/catalogo-medicos" element={<MedicamentosBase />} />
           <Route path="/pacientes/agendamentos" element={<Agendamentos />} />
           <Route path="/pacientes/contratos" element={<Contratos />} />
           {/* Financeiro */}

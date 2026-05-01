@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS employees (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Tabela de Medicamentos
+-- Tabela de Medicamentos dos Pacientes
 CREATE TABLE IF NOT EXISTS medications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   paciente_id UUID REFERENCES patients(id) ON DELETE CASCADE,
@@ -43,6 +43,21 @@ CREATE TABLE IF NOT EXISTS medications (
   horario TEXT,
   frequencia TEXT,
   observacoes TEXT,
+  estoque_atual INTEGER DEFAULT 0,
+  estoque_minimo INTEGER DEFAULT 0,
+  qtd_por_dose NUMERIC DEFAULT 1,
+  unidade_medida TEXT DEFAULT 'comprimido',
+  tipo_escala TEXT DEFAULT 'regular',
+  dias_semana JSONB DEFAULT '[]',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Tabela Base de Medicamentos (Catálogo)
+CREATE TABLE IF NOT EXISTS base_medications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nome TEXT NOT NULL UNIQUE,
+  dosagem_padrao TEXT,
+  unidade_medida_padrao TEXT DEFAULT 'comprimido',
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useDb } from '@/hooks/useDb'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
-import type { Patient } from '@/lib/types'
+import type { Patient, Medication, BaseMedication } from '@/lib/types'
 
 import { SearchBar } from '@/components/shared/SearchBar'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -18,7 +18,6 @@ import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFo
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Pencil, Trash2, FileText, Loader2, Pill, Plus, Calendar } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import type { Medication } from '@/lib/types'
 
 const emptyPatient: Omit<Patient, 'id'> = {
   nome: '', cpf: '', rg: '', idade: 0, data_nascimento: '', responsavel: '', telefoneResponsavel: '',
@@ -31,6 +30,8 @@ const emptyPatient: Omit<Patient, 'id'> = {
 export default function Cadastro() {
   const { data: patients, loading: loadingPatients, insert, update, remove } = useDb<Patient>('patients')
   const { data: allMedications, insert: insertMed, update: updateMed, remove: removeMed, reload: reloadMeds } = useDb<Medication>('medications')
+  const { data: rawProducts } = useDb<any>('products')
+  const baseMeds = rawProducts.filter((p: any) => p.tipo === 'medicamento')
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'inativo'>('todos')
@@ -866,7 +867,41 @@ export default function Cadastro() {
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>Medicamento</Label><Input value={medForm.medicamento} onChange={(e) => setMedForm({ ...medForm, medicamento: e.target.value })} className="mt-1" /></div>
+              <div className="relative">
+                <Label>Medicamento</Label>
+                <Input 
+                  value={medForm.medicamento} 
+                  onChange={(e) => setMedForm({ ...medForm, medicamento: e.target.value })} 
+                  className="mt-1" 
+                  placeholder="Digite o nome do remédio..."
+                />
+                {medForm.medicamento && medForm.medicamento.length >= 2 && !baseMeds.some((bm: any) => bm.nome.split(' - ')[0] === medForm.medicamento) && (
+                  <div className="absolute z-[100] w-full mt-1 bg-white border rounded-md shadow-xl max-h-48 overflow-y-auto">
+                    {baseMeds.filter((bm: any) => bm.nome.toLowerCase().includes(medForm.medicamento.toLowerCase())).map((bm: any) => {
+                      const mName = bm.nome.split(' - ')[0];
+                      const mDosage = bm.nome.includes(' - ') ? bm.nome.split(' - ')[1] : '';
+                      return (
+                        <button
+                          key={bm.id}
+                          type="button"
+                          className="w-full text-left px-4 py-2 text-sm hover:bg-primary/10 transition-colors border-b last:border-0"
+                          onClick={() => {
+                            setMedForm({
+                              ...medForm,
+                              medicamento: mName,
+                              dosagem: mDosage || medForm.dosagem,
+                              unidade_medida: bm.unidade || medForm.unidade_medida
+                            })
+                          }}
+                        >
+                          <div className="font-bold">{mName}</div>
+                          {mDosage && <div className="text-[10px] text-muted-foreground">Sugestão: {mDosage} • {bm.unidade || 'comprimido'}</div>}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
               <div><Label>Dosagem</Label><Input value={medForm.dosagem} onChange={(e) => setMedForm({ ...medForm, dosagem: e.target.value })} placeholder="Ex: 10mg" className="mt-1" /></div>
             </div>
 

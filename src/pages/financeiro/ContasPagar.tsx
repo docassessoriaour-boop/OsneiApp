@@ -15,7 +15,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, Loader2, Filter, ArrowUp, ArrowDown } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, Filter, ArrowUp, ArrowDown, Split } from 'lucide-react'
 
 const emptyBill: Omit<Bill, 'id'> = {
   descricao: '', 
@@ -42,6 +42,9 @@ export default function ContasPagar() {
   const [nfeDialogOpen, setNfeDialogOpen] = useState(false)
   const [loadingXml, setLoadingXml] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [partialDialogOpen, setPartialDialogOpen] = useState(false)
+  const [partialBill, setPartialBill] = useState<Bill | null>(null)
+  const [partialForm, setPartialForm] = useState({ valorPago: 0, dataPagamento: new Date().toISOString().slice(0, 10), bank_account_id: '' })
   const [form, setForm] = useState(emptyBill)
   const [parcelas, setParcelas] = useState(1)
   const [startDate, setStartDate] = useState('')
@@ -92,6 +95,72 @@ export default function ContasPagar() {
     setParcelas(1)
     setEditingId(b.id)
     setDialogOpen(true)
+  }
+
+  function openPartial(b: Bill) {
+    setPartialBill(b)
+    setPartialForm({
+      valorPago: 0,
+      dataPagamento: new Date().toISOString().slice(0, 10),
+      bank_account_id: ''
+    })
+    setPartialDialogOpen(true)
+  }
+
+  const handlePartialPayment = async () => {
+    if (!partialBill || partialForm.valorPago <= 0 || partialForm.valorPago >= partialBill.valor) {
+      alert("O valor pago deve ser maior que zero e menor que o valor total da conta.")
+      return
+    }
+    if (!partialForm.bank_account_id) {
+      alert("Selecione uma conta bancária.")
+      return
+    }
+
+    try {
+      const remainingValue = partialBill.valor - partialForm.valorPago
+
+      // 1. Criar transação bancária
+      const bt = await insertBankTransaction({
+        data: partialForm.dataPagamento,
+        descricao: `Pagamento Parcial: ${partialBill.descricao}`,
+        valor: partialForm.valorPago,
+        tipo: 'debito',
+        origem: 'manual',
+        bank_account_id: partialForm.bank_account_id,
+        categoria: partialBill.categoria,
+        category_id: partialBill.category_id
+      } as any)
+
+      // 2. Atualizar a conta atual para refletir o valor pago
+      await update(partialBill.id, {
+        ...partialBill,
+        valor: partialForm.valorPago,
+        status: 'pago',
+        payment_date: partialForm.dataPagamento,
+        bank_account_id: partialForm.bank_account_id,
+        bank_transaction_id: bt.id,
+        descricao: `${partialBill.descricao} (Parcial)`
+      })
+
+      // 3. Criar a nova conta com o saldo restante
+      await insert({
+        ...partialBill,
+        id: undefined, // ensure new ID
+        valor: remainingValue,
+        status: 'pendente',
+        descricao: `${partialBill.descricao} (Restante)`,
+        payment_date: null,
+        bank_account_id: null,
+        bank_transaction_id: null
+      } as any)
+
+      setPartialDialogOpen(false)
+      alert("Baixa parcial efetuada com sucesso!")
+    } catch (e: any) {
+      console.error(e)
+      alert("Erro ao realizar baixa parcial: " + e.message)
+    }
   }
 
   const handleXmlUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -459,8 +528,13 @@ export default function ContasPagar() {
                   <TableCell>{statusBadge(b.status)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(b)}><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(b.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      {(b.status === 'pendente' || b.status === 'vencido') && (
+                        <Button variant="ghost" size="icon" onClick={() => openPartial(b)} title="Baixa Parcial">
+                          <Split className="h-4 w-4 text-blue-600" />
+                        </Button>
+                      )}
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(b)} title="Editar"><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDelete(b.id)} title="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -646,6 +720,64 @@ export default function ContasPagar() {
             <Button variant="outline" onClick={() => setNfeDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleSaveNfe}>Salvar e Gerar Despesa</Button>
           </div>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={partialDialogOpen} onOpenChange={setPartialDialogOpen}>
+        <DialogHeader>
+          <DialogTitle>Baixa Parcial</DialogTitle>
+          <DialogClose onClose={() => setPartialDialogOpen(false)} />
+        </DialogHeader>
+        <DialogContent>
+          {partialBill && (
+            <div className="grid gap-4">
+              <div className="bg-muted/50 p-3 rounded-lg text-sm mb-2">
+                <p><strong>Conta:</strong> {partialBill.descricao}</p>
+                <p><strong>Valor Total:</strong> {formatCurrency(partialBill.valor)}</p>
+              </div>
+
+              <div>
+                <Label>Valor Pago Agora</Label>
+                <Input 
+                  type="number" 
+                  value={partialForm.valorPago || ''} 
+                  onChange={(e) => setPartialForm({ ...partialForm, valorPago: Number(e.target.value) })} 
+                  className="mt-1" 
+                  max={partialBill.valor - 0.01}
+                />
+                <p className="text-xs text-muted-foreground mt-1">O valor restante será gerado como uma nova conta pendente.</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Data do Pagamento</Label>
+                  <Input 
+                    type="date" 
+                    value={partialForm.dataPagamento} 
+                    onChange={(e) => setPartialForm({ ...partialForm, dataPagamento: e.target.value })} 
+                    className="mt-1" 
+                  />
+                </div>
+                <div>
+                  <Label>Banco / Origem</Label>
+                  <Select
+                    value={partialForm.bank_account_id}
+                    onChange={(e) => setPartialForm({ ...partialForm, bank_account_id: e.target.value })}
+                    className="mt-1"
+                  >
+                    <option value="">-- Selecione o Banco --</option>
+                    {bankAccounts.map(ba => (
+                      <option key={ba.id} value={ba.id}>{ba.nome} {ba.banco ? `(${ba.banco})` : ''}</option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setPartialDialogOpen(false)}>Cancelar</Button>
+          <Button onClick={handlePartialPayment}>Confirmar Baixa Parcial</Button>
         </DialogFooter>
       </Dialog>
     </div>

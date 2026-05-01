@@ -63,20 +63,24 @@ export default function Relatorios() {
   const filteredData = useMemo(() => {
     const filterByDate = (d: string) => (!dateStart || d >= dateStart) && (!dateEnd || d <= dateEnd)
     
+    const filterByCategory = (catId?: string) => {
+      if (!selectedCat) return true
+      if (selectedCat === 'sem-categoria') return !catId || catId === ''
+      return catId === selectedCat
+    }
+
     const fBills = bills.filter(b => 
-      filterByDate(b.vencimento) && 
-      (!selectedCat || b.category_id === selectedCat)
+      filterByDate(b.vencimento) && filterByCategory(b.category_id)
     )
     
     const fIncomes = incomes.filter(i => 
-      filterByDate(i.vencimento) && 
-      (!selectedCat || i.category_id === selectedCat)
+      filterByDate(i.vencimento) && filterByCategory(i.category_id)
     )
 
     const fBankTxs = bankTxs.filter(t => 
       filterByDate(t.data) && 
       (!selectedBank || t.bank_account_id === selectedBank) &&
-      (!selectedCat || t.category_id === selectedCat)
+      filterByCategory(t.category_id)
     )
 
     const fPayrolls = payrolls.filter(p => {
@@ -103,7 +107,7 @@ export default function Relatorios() {
     const bankOut = filteredData.transactions.filter(t => t.tipo === 'debito').reduce((s, t) => s + t.valor, 0)
     const totalFolha = filteredData.payrolls.reduce((s, p) => s + p.salarioLiquido, 0)
     
-    const totalExpenses = pagar + totalFolha
+    const totalExpenses = bankOut
     const patientCount = filteredData.patients.length || 1
     const avgCostPerPatient = totalExpenses / patientCount
 
@@ -225,32 +229,38 @@ export default function Relatorios() {
       `
     }
 
-    if (viewMode === 'sintetico' && (reportType === 'geral' || reportType === 'contasPagar' || reportType === 'contasReceber')) {
-      if (Object.keys(totals.categoryBreakdown.bills).length > 0 && (reportType === 'geral' || reportType === 'contasPagar')) {
+    if (viewMode === 'sintetico' && (reportType === 'geral' || reportType === 'contasPagar' || reportType === 'contasReceber' || reportType === 'bancario')) {
+      if (Object.keys(totals.categoryBreakdown.bills).length > 0 && (reportType === 'geral' || reportType === 'contasPagar' || reportType === 'bancario')) {
         html += `
           <div class="section">
             <h3>Distribuição por Categoria (Saídas)</h3>
             <table>
               <thead><tr><th>Categoria</th><th class="text-right">Valor</th><th class="text-right">%</th></tr></thead>
               <tbody>
-                ${Object.entries(totals.categoryBreakdown.bills).sort((a,b) => b[1] - a[1]).map(([cat, val]) => `
-                  <tr><td>${cat}</td><td class="text-right">${formatCurrency(val)}</td><td class="text-right">${((val/(totals.pagar||1))*100).toFixed(1)}%</td></tr>
-                `).join('')}
+                ${(()=>{
+                   const tBills = Object.values(totals.categoryBreakdown.bills).reduce((s, v) => s + v, 0) || 1;
+                   return Object.entries(totals.categoryBreakdown.bills).sort((a,b) => b[1] - a[1]).map(([cat, val]) => `
+                     <tr><td>${cat}</td><td class="text-right">${formatCurrency(val)}</td><td class="text-right">${((val/tBills)*100).toFixed(1)}%</td></tr>
+                   `).join('')
+                })()}
               </tbody>
             </table>
           </div>
         `
       }
-      if (Object.keys(totals.categoryBreakdown.incomes).length > 0 && (reportType === 'geral' || reportType === 'contasReceber')) {
+      if (Object.keys(totals.categoryBreakdown.incomes).length > 0 && (reportType === 'geral' || reportType === 'contasReceber' || reportType === 'bancario')) {
         html += `
           <div class="section" style="margin-top: 20px;">
             <h3>Distribuição por Categoria (Entradas)</h3>
             <table>
               <thead><tr><th>Categoria</th><th class="text-right">Valor</th><th class="text-right">%</th></tr></thead>
               <tbody>
-                ${Object.entries(totals.categoryBreakdown.incomes).sort((a,b) => b[1] - a[1]).map(([cat, val]) => `
-                  <tr><td>${cat}</td><td class="text-right">${formatCurrency(val)}</td><td class="text-right">${((val/(totals.receber||1))*100).toFixed(1)}%</td></tr>
-                `).join('')}
+                ${(()=>{
+                   const tIncomes = Object.values(totals.categoryBreakdown.incomes).reduce((s, v) => s + v, 0) || 1;
+                   return Object.entries(totals.categoryBreakdown.incomes).sort((a,b) => b[1] - a[1]).map(([cat, val]) => `
+                     <tr><td>${cat}</td><td class="text-right">${formatCurrency(val)}</td><td class="text-right">${((val/tIncomes)*100).toFixed(1)}%</td></tr>
+                   `).join('')
+                })()}
               </tbody>
             </table>
           </div>
@@ -361,6 +371,12 @@ export default function Relatorios() {
         html += `<h3 style="margin-top:20px;">Detalhamento: Contas a Receber</h3>
           <table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th>Valor</th><th class="text-right">%</th><th>Status</th></tr></thead><tbody>
           ${filteredData.incomes.map(i => `<tr><td>${formatDatePDF(i.vencimento)}</td><td>${i.descricao}</td><td>${i.categoria || '—'}</td><td class="text-right">${formatCurrency(i.valor)}</td><td class="text-right">${((i.valor/(totals.receber||1))*100).toFixed(1)}%</td><td>${i.status}</td></tr>`).join('')}
+          </tbody></table>`
+      }
+      if (reportType === 'geral' || reportType === 'bancario') {
+        html += `<h3 style="margin-top:20px;">Detalhamento: Movimentação Bancária</h3>
+          <table><thead><tr><th>Data</th><th>Descrição</th><th>Categoria</th><th class="text-right">Valor</th><th>Tipo</th></tr></thead><tbody>
+          ${filteredData.transactions.sort((a,b)=>b.data.localeCompare(a.data)).map(t => `<tr><td>${formatDatePDF(t.data)}</td><td>${t.descricao}</td><td>${t.categoria || 'Não Categorizado'}</td><td class="text-right">${formatCurrency(t.valor)}</td><td>${t.tipo.toUpperCase()}</td></tr>`).join('')}
           </tbody></table>`
       }
     }
@@ -476,6 +492,7 @@ export default function Relatorios() {
              <Label className="text-xs">Categoria (Opcional)</Label>
              <Select value={selectedCat} onChange={e => setSelectedCat(e.target.value)}>
                 <option value="">Todas as Categorias</option>
+                <option value="sem-categoria">Sem Categoria</option>
                 {categories.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
              </Select>
           </div>
@@ -513,53 +530,59 @@ export default function Relatorios() {
         </Card>
       </div>
 
-      {viewMode === 'sintetico' && (reportType === 'geral' || reportType === 'contasPagar' || reportType === 'contasReceber') && (
+      {viewMode === 'sintetico' && (reportType === 'geral' || reportType === 'contasPagar' || reportType === 'contasReceber' || reportType === 'bancario') && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {(reportType === 'geral' || reportType === 'contasPagar') && (
+          {(reportType === 'geral' || reportType === 'contasPagar' || reportType === 'bancario') && (
             <Card className="p-6">
               <h3 className="font-bold text-lg mb-4 text-red-700">Resumo por Categoria (Saídas)</h3>
               <div className="space-y-3">
-                {Object.entries(totals.categoryBreakdown.bills)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([cat, val]) => {
-                    const pct = (val / (totals.pagar || 1)) * 100
-                    return (
-                      <div key={cat} className="space-y-1">
-                        <div className="flex justify-between text-sm">
-                          <span>{cat}</span>
-                          <span className="font-bold">{formatCurrency(val)} ({pct.toFixed(1)}%)</span>
+                {(()=>{
+                  const tBills = Object.values(totals.categoryBreakdown.bills).reduce((s, v) => s + v, 0) || 1;
+                  return Object.entries(totals.categoryBreakdown.bills)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([cat, val]) => {
+                      const pct = (val / tBills) * 100
+                      return (
+                        <div key={cat} className="space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span>{cat}</span>
+                            <span className="font-bold">{formatCurrency(val)} ({pct.toFixed(1)}%)</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-2">
+                            <div className="bg-red-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
                         </div>
-                        <div className="w-full bg-muted rounded-full h-2">
-                          <div className="bg-red-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
-                        </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })
+                })()}
                 {Object.keys(totals.categoryBreakdown.bills).length === 0 && <p className="text-sm text-muted-foreground italic text-center py-4">Nenhuma saída no período.</p>}
               </div>
             </Card>
           )}
 
-          {(reportType === 'geral' || reportType === 'contasReceber') && (
+          {(reportType === 'geral' || reportType === 'contasReceber' || reportType === 'bancario') && (
             <Card className="p-6">
               <h3 className="font-bold text-lg mb-4 text-green-700">Resumo por Categoria (Entradas)</h3>
               <div className="space-y-3">
-                {Object.entries(totals.categoryBreakdown.incomes)
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([cat, val]) => {
-                    const pct = (val / (totals.receber || 1)) * 100
-                    return (
-                      <div key={cat} className="space-y-1">
-                        <div className="flex justify-between text-sm">
-                          <span>{cat}</span>
-                          <span className="font-bold">{formatCurrency(val)} ({pct.toFixed(1)}%)</span>
+                {(()=>{
+                  const tIncomes = Object.values(totals.categoryBreakdown.incomes).reduce((s, v) => s + v, 0) || 1;
+                  return Object.entries(totals.categoryBreakdown.incomes)
+                    .sort((a, b) => b[1] - a[1])
+                    .map(([cat, val]) => {
+                      const pct = (val / tIncomes) * 100
+                      return (
+                        <div key={cat} className="space-y-1">
+                          <div className="flex justify-between text-sm">
+                            <span>{cat}</span>
+                            <span className="font-bold">{formatCurrency(val)} ({pct.toFixed(1)}%)</span>
+                          </div>
+                          <div className="w-full bg-muted rounded-full h-2">
+                            <div className="bg-green-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
+                          </div>
                         </div>
-                        <div className="w-full bg-muted rounded-full h-2">
-                          <div className="bg-green-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
-                        </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })
+                })()}
                 {Object.keys(totals.categoryBreakdown.incomes).length === 0 && <p className="text-sm text-muted-foreground italic text-center py-4">Nenhuma entrada no período.</p>}
               </div>
             </Card>
@@ -629,6 +652,40 @@ export default function Relatorios() {
                             {((i.valor / (totals.receber || 1)) * 100).toFixed(1)}%
                           </td>
                           <td className="p-2 text-center"><Badge variant={i.status === 'recebido' ? 'success' : 'warning'}>{i.status}</Badge></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {(reportType === 'geral' || reportType === 'bancario') && filteredData.transactions.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold text-blue-600 uppercase">Movimentação Bancária</h4>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted">
+                      <tr>
+                        <th className="p-2 text-left">Data</th>
+                        <th className="p-2 text-left">Descrição</th>
+                        <th className="p-2 text-left">Categoria</th>
+                        <th className="p-2 text-right">Valor</th>
+                        <th className="p-2 text-center">Tipo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredData.transactions.sort((a,b) => b.data.localeCompare(a.data)).map(t => (
+                        <tr key={t.id} className="border-t">
+                          <td className="p-2">{formatDate(t.data)}</td>
+                          <td className="p-2">{t.descricao}</td>
+                          <td className="p-2">{t.categoria || 'Não Categorizado'}</td>
+                          <td className="p-2 text-right font-medium">{formatCurrency(t.valor)}</td>
+                          <td className="p-2 text-center">
+                            <Badge variant={t.tipo === 'credito' ? 'success' : 'destructive'}>
+                              {t.tipo.toUpperCase()}
+                            </Badge>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -725,7 +782,7 @@ export default function Relatorios() {
             <div className="p-4 bg-muted/30 rounded-lg border">
               <p className="text-xs text-muted-foreground uppercase font-bold">Total Despesas</p>
               <p className="text-xl font-bold mt-1">{formatCurrency(totals.totalExpenses)}</p>
-              <p className="text-[10px] text-muted-foreground">Contas + Folha</p>
+              <p className="text-[10px] text-muted-foreground">Baseado na Mov. Bancária</p>
             </div>
             <div className="p-4 bg-muted/30 rounded-lg border">
               <p className="text-xs text-muted-foreground uppercase font-bold">Pacientes Ativos</p>

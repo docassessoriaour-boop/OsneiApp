@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useDb } from '@/hooks/useDb'
-import type { Patient, Medication } from '@/lib/types'
+import type { Patient, Medication, BaseMedication } from '@/lib/types'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SearchBar } from '@/components/shared/SearchBar'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -25,6 +25,9 @@ export default function Medicacao() {
   const patients = rawPatients.filter(p => p.status !== 'inativo').sort((a, b) => a.nome.localeCompare(b.nome))
   const activePatientIds = patients.map(p => p.id)
   const medications = rawMedications.filter(m => activePatientIds.includes(m.pacienteId))
+  const { data: rawProducts, insert: insertBaseMed } = useDb<any>('products')
+  const baseMeds = rawProducts.filter((p: any) => p.tipo === 'medicamento')
+  const [exporting, setExporting] = useState(false)
   const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
 
@@ -232,6 +235,7 @@ export default function Medicacao() {
   function printConsolidatedMedicationReport() {
     const groupedMeds: Record<string, { 
       medicamento: string, 
+      dosagem: string,
       pacientes: string[], 
       estoqueTotal: number, 
       consumoDiario: number,
@@ -239,10 +243,14 @@ export default function Medicacao() {
     }> = {};
 
     medications.forEach(m => {
-      const key = m.medicamento.trim().toUpperCase();
+      const nomeMed = m.medicamento.trim().toUpperCase();
+      const dosagemUpper = (m.dosagem || '').trim().toUpperCase();
+      const key = `${nomeMed}__${dosagemUpper}`;
+      
       if (!groupedMeds[key]) {
         groupedMeds[key] = {
           medicamento: m.medicamento.trim(),
+          dosagem: m.dosagem || '',
           pacientes: [],
           estoqueTotal: 0,
           consumoDiario: 0,
@@ -263,11 +271,12 @@ export default function Medicacao() {
     const rows = sortedMeds.map(m => {
       const consumoQuinzenal = m.consumoDiario * 15;
       const consumoMensal = m.consumoDiario * 30;
+      const tituloMed = m.dosagem ? `${m.medicamento} - ${m.dosagem}` : m.medicamento;
       
       return `
         <tr>
           <td>
-            <strong>${m.medicamento}</strong><br/>
+            <strong>${tituloMed}</strong><br/>
             <span style="font-size: 10px; color: #666;">Pacientes: ${m.pacientes.join(', ')}</span>
           </td>
           <td style="text-align: center;">${m.estoqueTotal} ${m.unidade}</td>
@@ -301,6 +310,63 @@ export default function Medicacao() {
         </tbody>
       </table>
     `, clinic, { hideClinicHeader: true })
+  }
+
+  async function exportToCatalog() {
+    if (!baseMeds) {
+      alert("Aguarde, carregando dados do catálogo...");
+      return;
+    }
+
+    if (!confirm('Deseja cadastrar os medicamentos consolidados no Catálogo de Medicamentos? (Medicamentos já existentes serão ignorados)')) return;
+
+    setExporting(true);
+    try {
+      const groupedMeds: Record<string, { 
+        medicamento: string, 
+        dosagem: string,
+        unidade: string
+      }> = {};
+
+      medications.forEach(m => {
+        const nomeMed = m.medicamento.trim().toUpperCase();
+        const dosagemUpper = (m.dosagem || '').trim().toUpperCase();
+        const key = `${nomeMed}__${dosagemUpper}`;
+        
+        if (!groupedMeds[key]) {
+          groupedMeds[key] = {
+            medicamento: m.medicamento.trim(),
+            dosagem: m.dosagem || '',
+            unidade: m.unidade_medida || 'comprimido'
+          };
+        }
+      });
+
+      const existingNames = new Set(baseMeds.map(m => m.nome.trim().toUpperCase()));
+      let importedCount = 0;
+
+      for (const data of Object.values(groupedMeds)) {
+        const tituloMed = data.dosagem ? `${data.medicamento} - ${data.dosagem}` : data.medicamento;
+        const upperTitulo = tituloMed.trim().toUpperCase();
+
+        if (!existingNames.has(upperTitulo)) {
+          await insertBaseMed({
+            nome: tituloMed,
+            tipo: 'medicamento',
+            unidade: data.unidade
+          });
+          existingNames.add(upperTitulo);
+          importedCount++;
+        }
+      }
+
+      alert(`${importedCount} novos medicamentos foram cadastrados no catálogo com sucesso!`);
+    } catch (error: any) {
+      console.error(error);
+      alert(`Erro ao exportar: ${error.message || 'Verifique sua conexão.'}`);
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -342,6 +408,9 @@ export default function Medicacao() {
             </Button>
             <Button variant="outline" size="sm" onClick={printConsolidatedMedicationReport} className="gap-2 h-9 text-blue-600 border-blue-200 hover:bg-blue-50">
                 <FileText className="h-4 w-4" /> Consumo Consolidado
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportToCatalog} disabled={exporting} className="gap-2 h-9 text-green-600 border-green-200 hover:bg-green-50">
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />} Exportar p/ Catálogo
             </Button>
             <Button variant="outline" size="sm" onClick={printReport} className="gap-2 h-9">
                 <FileText className="h-4 w-4" /> PDF da Escala

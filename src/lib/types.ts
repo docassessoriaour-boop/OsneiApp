@@ -98,6 +98,14 @@ export interface Medication {
   dias_semana?: string[]
 }
 
+export interface BaseMedication {
+  id: string
+  nome: string
+  dosagem_padrao?: string
+  unidade_medida_padrao?: string
+  created_at?: string
+}
+
 export interface Appointment {
   id: string
   pacienteId: string

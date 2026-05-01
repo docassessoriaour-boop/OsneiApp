@@ -14,11 +14,11 @@ import { Label } from '@/components/ui/label'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from '@/components/ui/dialog'
-import { Upload, FileText, Plus, Landmark, Tag, X, Save, Search, Link, CheckCircle2 } from 'lucide-react'
+import { Upload, FileText, Plus, Landmark, Tag, X, Save, Search, Link, CheckCircle2, Pencil } from 'lucide-react'
 
 export default function Conciliacao() {
-  const { data: bills, update: updateBill } = useDb<Bill>('bills')
-  const { data: incomes, update: updateIncome } = useDb<Income>('incomes')
+  const { data: bills, update: updateBill, insert: insertBill } = useDb<Bill>('bills')
+  const { data: incomes, update: updateIncome, insert: insertIncome } = useDb<Income>('incomes')
   const { data: dbTransactions, insert: insertTx, update: updateTx, remove: removeTx } = useDb<BankTransaction>('bank_transactions')
   const { data: bankAccounts } = useDb<BankAccount>('bank_accounts')
   const { data: categories } = useDb<TransactionCategory>('transaction_categories')
@@ -35,7 +35,9 @@ export default function Conciliacao() {
   const [search, setSearch] = useState('')
   const [reconcileDialogOpen, setReconcileDialogOpen] = useState(false)
   const [selectedTx, setSelectedTx] = useState<BankTransaction | null>(null)
+  const [editingTx, setEditingTx] = useState<BankTransaction | null>(null)
   const [reconcileSearch, setReconcileSearch] = useState('')
+  const [newEntryCategoryId, setNewEntryCategoryId] = useState('')
 
   // Merge transactions
   const allTransactions = useMemo(() => {
@@ -43,7 +45,7 @@ export default function Conciliacao() {
     return list
       .filter(t => {
         const matchesBank = !selectedBankId || t.bank_account_id === selectedBankId
-        const matchesCat = !filterCat || t.category_id === filterCat || t.categoria === filterCat
+        const matchesCat = !filterCat || (filterCat === 'sem-categoria' ? (!t.category_id && !t.categoria) : (t.category_id === filterCat || t.categoria === filterCat))
         const matchesType = !filterType || t.tipo === filterType
         const matchesSearch = !search || t.descricao.toLowerCase().includes(search.toLowerCase())
         return matchesBank && matchesCat && matchesType && matchesSearch
@@ -71,6 +73,37 @@ export default function Conciliacao() {
     }
     reader.readAsText(file)
     e.target.value = ''
+  }
+
+  function applyAutoCategorization(newTxs: BankTransaction[]): BankTransaction[] {
+    return newTxs.map(tx => {
+      // 1. Exact match
+      let match = dbTransactions.find(dbTx => 
+        dbTx.category_id && 
+        dbTx.tipo === tx.tipo &&
+        dbTx.descricao.trim().toLowerCase() === tx.descricao.trim().toLowerCase()
+      )
+
+      // 2. Partial match (starts with) if no exact match
+      if (!match) {
+        match = dbTransactions.find(dbTx => 
+          dbTx.category_id && 
+          dbTx.tipo === tx.tipo &&
+          dbTx.descricao.length > 8 && tx.descricao.length > 8 &&
+          (tx.descricao.toLowerCase().startsWith(dbTx.descricao.toLowerCase()) || 
+           dbTx.descricao.toLowerCase().startsWith(tx.descricao.toLowerCase()))
+        )
+      }
+
+      if (match) {
+        return {
+          ...tx,
+          category_id: match.category_id,
+          categoria: match.categoria
+        }
+      }
+      return tx
+    })
   }
 
   function parseCSV(text: string) {
@@ -102,7 +135,8 @@ export default function Conciliacao() {
         bank_account_id: selectedBankId
       })
     }
-    setImportedTxs([...importedTxs, ...newTxs])
+    const categorized = applyAutoCategorization(newTxs)
+    setImportedTxs([...importedTxs, ...categorized])
   }
 
   function parseOFX(text: string) {
@@ -133,16 +167,50 @@ export default function Conciliacao() {
         bank_account_id: selectedBankId
       })
     }
-    setImportedTxs([...importedTxs, ...newTxs])
+    const categorized = applyAutoCategorization(newTxs)
+    setImportedTxs([...importedTxs, ...categorized])
   }
 
   async function saveTransaction(t: BankTransaction) {
+    if (!selectedBankId) {
+      alert('Selecione uma conta bancária antes de salvar.')
+      return
+    }
     try {
       if (t.id.startsWith('temp-')) {
-        const cleaned = { ...t }
+        const cleaned = { ...t, bank_account_id: selectedBankId }
         delete (cleaned as any).id
-        await insertTx(cleaned)
-        setImportedTxs(importedTxs.filter(x => x.id !== t.id))
+        const newTx: any = await insertTx(cleaned)
+        const newTxId = newTx?.id || newTx?.[0]?.id || t.id
+
+        // Integração automática
+        const isIncome = t.tipo === 'credito'
+        if (isIncome) {
+          await insertIncome({
+            descricao: t.descricao,
+            categoria: t.categoria || 'Sem Categoria',
+            category_id: t.category_id || undefined,
+            valor: t.valor,
+            vencimento: t.data,
+            status: 'recebido',
+            payment_date: t.data,
+            bank_account_id: selectedBankId,
+            bank_transaction_id: newTxId
+          })
+        } else {
+          await insertBill({
+            descricao: t.descricao,
+            categoria: t.categoria || 'Sem Categoria',
+            category_id: t.category_id || undefined,
+            valor: t.valor,
+            vencimento: t.data,
+            status: 'pago',
+            payment_date: t.data,
+            bank_account_id: selectedBankId,
+            bank_transaction_id: newTxId
+          })
+        }
+        setImportedTxs(prev => prev.filter(x => x.id !== t.id))
       } else {
         await updateTx(t.id, t)
       }
@@ -159,50 +227,198 @@ export default function Conciliacao() {
     for (const t of importedTxs) {
       const cleaned = { ...t, bank_account_id: selectedBankId }
       delete (cleaned as any).id
-      await insertTx(cleaned)
+      const newTx: any = await insertTx(cleaned)
+      const newTxId = newTx?.id || newTx?.[0]?.id || t.id
+      
+      // Integração automática
+      const isIncome = t.tipo === 'credito'
+      if (isIncome) {
+        await insertIncome({
+          descricao: t.descricao,
+          categoria: t.categoria || 'Sem Categoria',
+          category_id: t.category_id || undefined,
+          valor: t.valor,
+          vencimento: t.data,
+          status: 'recebido',
+          payment_date: t.data,
+          bank_account_id: selectedBankId,
+          bank_transaction_id: newTxId
+        })
+      } else {
+        await insertBill({
+          descricao: t.descricao,
+          categoria: t.categoria || 'Sem Categoria',
+          category_id: t.category_id || undefined,
+          valor: t.valor,
+          vencimento: t.data,
+          status: 'pago',
+          payment_date: t.data,
+          bank_account_id: selectedBankId,
+          bank_transaction_id: newTxId
+        })
+      }
     }
     setImportedTxs([])
-    alert('Todas as transações foram salvas no banco de dados.')
+    alert('Todas as transações foram salvas e interligadas ao financeiro.')
   }
 
   async function handleReconcile(tx: BankTransaction, item: Income | Bill) {
     try {
-      // 1. Marcar o item (Income ou Bill) como pago/recebido
-      if (tx.tipo === 'credito') {
-        const income = item as Income
-        await updateIncome(income.id, { status: 'recebido' })
-        
-        // 2. Se for uma Income vinculada a uma Invoice, marcar a Invoice como paga
-        const linkedInvoice = invoices.find(inv => inv.income_id === income.id || inv.id === income.invoiceId)
-        if (linkedInvoice) {
-          await updateInvoice(linkedInvoice.id, { status: 'pago' })
-          
-          // Solicitar impressão do recibo
-          if (confirm('Lançamento conciliado e fatura quitada! Deseja gerar o recibo agora?')) {
-            const patient = patients.find(p => p.id === linkedInvoice.patient_id)
-            printReceipt(linkedInvoice, patient, clinic)
-          }
-        }
-      } else {
-        await updateBill(item.id, { status: 'pago' })
-      }
-
+      let newTxId = tx.id
+      
       // 3. Salvar a transação bancária se for temporária
       if (tx.id.startsWith('temp-')) {
         const cleaned = { ...tx, category_id: item.category_id || tx.category_id }
         delete (cleaned as any).id
-        await insertTx(cleaned)
+        const newTx: any = await insertTx(cleaned)
+        newTxId = newTx?.id || newTx?.[0]?.id || tx.id // Handle different return formats
         setImportedTxs(prev => prev.filter(x => x.id !== tx.id))
       } else {
         await updateTx(tx.id, { ...tx, category_id: item.category_id || tx.category_id })
       }
 
+      // Se o item já tinha uma transação manual vinculada e estamos substituindo por uma OFX, removemos a manual
+      if (item.bank_transaction_id && item.bank_transaction_id !== newTxId) {
+        try {
+           await removeTx(item.bank_transaction_id)
+        } catch(e) {
+           console.log("Old tx already deleted or not found")
+        }
+      }
+
+      // 1. Marcar o item (Income ou Bill) como pago/recebido e vincular nova tx
+      if (tx.tipo === 'credito') {
+        const income = item as Income
+        await updateIncome(income.id, { status: 'recebido', bank_transaction_id: newTxId })
+        
+        // 2. Se for uma Income vinculada a uma Invoice, marcar a Invoice como paga
+        const linkedInvoice = invoices.find(inv => inv.income_id === income.id || inv.id === income.invoiceId)
+        if (linkedInvoice) {
+          await updateInvoice(linkedInvoice.id, { status: 'pago', bank_transaction_id: newTxId })
+          
+          // Solicitar impressão do recibo
+          if (income.status !== 'recebido' && confirm('Lançamento conciliado e fatura quitada! Deseja gerar o recibo agora?')) {
+            const patient = patients.find(p => p.id === linkedInvoice.patient_id)
+            printReceipt(linkedInvoice, patient, clinic)
+          }
+        }
+      } else {
+        await updateBill(item.id, { status: 'pago', bank_transaction_id: newTxId })
+      }
+
       setReconcileDialogOpen(false)
       setSelectedTx(null)
-      alert('Conciliação realizada com sucesso! O lançamento financeiro foi baixado.')
+      alert('Conciliação realizada com sucesso! O lançamento financeiro foi vinculado e as duplicidades removidas.')
     } catch (e) {
       console.error(e)
       alert('Erro ao realizar conciliação.')
+    }
+  }
+
+  async function handleDeleteTx(t: BankTransaction) {
+    const isTemp = t.id.startsWith('temp-')
+    if (!isTemp && !confirm('Deseja excluir permanentemente este lançamento do banco de dados?')) return
+
+    try {
+      if (isTemp) {
+        setImportedTxs(prev => prev.filter(x => x.id !== t.id))
+      } else {
+        // 1. Procurar e desvincular qualquer Receita, Conta a Pagar ou Fatura que aponte para esta transação
+        const linkedIncomes = incomes.filter(i => i.bank_transaction_id === t.id)
+        for (const inc of linkedIncomes) {
+          await updateIncome(inc.id, { bank_transaction_id: null as any })
+        }
+
+        const linkedBills = bills.filter(b => b.bank_transaction_id === t.id)
+        for (const bill of linkedBills) {
+          await updateBill(bill.id, { bank_transaction_id: null as any })
+        }
+
+        const linkedInvoices = invoices.filter(inv => inv.bank_transaction_id === t.id)
+        for (const inv of linkedInvoices) {
+          await updateInvoice(inv.id, { bank_transaction_id: null as any })
+        }
+
+        // 2. Agora sim, excluir a transação do banco
+        await removeTx(t.id)
+      }
+    } catch (e: any) {
+      console.error(e)
+      alert('Erro ao excluir transação: ' + (e.message || 'Erro desconhecido'))
+    }
+  }
+
+  async function handleCreateAndReconcile() {
+    if (!selectedTx) return
+    if (!newEntryCategoryId) {
+      alert('Selecione uma categoria para o novo lançamento.')
+      return
+    }
+
+    try {
+      const isIncome = selectedTx.tipo === 'credito'
+      const categoryName = categories.find(c => c.id === newEntryCategoryId)?.nome || ''
+
+      let newTxId = selectedTx.id
+      
+      // Salvar a transação bancária se for temporária
+      if (selectedTx.id.startsWith('temp-')) {
+        const cleaned = { ...selectedTx, category_id: newEntryCategoryId, categoria: categoryName }
+        delete (cleaned as any).id
+        const newTx: any = await insertTx(cleaned)
+        newTxId = newTx?.id || newTx?.[0]?.id || selectedTx.id
+        setImportedTxs(prev => prev.filter(x => x.id !== selectedTx.id))
+      } else {
+        await updateTx(selectedTx.id, { ...selectedTx, category_id: newEntryCategoryId, categoria: categoryName })
+      }
+
+      if (isIncome) {
+        await insertIncome({
+          descricao: selectedTx.descricao,
+          categoria: categoryName,
+          category_id: newEntryCategoryId,
+          valor: selectedTx.valor,
+          vencimento: selectedTx.data,
+          status: 'recebido',
+          payment_date: selectedTx.data,
+          bank_account_id: selectedTx.bank_account_id,
+          bank_transaction_id: newTxId
+        })
+      } else {
+        await insertBill({
+          descricao: selectedTx.descricao,
+          categoria: categoryName,
+          category_id: newEntryCategoryId,
+          valor: selectedTx.valor,
+          vencimento: selectedTx.data,
+          status: 'pago',
+          payment_date: selectedTx.data,
+          bank_account_id: selectedTx.bank_account_id,
+          bank_transaction_id: newTxId
+        })
+      }
+
+      setReconcileDialogOpen(false)
+      setSelectedTx(null)
+      setNewEntryCategoryId('')
+      alert('Novo lançamento criado e conciliado com sucesso!')
+    } catch (e: any) {
+      console.error(e)
+      alert('Erro ao criar lançamento.')
+    }
+  }
+
+  async function handleSaveEdit() {
+    if (!editingTx) return
+    try {
+      if (editingTx.id.startsWith('temp-')) {
+        setImportedTxs(prev => prev.map(x => x.id === editingTx.id ? editingTx : x))
+      } else {
+        await updateTx(editingTx.id, editingTx)
+      }
+      setEditingTx(null)
+    } catch (e) {
+      alert('Erro ao editar transação.')
     }
   }
 
@@ -270,14 +486,14 @@ export default function Conciliacao() {
         </tbody>
       </table>
     `
-    printPDF('Relatório de Conciliação', html, clinic)
+    printPDF('Relatório de Movimentação Financeira', html, clinic)
   }
 
   return (
     <div className="space-y-6">
       <PageHeader 
-        title="Conciliação Bancária" 
-        description="Importe arquivos OFX/CSV e vincule aos seus lançamentos" 
+        title="Movimentação Financeira" 
+        description="Importe arquivos OFX/CSV e interligue seus lançamentos bancários" 
       />
 
       <div className="flex flex-wrap items-center gap-3">
@@ -336,8 +552,9 @@ export default function Conciliacao() {
             <option value="credito">Crédito</option>
             <option value="debito">Débito</option>
           </Select>
-          <Select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="w-48">
-            <option value="">Todas categorias</option>
+          <Select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="h-9">
+            <option value="">Todas Categorias</option>
+            <option value="sem-categoria">Sem Categoria</option>
             {categories.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
           </Select>
         </div>
@@ -368,16 +585,17 @@ export default function Conciliacao() {
                         value={t.category_id || ''} 
                         onChange={async (e) => {
                           const newCatId = e.target.value
+                          const catName = categories.find(c => c.id === newCatId)?.nome || ''
                           if (isTemp) {
-                            setImportedTxs(prev => prev.map(x => x.id === t.id ? { ...x, category_id: newCatId } : x))
+                            setImportedTxs(prev => prev.map(x => x.id === t.id ? { ...x, category_id: newCatId, categoria: catName } : x))
                           } else {
-                            await updateTx(t.id, { ...t, category_id: newCatId })
+                            await updateTx(t.id, { ...t, category_id: newCatId, categoria: catName })
                           }
                         }}
                         className="h-8 text-xs"
                       >
                         <option value="">-- Selecione --</option>
-                        {categories.filter(c => c.tipo === t.tipo).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                        {categories.filter(c => c.tipo === (t.tipo === 'credito' ? 'receita' : 'despesa')).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                       </Select>
                     </TableCell>
                     <TableCell className={t.tipo === 'credito' ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
@@ -389,10 +607,13 @@ export default function Conciliacao() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         {isTemp && (
-                          <Button size="icon" variant="ghost" onClick={() => saveTransaction(t)} className="text-green-600">
+                          <Button size="icon" variant="ghost" onClick={() => saveTransaction(t)} className="text-green-600" title="Salvar no banco">
                             <Save className="h-4 w-4" />
                           </Button>
                         )}
+                        <Button size="icon" variant="ghost" onClick={() => setEditingTx(t)} className="text-muted-foreground" title="Editar">
+                           <Pencil className="h-4 w-4" />
+                        </Button>
                         <Button 
                           size="icon" 
                           variant="ghost" 
@@ -406,7 +627,7 @@ export default function Conciliacao() {
                         >
                           <Link className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => isTemp ? setImportedTxs(prev => prev.filter(x => x.id !== t.id)) : removeTx(t.id)} className="text-red-500">
+                        <Button size="icon" variant="ghost" onClick={() => handleDeleteTx(t)} className="text-red-500">
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
@@ -474,7 +695,9 @@ export default function Conciliacao() {
                       potentialMatches.map(item => (
                         <TableRow key={item.id}>
                           <TableCell>{formatDate(item.vencimento)}</TableCell>
-                          <TableCell className="font-medium">{item.descricao}</TableCell>
+                          <TableCell className="font-medium">
+                            {item.descricao}
+                          </TableCell>
                           <TableCell className="font-bold">{formatCurrency(item.valor)}</TableCell>
                           <TableCell className="text-right">
                             <Button size="sm" onClick={() => handleReconcile(selectedTx, item)}>
@@ -487,11 +710,43 @@ export default function Conciliacao() {
                   </TableBody>
                 </Table>
               </div>
+
+              <div className="pt-4 border-t space-y-3">
+                <Label className="text-muted-foreground font-bold uppercase text-xs">Ou criar um novo lançamento a partir desta transação</Label>
+                <div className="flex gap-2 items-center">
+                  <Select value={newEntryCategoryId} onChange={e => setNewEntryCategoryId(e.target.value)} className="flex-1">
+                    <option value="">-- Selecione a categoria --</option>
+                    {categories.filter(c => c.tipo === (selectedTx.tipo === 'credito' ? 'receita' : 'despesa')).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </Select>
+                  <Button onClick={handleCreateAndReconcile} className="whitespace-nowrap bg-green-600 hover:bg-green-700">
+                    Criar Lançamento e Baixar
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
           
           <DialogFooter>
             <Button variant="outline" onClick={() => setReconcileDialogOpen(false)}>Cancelar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!editingTx} onOpenChange={(open) => !open && setEditingTx(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Editar Transação</DialogTitle></DialogHeader>
+          {editingTx && (
+            <div className="grid gap-4">
+              <div><Label>Descrição</Label><Input value={editingTx.descricao} onChange={e => setEditingTx({...editingTx, descricao: e.target.value})} className="mt-1" /></div>
+              <div className="grid grid-cols-2 gap-4">
+                <div><Label>Data</Label><Input type="date" value={editingTx.data} onChange={e => setEditingTx({...editingTx, data: e.target.value})} className="mt-1" /></div>
+                <div><Label>Valor</Label><Input type="number" step="0.01" value={editingTx.valor} onChange={e => setEditingTx({...editingTx, valor: Number(e.target.value)})} className="mt-1" /></div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingTx(null)}>Cancelar</Button>
+            <Button onClick={handleSaveEdit}>Salvar Alterações</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
