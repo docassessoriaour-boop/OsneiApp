@@ -49,14 +49,28 @@ export default function Cadastro() {
   const [genFrequency, setGenFrequency] = useState('1')
   const [activeTab, setActiveTab] = useState('dados')
 
-  const patientMedications = allMedications.filter(m => m.pacienteId === editingId)
+  const patientMedications = allMedications
+    .filter(m => m.pacienteId === editingId)
+    .sort((a, b) => {
+      const getFirstTime = (m: Medication) => {
+        if (m.tipo_escala !== 'regular' || !m.horario) return '99:99';
+        const times = m.horario.split(',').map(t => t.trim()).filter(t => /^([01]\d|2[0-3]):([0-5]\d)$/.test(t));
+        return times.length > 0 ? times.sort()[0] : '99:99';
+      };
+
+      const timeA = getFirstTime(a);
+      const timeB = getFirstTime(b);
+      
+      if (timeA !== timeB) return timeA.localeCompare(timeB);
+      return (a.medicamento || '').localeCompare(b.medicamento || '');
+    });
 
   const filtered = patients.filter((p) => {
     const matchesSearch = p.nome.toLowerCase().includes(search.toLowerCase()) || p.cpf.includes(search)
     const matchesStatus = statusFilter === 'todos' || p.status === statusFilter
     const matchesUnidade = unidadeFilter === 'todos' || (p.unidade || 'Vila Moraes') === unidadeFilter
     return matchesSearch && matchesStatus && matchesUnidade
-  })
+  }).sort((a, b) => a.nome.localeCompare(b.nome))
 
   function openNew() { 
     setForm(emptyPatient); 
@@ -311,6 +325,133 @@ export default function Cadastro() {
     `, clinic, { hideClinicHeader: true })
   }
 
+  function printPatientFullReport(p: Patient) {
+    const meds = allMedications
+      .filter(m => m.pacienteId === p.id)
+      .sort((a, b) => {
+        const getFirstTime = (m: Medication) => {
+          if (m.tipo_escala !== 'regular' || !m.horario) return '99:99';
+          const times = m.horario.split(',').map(t => t.trim()).filter(t => /^([01]\d|2[0-3]):([0-5]\d)$/.test(t));
+          return times.length > 0 ? times.sort()[0] : '99:99';
+        };
+
+        const timeA = getFirstTime(a);
+        const timeB = getFirstTime(b);
+        
+        if (timeA !== timeB) return timeA.localeCompare(timeB);
+        return (a.medicamento || '').localeCompare(b.medicamento || '');
+      });
+
+    const fichaHtml = `
+      <div style="font-size: 1.5rem; font-weight: 700; margin-bottom: 2rem; border-bottom: 2px solid #333; padding-bottom: 0.5rem; color: #1a1a1a;">
+        FICHA CADASTRAL DO PACIENTE
+      </div>
+      
+      <div style="margin-bottom: 2rem;">
+        <h3 style="background: #f3f4f6; padding: 0.5rem; font-size: 1rem; text-transform: uppercase; margin-bottom: 1rem; border-left: 4px solid #3b82f6;">Dados Pessoais</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div><strong>Nome:</strong> ${p.nome}</div>
+          <div><strong>CPF:</strong> ${p.cpf}</div>
+          <div><strong>Unidade:</strong> ${p.unidade || 'Vila Moraes'}</div>
+          <div><strong>RG:</strong> ${p.rg || '---'}</div>
+          <div><strong>Data Nasc.:</strong> ${formatDate(p.data_nascimento)} (${p.idade} anos)</div>
+          <div><strong>Data de Entrada:</strong> ${formatDate(p.dataEntrada)}</div>
+          <div><strong>Status:</strong> ${p.status === 'ativo' ? 'Ativo' : 'Inativo'}</div>
+        </div>
+      </div>
+
+      <div style="margin-bottom: 2rem;">
+        <h3 style="background: #f3f4f6; padding: 0.5rem; font-size: 1rem; text-transform: uppercase; margin-bottom: 1rem; border-left: 4px solid #3b82f6;">Dados do Responsável</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div style="grid-column: span 2;"><strong>Responsável Principal:</strong> ${p.responsavel}</div>
+          <div><strong>Telefone:</strong> ${p.telefoneResponsavel}</div>
+          <div><strong>Email:</strong> ${p.resp_email || '---'}</div>
+          <div><strong>CPF:</strong> ${p.resp_cpf || '---'}</div>
+          <div><strong>RG:</strong> ${p.resp_rg || '---'}</div>
+          <div style="grid-column: span 2;"><strong>Endereço:</strong> ${p.resp_endereco}</div>
+          <div><strong>Cidade/UF:</strong> ${p.resp_cidade}</div>
+          <div><strong>CEP:</strong> ${p.resp_cep}</div>
+        </div>
+        ${p.outros_responsaveis && p.outros_responsaveis.length > 0 ? `
+          <h4 style="margin-top: 1rem; margin-bottom: 0.5rem; font-size: 0.9rem; border-bottom: 1px dotted #ccc;">Responsáveis Adicionais</h4>
+          ${p.outros_responsaveis.map((r, i) => `
+            <div style="margin-bottom: 0.5rem; padding: 0.5rem; border: 1px solid #eee; border-radius: 4px;">
+              <div><strong>Responsável ${i + 2}:</strong> ${r.nome}</div>
+              <div style="font-size: 0.8rem; color: #444;">CPF: ${r.cpf} | RG: ${r.rg || '---'} | Telefone: ${r.telefone || '---'}</div>
+              <div style="font-size: 0.8rem; color: #444;">Nacionalidade: ${r.nacionalidade || '---'} | Estado Civil: ${r.estado_civil || '---'} | Profissão: ${r.profissao || '---'}</div>
+            </div>
+          `).join('')}
+        ` : ''}
+      </div>
+
+      <div>
+        <h3 style="background: #f3f4f6; padding: 0.5rem; font-size: 1rem; text-transform: uppercase; margin-bottom: 1rem; border-left: 4px solid #3b82f6;">Observações Gerais</h3>
+        <div style="min-height: 100px; padding: 0.5rem; border: 1px solid #e5e7eb; border-radius: 4px; white-space: pre-wrap;">
+          ${p.observacoes || 'Nenhuma observação registrada.'}
+        </div>
+      </div>
+    `;
+
+    const medsRows = meds.map(m => {
+      let escala = m.horario || '-';
+      if (m.tipo_escala === 'dias_impares') escala = 'Dias Ímpares';
+      else if (m.tipo_escala === 'dias_pares') escala = 'Dias Pares';
+      else if (m.tipo_escala === 'dias_semana') escala = `Dias: ${m.dias_semana?.join(', ')}`;
+      else if (m.tipo_escala === 'se_necessario') escala = 'Se Necessário';
+      else if (m.tipo_escala === 'regular') escala = `Horários: ${m.horario} <br/><span style="font-size:11px; color:#666;">${m.frequencia || ''}</span>`;
+
+      return `
+        <tr>
+          <td style="border: 1px solid #cbd5e1; padding: 10px;">
+            <strong>${m.medicamento}</strong><br/>
+            <span style="font-size: 11px; color: #555;">${m.dosagem || ''}</span>
+          </td>
+          <td style="border: 1px solid #cbd5e1; padding: 10px;">${escala}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 10px;">${m.qtd_por_dose || 1} ${m.unidade_medida || 'un'}</td>
+          <td style="border: 1px solid #cbd5e1; padding: 10px;">${m.observacoes || '-'}</td>
+        </tr>
+      `
+    }).join('')
+
+    const medsHtml = `
+      <div style="page-break-before: always;"></div>
+      <div style="margin-top: 30px;">
+        <h3 style="background: #e2e8f0; padding: 10px; border-radius: 4px; margin-bottom: 8px; font-size: 16px; border-left: 4px solid #334155;">
+            PLANO TERAPÊUTICO DE MEDICAÇÕES - ${p.nome}
+        </h3>
+        
+        ${meds.length === 0 ? '<p style="margin-top: 15px;">Nenhuma medicação cadastrada para este paciente.</p>' : `
+          <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+            <thead>
+              <tr>
+                <th style="border: 1px solid #cbd5e1; padding: 10px; background-color: #f8fafc; font-size: 13px; font-weight: bold; color:#334155; text-align: left;">Medicamento</th>
+                <th style="border: 1px solid #cbd5e1; padding: 10px; background-color: #f8fafc; font-size: 13px; font-weight: bold; color:#334155; text-align: left;">Posologia / Escala</th>
+                <th style="border: 1px solid #cbd5e1; padding: 10px; background-color: #f8fafc; font-size: 13px; font-weight: bold; color:#334155; text-align: left;">Qtd por Dose</th>
+                <th style="border: 1px solid #cbd5e1; padding: 10px; background-color: #f8fafc; font-size: 13px; font-weight: bold; color:#334155; text-align: left;">Observações</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${medsRows}
+            </tbody>
+          </table>
+        `}
+      </div>
+
+      <div style="margin-top: 5rem; display: flex; justify-content: space-around;">
+        <div style="text-align: center; width: 250px;">
+          <div style="border-top: 1px solid #000; margin-bottom: 0.5rem;"></div>
+          <div style="font-size: 0.875rem;">Assinatura do Responsável</div>
+        </div>
+        <div style="text-align: center; width: 250px;">
+          <div style="border-top: 1px solid #000; margin-bottom: 0.5rem;"></div>
+          <div style="font-size: 0.875rem;">Assinatura da Direção</div>
+        </div>
+      </div>
+    `;
+
+    printPDF(`Ficha Completa - ${p.nome}`, fichaHtml + medsHtml, clinic)
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -386,6 +527,7 @@ export default function Cadastro() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" title="Ficha + Medicação" onClick={() => printPatientFullReport(patient)}><FileText className="h-4 w-4 text-purple-600" /></Button>
                         <Button variant="ghost" size="icon" title="Ficha Cadastral" onClick={() => printPatientFile(patient)}><FileText className="h-4 w-4 text-blue-600" /></Button>
                         <Button variant="ghost" size="icon" title="Editar" onClick={() => openEdit(patient)}><Pencil className="h-4 w-4" /></Button>
                         <Button variant="ghost" size="icon" title="Excluir" onClick={() => handleDelete(patient.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
@@ -698,8 +840,19 @@ export default function Cadastro() {
           </TabsContent>
         </div>
         <DialogFooter className="px-6 py-4 border-t bg-muted/10">
-          <Button variant="outline" onClick={() => setDialogOpen(false)}>Fechar</Button>
-          <Button onClick={handleSave}>Salvar Paciente</Button>
+          <div className="flex justify-between w-full">
+            <div className="flex gap-2">
+              {editingId && (
+                <Button variant="outline" className="gap-2 text-purple-600 border-purple-200 hover:bg-purple-50" onClick={() => printPatientFullReport(form as Patient)}>
+                  <FileText className="h-4 w-4" /> Ficha + Medicação
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setDialogOpen(false)}>Fechar</Button>
+              <Button onClick={handleSave}>Salvar Paciente</Button>
+            </div>
+          </div>
         </DialogFooter>
       </Tabs>
     </DialogContent>

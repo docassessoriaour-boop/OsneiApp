@@ -22,7 +22,7 @@ export default function Medicacao() {
   const { data: rawPatients } = useDb<Patient>('patients')
   const { data: rawMedications, loading } = useDb<Medication>('medications')
 
-  const patients = rawPatients.filter(p => p.status !== 'inativo')
+  const patients = rawPatients.filter(p => p.status !== 'inativo').sort((a, b) => a.nome.localeCompare(b.nome))
   const activePatientIds = patients.map(p => p.id)
   const medications = rawMedications.filter(m => activePatientIds.includes(m.pacienteId))
   const [search, setSearch] = useState('')
@@ -33,7 +33,18 @@ export default function Medicacao() {
   const filtered = medications.filter(m =>
     (m.pacienteNome || '').toLowerCase().includes(search.toLowerCase()) ||
     m.medicamento.toLowerCase().includes(search.toLowerCase())
-  )
+  ).sort((a, b) => {
+    const patientCompare = (a.pacienteNome || '').localeCompare(b.pacienteNome || '');
+    if (patientCompare !== 0) return patientCompare;
+
+    const getFirstTime = (m: Medication) => {
+      if (m.tipo_escala !== 'regular' || !m.horario) return '99:99';
+      const times = m.horario.split(',').map(t => t.trim()).filter(t => /^([01]\d|2[0-3]):([0-5]\d)$/.test(t));
+      return times.length > 0 ? times.sort()[0] : '99:99';
+    };
+
+    return getFirstTime(a).localeCompare(getFirstTime(b));
+  })
 
   function calculateDailyConsumption(m: Medication) {
     if (!m.horario) return 0
@@ -55,6 +66,8 @@ export default function Medicacao() {
     } else if (search) {
       targetPatients = patients.filter(p => p.nome.toLowerCase().includes(search.toLowerCase()))
     }
+
+    targetPatients = [...targetPatients].sort((a, b) => a.nome.localeCompare(b.nome))
 
     const htmlContent = targetPatients.map(patient => {
       const patientMeds = medications.filter(m => m.pacienteId === patient.id)
@@ -216,6 +229,80 @@ export default function Medicacao() {
     `, clinic, { hideClinicHeader: true })
   }
 
+  function printConsolidatedMedicationReport() {
+    const groupedMeds: Record<string, { 
+      medicamento: string, 
+      pacientes: string[], 
+      estoqueTotal: number, 
+      consumoDiario: number,
+      unidade: string
+    }> = {};
+
+    medications.forEach(m => {
+      const key = m.medicamento.trim().toUpperCase();
+      if (!groupedMeds[key]) {
+        groupedMeds[key] = {
+          medicamento: m.medicamento.trim(),
+          pacientes: [],
+          estoqueTotal: 0,
+          consumoDiario: 0,
+          unidade: m.unidade_medida || 'un'
+        };
+      }
+      
+      if (!groupedMeds[key].pacientes.includes(m.pacienteNome || 'Desconhecido')) {
+        groupedMeds[key].pacientes.push(m.pacienteNome || 'Desconhecido');
+      }
+      
+      groupedMeds[key].estoqueTotal += (m.estoque_atual || 0);
+      groupedMeds[key].consumoDiario += calculateDailyConsumption(m);
+    });
+
+    const sortedMeds = Object.values(groupedMeds).sort((a, b) => a.medicamento.localeCompare(b.medicamento));
+
+    const rows = sortedMeds.map(m => {
+      const consumoQuinzenal = m.consumoDiario * 15;
+      const consumoMensal = m.consumoDiario * 30;
+      
+      return `
+        <tr>
+          <td>
+            <strong>${m.medicamento}</strong><br/>
+            <span style="font-size: 10px; color: #666;">Pacientes: ${m.pacientes.join(', ')}</span>
+          </td>
+          <td style="text-align: center;">${m.estoqueTotal} ${m.unidade}</td>
+          <td style="text-align: center;">${m.consumoDiario.toFixed(1)}</td>
+          <td style="text-align: center;">${consumoQuinzenal.toFixed(1)}</td>
+          <td style="text-align: center;">${consumoMensal.toFixed(1)}</td>
+        </tr>
+      `;
+    }).join('');
+
+    printPDF('Consolidado de Consumo de Medicamentos', `
+      <style>
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #cbd5e1; padding: 8px; text-align: left; }
+        th { background-color: #f8fafc; font-size: 11px; font-weight: bold; color:#334155; }
+        td { font-size: 11px; vertical-align: top; }
+      </style>
+      <p style="font-size: 12px; margin-bottom: 10px;">Relatório consolidado por medicamento, apresentando a soma do estoque e projeção de consumo.</p>
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 40%;">Medicamento / Pacientes</th>
+            <th style="width: 15%; text-align: center;">Estoque Total</th>
+            <th style="width: 15%; text-align: center;">Consumo Diário</th>
+            <th style="width: 15%; text-align: center;">Consumo 15 dias</th>
+            <th style="width: 15%; text-align: center;">Consumo Mensal</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || '<tr><td colspan="5" style="text-align:center;">Nenhuma medicação cadastrada.</td></tr>'}
+        </tbody>
+      </table>
+    `, clinic, { hideClinicHeader: true })
+  }
+
   return (
     <div>
       <PageHeader title="Medicação" description="Relatórios e escalas de medicação (Gerenciamento individual no cadastro do paciente)" />
@@ -252,6 +339,9 @@ export default function Medicacao() {
             </Select>
             <Button variant="outline" size="sm" onClick={printStockReport} className="gap-2 h-9 text-red-600 border-red-200 hover:bg-red-50">
                 <FileText className="h-4 w-4" /> Alertas de Estoque
+            </Button>
+            <Button variant="outline" size="sm" onClick={printConsolidatedMedicationReport} className="gap-2 h-9 text-blue-600 border-blue-200 hover:bg-blue-50">
+                <FileText className="h-4 w-4" /> Consumo Consolidado
             </Button>
             <Button variant="outline" size="sm" onClick={printReport} className="gap-2 h-9">
                 <FileText className="h-4 w-4" /> PDF da Escala

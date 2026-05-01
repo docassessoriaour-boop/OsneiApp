@@ -22,7 +22,8 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, 
 const emptyAdicional: PayrollAdicional = { descricao: '', tipo: 'provento', valor: 0 }
 
 export default function FolhaPagamento() {
-  const { data: employees } = useDb<Employee>('employees')
+  const { data: rawEmployees } = useDb<Employee>('employees')
+  const employees = [...rawEmployees].sort((a, b) => a.nome.localeCompare(b.nome))
   const { data: payrolls, loading, insert, update, remove } = useDb<Payroll>('payrolls')
   const { data: exceptions } = useDb<ScheduleException>('schedule_exceptions')
   const { insert: insertBill } = useDb<Bill>('bills')
@@ -50,7 +51,7 @@ export default function FolhaPagamento() {
 
   const filtered = payrolls.filter(
     (p) => p.funcionarioNome.toLowerCase().includes(search.toLowerCase())
-  )
+  ).sort((a, b) => a.funcionarioNome.localeCompare(b.funcionarioNome))
 
   // Computed totals
   const totalProventos = adicionais.filter(a => a.tipo === 'provento').reduce((s, a) => s + a.valor, 0)

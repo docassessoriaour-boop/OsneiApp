@@ -39,7 +39,7 @@ export default function Escalas() {
     e.status === 'ativo' && 
     ((e.unidade || 'Vila Moraes') === unidadeFilter || e.unidade === 'Ambas') &&
     (turnoFilter === 'todos' || (e.turno || 'Diurno') === turnoFilter)
-  )
+  ).sort((a, b) => a.nome.localeCompare(b.nome))
 
   // Generate schedule based on employee scale type + exceptions
   function getSchedule(employee: Employee, day: Date): { working: boolean, dobra: boolean } {
