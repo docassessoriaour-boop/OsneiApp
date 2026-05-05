@@ -122,11 +122,6 @@ export default function Relatorios() {
         const catName = categories.find(c => c.id === b.category_id)?.nome || b.categoria || 'Não Categorizado'
         categoryBreakdown.bills[catName] = (categoryBreakdown.bills[catName] || 0) + b.valor
       })
-
-      filteredData.payrolls.forEach(p => {
-        const catName = 'Salário'
-        categoryBreakdown.bills[catName] = (categoryBreakdown.bills[catName] || 0) + p.salarioLiquido
-      })
     }
 
     if (reportType === 'contasReceber') {

@@ -141,13 +141,6 @@ export default function FolhaPagamento() {
 
         if (workedDays > 0 || emp.escala === 'Mensalista' || emp.is_pro_labore) {
           let multiplier = 1
-          if (emp.dataAdmissao) {
-            const admDate = parseISO(emp.dataAdmissao)
-            if (admDate > monthStart && admDate <= monthEnd) {
-              const dias = differenceInCalendarDays(monthEnd, admDate) + 1
-              multiplier = dias / 30
-            }
-          }
 
           const baseSalary = Number(((emp.salario || 0) * multiplier).toFixed(2))
           const fixedDiscounts = emp.descontos_fixos || 0
@@ -213,10 +206,11 @@ export default function FolhaPagamento() {
   }
 
   function openNew() {
+    const firstEmp = employees[0]
     setForm({
-      funcionarioId: employees[0]?.id || '',
-      salarioBruto: employees[0]?.salario || 0,
-      descontos: employees[0]?.descontos_fixos || 0,
+      funcionarioId: firstEmp?.id || '',
+      salarioBruto: firstEmp?.salario || 0,
+      descontos: firstEmp?.descontos_fixos || 0,
       mesReferencia: new Date().toISOString().slice(0, 7),
       status: 'pendente',
       periodoInicio: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
@@ -224,7 +218,26 @@ export default function FolhaPagamento() {
       tipo_periodo: 'mes',
       observacoes: '',
     })
-    setAdicionais([])
+    
+    const initialAdicionais: PayrollAdicional[] = []
+    if (firstEmp) {
+      if (firstEmp.tem_vt) {
+        initialAdicionais.push({
+          descricao: 'Vale Transporte',
+          tipo: 'provento',
+          valor: Number((firstEmp.vt_valor || 0).toFixed(2))
+        })
+      }
+      if (firstEmp.tem_insalubridade && firstEmp.insalubridade_percentual) {
+        const fullInsalubridade = (firstEmp.salario || 0) * (firstEmp.insalubridade_percentual / 100)
+        initialAdicionais.push({
+          descricao: `Adicional Insalubridade (${firstEmp.insalubridade_percentual}%)`,
+          tipo: 'provento',
+          valor: Number(fullInsalubridade.toFixed(2))
+        })
+      }
+    }
+    setAdicionais(initialAdicionais)
     setEditingId(null)
     setDialogOpen(true)
   }
@@ -270,19 +283,6 @@ export default function FolhaPagamento() {
       if (val === 'periodo' && start && end) {
         const dias = differenceInCalendarDays(parseISO(end), parseISO(start)) + 1
         if (dias > 0) {
-          multiplier = dias / 30
-          novoSalario = Number((baseSalario * multiplier).toFixed(2))
-        }
-      }
-
-      if (val === 'mes' && month && emp?.dataAdmissao) {
-        const date = parseISO(month + '-01')
-        const monthStart = startOfMonth(date)
-        const monthEnd = endOfMonth(date)
-        const admDate = parseISO(emp.dataAdmissao)
-        
-        if (admDate > monthStart && admDate <= monthEnd) {
-          const dias = differenceInCalendarDays(monthEnd, admDate) + 1
           multiplier = dias / 30
           novoSalario = Number((baseSalario * multiplier).toFixed(2))
         }
@@ -470,15 +470,7 @@ export default function FolhaPagamento() {
                 onChange={(e) => {
                   const emp = employees.find(x => x.id === e.target.value)
                   let multiplier = 1
-                  const date = parseISO(form.mesReferencia + '-01')
-                  const monthStart = startOfMonth(date)
-                  const monthEnd = endOfMonth(date)
-                  const admDate = emp?.dataAdmissao ? parseISO(emp.dataAdmissao) : null
-
-                  if (form.tipo_periodo === 'mes' && admDate && admDate > monthStart && admDate <= monthEnd) {
-                    const dias = differenceInCalendarDays(monthEnd, admDate) + 1
-                    multiplier = dias / 30
-                  } else if (form.tipo_periodo === 'periodo' && form.periodoInicio && form.periodoFim) {
+                  if (form.tipo_periodo === 'periodo' && form.periodoInicio && form.periodoFim) {
                     const dias = differenceInCalendarDays(parseISO(form.periodoFim), parseISO(form.periodoInicio)) + 1
                     if (dias > 0) multiplier = dias / 30
                   }
