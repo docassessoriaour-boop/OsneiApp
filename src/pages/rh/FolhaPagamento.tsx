@@ -140,26 +140,38 @@ export default function FolhaPagamento() {
         })
 
         if (workedDays > 0 || emp.escala === 'Mensalista' || emp.is_pro_labore) {
+          let multiplier = 1
+          if (emp.dataAdmissao) {
+            const admDate = parseISO(emp.dataAdmissao)
+            if (admDate > monthStart && admDate <= monthEnd) {
+              const dias = differenceInCalendarDays(monthEnd, admDate) + 1
+              multiplier = dias / 30
+            }
+          }
+
+          const baseSalary = Number(((emp.salario || 0) * multiplier).toFixed(2))
+          const fixedDiscounts = emp.descontos_fixos || 0
+
           const payloadAdicionais: PayrollAdicional[] = []
           if (dobrasCount > 0) {
              payloadAdicionais.push({
                 descricao: `Dobra de Turno (${dobrasCount}x)`,
                 tipo: 'provento',
-                valor: 0 // Valor a ser preenchido manualmente
+                valor: 0 
              })
           }
           if (emp.tem_vt) {
              payloadAdicionais.push({
                 descricao: 'Vale Transporte',
                 tipo: 'provento',
-                valor: emp.vt_valor || 0
+                valor: Number(((emp.vt_valor || 0) * multiplier).toFixed(2))
              })
           }
           if (emp.tem_insalubridade && emp.insalubridade_percentual) {
              payloadAdicionais.push({
                 descricao: `Adicional Insalubridade (${emp.insalubridade_percentual}%)`,
                 tipo: 'provento',
-                valor: (emp.salario || 0) * (emp.insalubridade_percentual / 100)
+                valor: Number(((emp.salario || 0) * (emp.insalubridade_percentual / 100) * multiplier).toFixed(2))
              })
           }
 
@@ -167,9 +179,9 @@ export default function FolhaPagamento() {
             funcionarioId: emp.id,
             funcionarioNome: emp.nome,
             cargo: emp.cargo,
-            salarioBruto: emp.salario || 0,
-            descontos: 0,
-            salarioLiquido: emp.salario || 0,
+            salarioBruto: baseSalary,
+            descontos: fixedDiscounts,
+            salarioLiquido: baseSalary - fixedDiscounts,
             mesReferencia: massMonth,
             status: 'pendente',
             periodoInicio: format(monthStart, 'yyyy-MM-dd'),
@@ -204,7 +216,7 @@ export default function FolhaPagamento() {
     setForm({
       funcionarioId: employees[0]?.id || '',
       salarioBruto: employees[0]?.salario || 0,
-      descontos: 0,
+      descontos: employees[0]?.descontos_fixos || 0,
       mesReferencia: new Date().toISOString().slice(0, 7),
       status: 'pendente',
       periodoInicio: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
@@ -258,6 +270,19 @@ export default function FolhaPagamento() {
       if (val === 'periodo' && start && end) {
         const dias = differenceInCalendarDays(parseISO(end), parseISO(start)) + 1
         if (dias > 0) {
+          multiplier = dias / 30
+          novoSalario = Number((baseSalario * multiplier).toFixed(2))
+        }
+      }
+
+      if (val === 'mes' && month && emp?.dataAdmissao) {
+        const date = parseISO(month + '-01')
+        const monthStart = startOfMonth(date)
+        const monthEnd = endOfMonth(date)
+        const admDate = parseISO(emp.dataAdmissao)
+        
+        if (admDate > monthStart && admDate <= monthEnd) {
+          const dias = differenceInCalendarDays(monthEnd, admDate) + 1
           multiplier = dias / 30
           novoSalario = Number((baseSalario * multiplier).toFixed(2))
         }
@@ -445,12 +470,20 @@ export default function FolhaPagamento() {
                 onChange={(e) => {
                   const emp = employees.find(x => x.id === e.target.value)
                   let multiplier = 1
-                  if (form.tipo_periodo === 'periodo' && form.periodoInicio && form.periodoFim) {
+                  const date = parseISO(form.mesReferencia + '-01')
+                  const monthStart = startOfMonth(date)
+                  const monthEnd = endOfMonth(date)
+                  const admDate = emp?.dataAdmissao ? parseISO(emp.dataAdmissao) : null
+
+                  if (form.tipo_periodo === 'mes' && admDate && admDate > monthStart && admDate <= monthEnd) {
+                    const dias = differenceInCalendarDays(monthEnd, admDate) + 1
+                    multiplier = dias / 30
+                  } else if (form.tipo_periodo === 'periodo' && form.periodoInicio && form.periodoFim) {
                     const dias = differenceInCalendarDays(parseISO(form.periodoFim), parseISO(form.periodoInicio)) + 1
                     if (dias > 0) multiplier = dias / 30
                   }
                   
-                  setForm({ ...form, funcionarioId: e.target.value, salarioBruto: Number(((emp?.salario || 0) * multiplier).toFixed(2)) })
+                  setForm({ ...form, funcionarioId: e.target.value, salarioBruto: Number(((emp?.salario || 0) * multiplier).toFixed(2)), descontos: emp?.descontos_fixos || 0 })
                   
                   const newAdicionais: PayrollAdicional[] = []
                   if (emp?.tem_vt) {

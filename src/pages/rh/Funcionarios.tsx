@@ -42,6 +42,7 @@ const emptyEmployee: Omit<Employee, 'id'> = {
   dados_bancarios: '',
   chave_pix: '',
   is_pro_labore: false,
+  descontos_fixos: 0,
 }
 
 export default function Funcionarios() {
@@ -516,6 +517,10 @@ export default function Funcionarios() {
             <div>
               <Label>Salário Base</Label>
               <Input type="number" value={form.salario} onChange={(e) => setForm({ ...form, salario: Number(e.target.value) })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Descontos Fixos (Mensais)</Label>
+              <Input type="number" value={form.descontos_fixos} onChange={(e) => setForm({ ...form, descontos_fixos: Number(e.target.value) })} className="mt-1" />
             </div>
             <div>
               <Label>Status</Label>

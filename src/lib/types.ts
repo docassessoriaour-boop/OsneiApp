@@ -22,6 +22,7 @@ export interface Employee {
   dados_bancarios?: string
   chave_pix?: string
   is_pro_labore?: boolean
+  descontos_fixos?: number
 }
 
 export interface Curriculum {

@@ -501,6 +501,10 @@ export default function CalculadoraAcerto() {
                                   ? new Date(form.terminationDate).getDate() 
                                   : 30
                               })
+                              setExtras(prev => [
+                                ...prev.filter(e => e.name !== 'Descontos Fixos (Mensais)'),
+                                ...(emp.descontos_fixos ? [{ id: crypto.randomUUID(), name: 'Descontos Fixos (Mensais)', value: emp.descontos_fixos, type: 'deduction' as const }] : [])
+                              ])
                               setSearchTerm(emp.nome)
                               setShowResults(false)
                             }}
