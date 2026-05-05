@@ -88,15 +88,22 @@ export default function Configuracoes() {
       }
 
       const backupDate = new Date().toISOString().split('T')[0]
-      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
+      const jsonString = JSON.stringify(backupData, null, 2)
+      const blob = new Blob([jsonString], { type: 'application/json' })
+      const url = window.URL.createObjectURL(blob)
+      
       const a = document.createElement('a')
+      a.style.display = 'none'
       a.href = url
       a.download = `backup_osneiapp_${backupDate}.json`
       document.body.appendChild(a)
+      
       a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
+      
+      setTimeout(() => {
+        document.body.removeChild(a)
+        window.URL.revokeObjectURL(url)
+      }, 5000)
       
       alert('Backup gerado e baixado com sucesso!')
     } catch (error) {

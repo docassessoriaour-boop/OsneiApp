@@ -346,4 +346,23 @@ export interface Termination {
   details?: any
 }
 
+export interface PatientReport {
+  id: string
+  created_at?: string
+  patient_id: string
+  patient_name: string
+  date: string
+  title: string
+  content: string
+  professional_name?: string
+}
 
+export interface TechnicalProfessional {
+  id: string
+  created_at?: string
+  nome: string
+  cpf?: string
+  coren_crm: string
+  funcao: string
+  status: 'ativo' | 'inativo'
+}

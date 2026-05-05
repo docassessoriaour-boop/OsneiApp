@@ -16,8 +16,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Pencil, Trash2, FileText, Loader2, Pill, Plus, Calendar } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, Pill, Plus, Calendar, ShieldAlert } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { useAuth } from '@/contexts/AuthContext'
 
 const emptyPatient: Omit<Patient, 'id'> = {
   nome: '', cpf: '', rg: '', idade: 0, data_nascimento: '', responsavel: '', telefoneResponsavel: '',
@@ -28,6 +29,9 @@ const emptyPatient: Omit<Patient, 'id'> = {
 }
 
 export default function Cadastro() {
+  const { profile, isAdmin, isManager } = useAuth()
+  const isStandard = profile?.role === 'user'
+  
   const { data: patients, loading: loadingPatients, insert, update, remove } = useDb<Patient>('patients')
   const { data: allMedications, insert: insertMed, update: updateMed, remove: removeMed, reload: reloadMeds } = useDb<Medication>('medications')
   const { data: rawProducts } = useDb<any>('products')
@@ -96,7 +100,7 @@ export default function Cadastro() {
     const age = patient.idade || calculateAge(patient.data_nascimento);
     setForm({ ...emptyPatient, ...patient, idade: age });
     setEditingId(patient.id);
-    setActiveTab('dados');
+    setActiveTab(isStandard ? 'medicacao' : 'dados');
     setDialogOpen(true);
   }
 
@@ -462,7 +466,7 @@ export default function Cadastro() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={printReport} className="gap-2"><FileText className="h-4 w-4" /> PDF</Button>
-          <Button onClick={openNew}>Novo Paciente</Button>
+          {!isStandard && <Button onClick={openNew}>Novo Paciente</Button>}
         </div>
       </div>
 
@@ -530,8 +534,12 @@ export default function Cadastro() {
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" title="Ficha + Medicação" onClick={() => printPatientFullReport(patient)}><FileText className="h-4 w-4 text-purple-600" /></Button>
                         <Button variant="ghost" size="icon" title="Ficha Cadastral" onClick={() => printPatientFile(patient)}><FileText className="h-4 w-4 text-blue-600" /></Button>
-                        <Button variant="ghost" size="icon" title="Editar" onClick={() => openEdit(patient)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" title="Excluir" onClick={() => handleDelete(patient.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        <Button variant="ghost" size="icon" title={isStandard ? "Ver Medicação" : "Editar"} onClick={() => openEdit(patient)}>
+                          {isStandard ? <Pill className="h-4 w-4 text-primary" /> : <Pencil className="h-4 w-4" />}
+                        </Button>
+                        {!isStandard && (
+                          <Button variant="ghost" size="icon" title="Excluir" onClick={() => handleDelete(patient.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -550,7 +558,9 @@ export default function Cadastro() {
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex flex-col h-full">
             <div className="px-6 pt-4 border-b bg-muted/20">
               <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger value="dados" className="gap-2"><FileText className="h-4 w-4" /> Dados do Paciente</TabsTrigger>
+                <TabsTrigger value="dados" className="gap-2">
+                  <FileText className="h-4 w-4" /> {isStandard ? 'Visualizar Dados' : 'Dados do Paciente'}
+                </TabsTrigger>
                 <TabsTrigger value="medicacao" disabled={!editingId} className="gap-2">
                   <Pill className="h-4 w-4" /> Medicações {!editingId && <span className="text-[10px] ml-1">(Salvar primeiro)</span>}
                 </TabsTrigger>
@@ -838,24 +848,36 @@ export default function Cadastro() {
               </div>
             )}
           </div>
-          </TabsContent>
+        </TabsContent>
         </div>
+      </Tabs>
+        
         <DialogFooter className="px-6 py-4 border-t bg-muted/10">
-          <div className="flex justify-between w-full">
+          <div className="flex justify-between items-center w-full">
             <div className="flex gap-2">
               {editingId && (
-                <Button variant="outline" className="gap-2 text-purple-600 border-purple-200 hover:bg-purple-50" onClick={() => printPatientFullReport(form as Patient)}>
+                <Button 
+                  variant="outline" 
+                  className="gap-2 text-purple-600 border-purple-200 hover:bg-purple-50" 
+                  onClick={() => printPatientFullReport(form as Patient)}
+                >
                   <FileText className="h-4 w-4" /> Ficha + Medicação
                 </Button>
               )}
             </div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-3">
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Fechar</Button>
-              <Button onClick={handleSave}>Salvar Paciente</Button>
+              {activeTab === 'dados' && !isStandard && (
+                <Button onClick={handleSave}>Salvar Alterações</Button>
+              )}
+              {activeTab === 'dados' && isStandard && (
+                <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
+                  <ShieldAlert className="h-3 w-3" /> Somente Visualização
+                </div>
+              )}
             </div>
           </div>
         </DialogFooter>
-      </Tabs>
     </DialogContent>
   </Dialog>
 

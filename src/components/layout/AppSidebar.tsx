@@ -25,7 +25,8 @@ import {
   Upload,
   X,
   LogOut,
-  UserCircle
+  UserCircle,
+  History
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -44,46 +45,71 @@ export function AppSidebar({ open, onClose }: SidebarProps) {
         { name: 'Dashboard', href: '/', icon: LayoutDashboard },
       ],
     },
-    {
-      section: 'RH',
-      items: [
-        { name: 'Funcionários', href: '/rh/funcionarios', icon: Users },
-        { name: 'Currículos', href: '/rh/curriculos', icon: FileText },
-        { name: 'Escalas', href: '/rh/escalas', icon: CalendarDays },
-        { name: 'Folha de Pagamento', href: '/rh/folha-pagamento', icon: DollarSign },
-        { name: 'Férias', href: '/rh/ferias', icon: Palmtree },
-        { name: 'Calculadora de Acerto', href: '/rh/calculadora-acerto', icon: Calculator },
-      ],
-    },
-    {
-      section: 'PACIENTES',
-      items: [
-        { name: 'Cadastro', href: '/pacientes/cadastro', icon: Heart },
-        { name: 'Medicação', href: '/pacientes/medicacao', icon: Pill },
-        { name: 'Catálogo de Medicamentos', href: '/pacientes/catalogo-medicos', icon: ClipboardList },
-        { name: 'Agendamentos', href: '/pacientes/agendamentos', icon: Calendar },
-        { name: 'Contratos', href: '/pacientes/contratos', icon: FileText },
-      ],
-    },
-    {
-      section: 'FINANCEIRO',
-      items: [
-        { name: 'Contas a Pagar', href: '/financeiro/contas-pagar', icon: CreditCard },
-        { name: 'Contas a Receber', href: '/financeiro/contas-receber', icon: HandCoins },
-        { name: 'Faturamento', href: '/financeiro/faturamento', icon: Receipt },
-        { name: 'Movimentação Financeira', href: '/financeiro/conciliacao', icon: Building2 },
-        { name: 'Balanço / DRE', href: '/financeiro/balanco-dre', icon: BarChart3 },
-        { name: 'Contas Bancárias', href: '/financeiro/bancos', icon: Landmark },
-        { name: 'Categorias', href: '/financeiro/categorias', icon: Tag },
-      ],
-    },
-    {
-      section: 'ESTOQUE',
-      items: [
-        { name: 'Produtos', href: '/estoque/produtos', icon: Package },
-        { name: 'Entrada NF-e', href: '/estoque/entrada-nfe', icon: Upload },
-      ],
-    },
+    ...(isAdmin || profile?.role === 'manager' ? [
+      {
+        section: 'RH',
+        items: [
+          { name: 'Funcionários', href: '/rh/funcionarios', icon: Users },
+          { name: 'Currículos', href: '/rh/curriculos', icon: FileText },
+          { name: 'Escalas', href: '/rh/escalas', icon: CalendarDays },
+          { name: 'Folha de Pagamento', href: '/rh/folha-pagamento', icon: DollarSign },
+          { name: 'Férias', href: '/rh/ferias', icon: Palmtree },
+          { name: 'Calculadora de Acerto', href: '/rh/calculadora-acerto', icon: Calculator },
+        ],
+      }
+    ] : [
+      {
+        section: 'RH',
+        items: [
+          { name: 'Escalas de Trabalho', href: '/rh/escalas', icon: CalendarDays },
+        ],
+      }
+    ]),
+    ...(isAdmin || profile?.role === 'manager' ? [
+      {
+        section: 'PACIENTES',
+        items: [
+          { name: 'Cadastro', href: '/pacientes/cadastro', icon: Heart },
+          { name: 'Medicação', href: '/pacientes/medicacao', icon: Pill },
+          { name: 'Catálogo de Medicamentos', href: '/pacientes/catalogo-medicos', icon: ClipboardList },
+          { name: 'Técnicos/Profissionais', href: '/pacientes/profissionais', icon: Users },
+          { name: 'Agendamentos', href: '/pacientes/agendamentos', icon: Calendar },
+          { name: 'Contratos', href: '/pacientes/contratos', icon: FileText },
+          { name: 'Laudos Técnicos', href: '/pacientes/laudos', icon: FileText },
+        ],
+      }
+    ] : [
+      {
+        section: 'PACIENTES',
+        items: [
+          { name: 'Inserir/Editar Medicação', href: '/pacientes/cadastro', icon: Pill },
+          { name: 'Escala de Medicação', href: '/pacientes/medicacao', icon: ClipboardList },
+          { name: 'Técnicos/Profissionais', href: '/pacientes/profissionais', icon: Users },
+          { name: 'Laudos Técnicos', href: '/pacientes/laudos', icon: FileText },
+        ],
+      }
+    ]),
+    ...(isAdmin || profile?.role === 'manager' ? [
+      {
+        section: 'FINANCEIRO',
+        items: [
+          { name: 'Contas a Pagar', href: '/financeiro/contas-pagar', icon: CreditCard },
+          { name: 'Contas a Receber', href: '/financeiro/contas-receber', icon: HandCoins },
+          { name: 'Faturamento', href: '/financeiro/faturamento', icon: Receipt },
+          { name: 'Movimentação Financeira', href: '/financeiro/conciliacao', icon: Building2 },
+          { name: 'Balanço / DRE', href: '/financeiro/balanco-dre', icon: BarChart3 },
+          { name: 'Contas Bancárias', href: '/financeiro/bancos', icon: Landmark },
+          { name: 'Categorias', href: '/financeiro/categorias', icon: Tag },
+        ],
+      },
+      {
+        section: 'ESTOQUE',
+        items: [
+          { name: 'Produtos', href: '/estoque/produtos', icon: Package },
+          { name: 'Entrada NF-e', href: '/estoque/entrada-nfe', icon: Upload },
+        ],
+      }
+    ] : []),
     {
       section: 'RELATÓRIOS',
       items: [
@@ -94,7 +120,10 @@ export function AppSidebar({ open, onClose }: SidebarProps) {
       section: 'SISTEMA',
       items: [
         { name: 'Configurações', href: '/configuracoes', icon: Settings },
-        ...(isAdmin ? [{ name: 'Usuários', href: '/usuarios', icon: UserCircle }] : []),
+        ...(isAdmin ? [
+          { name: 'Usuários', href: '/usuarios', icon: UserCircle },
+          { name: 'Log de Alterações', href: '/logs', icon: History }
+        ] : []),
       ],
     },
   ]

@@ -117,22 +117,22 @@ export default function Relatorios() {
       incomes: {} as Record<string, number>
     }
 
-    if (reportType === 'contasPagar') {
+    if (reportType === 'contasPagar' || reportType === 'geral') {
       filteredData.bills.forEach(b => {
         const catName = categories.find(c => c.id === b.category_id)?.nome || b.categoria || 'Não Categorizado'
         categoryBreakdown.bills[catName] = (categoryBreakdown.bills[catName] || 0) + b.valor
       })
     }
 
-    if (reportType === 'contasReceber') {
+    if (reportType === 'contasReceber' || reportType === 'geral') {
       filteredData.incomes.forEach(i => {
         const catName = categories.find(c => c.id === i.category_id)?.nome || i.categoria || 'Não Categorizado'
         categoryBreakdown.incomes[catName] = (categoryBreakdown.incomes[catName] || 0) + i.valor
       })
     }
 
-    // Usar transações bancárias para o relatório 'Geral' e 'Bancário'
-    if (reportType === 'geral' || reportType === 'bancario') {
+    // Usar transações bancárias apenas para o relatório 'Bancário'
+    if (reportType === 'bancario') {
       filteredData.transactions.forEach(t => {
         const catName = categories.find(c => c.id === t.category_id)?.nome || t.categoria || 'Não Categorizado'
         if (t.tipo === 'debito') {
@@ -557,7 +557,7 @@ export default function Relatorios() {
                 {Object.entries(totals.categoryBreakdown.bills)
                   .sort((a, b) => b[1] - a[1])
                   .map(([cat, val]) => {
-                    const denominator = (reportType === 'bancario' || reportType === 'geral') ? totals.bankOut : totals.pagar;
+                    const denominator = (reportType === 'bancario') ? totals.bankOut : totals.pagar;
                     const pct = denominator > 0 ? (val / denominator) * 100 : 0;
                     return (
                       <div key={cat}>
@@ -587,7 +587,7 @@ export default function Relatorios() {
                 {Object.entries(totals.categoryBreakdown.incomes)
                   .sort((a, b) => b[1] - a[1])
                   .map(([cat, val]) => {
-                    const denominator = (reportType === 'bancario' || reportType === 'geral') ? totals.bankIn : totals.receber;
+                    const denominator = (reportType === 'bancario') ? totals.bankIn : totals.receber;
                     const pct = denominator > 0 ? (val / denominator) * 100 : 0;
                     return (
                       <div key={cat}>

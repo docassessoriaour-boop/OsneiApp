@@ -266,7 +266,7 @@ export default function Usuarios() {
             <ul className="mt-2 space-y-1 text-sm text-blue-800/80">
               <li>• <strong>Admin:</strong> Acesso total ao sistema, configurações e gestão de usuários.</li>
               <li>• <strong>Gerente:</strong> Acesso aos módulos de RH, Pacientes e Financeiro (exceto configurações críticas).</li>
-              <li>• <strong>Padrão:</strong> Acesso básico para visualização e operações rotineiras conforme atribuído.</li>
+              <li>• <strong>Padrão:</strong> Visualização de Relatórios, inserção/edição de Medicações e edição da Escala de Funcionários.</li>
             </ul>
           </div>
         </div>
