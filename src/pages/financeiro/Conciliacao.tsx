@@ -287,14 +287,30 @@ export default function Conciliacao() {
       }
 
       // 1. Marcar o item (Income ou Bill) como pago/recebido e vincular nova tx
+      // Sincronizar também a categoria se o item estiver sem categoria
+      const syncData = { 
+        status: tx.tipo === 'credito' ? 'recebido' : 'pago', 
+        bank_transaction_id: newTxId,
+        ...( (!item.category_id || item.categoria === 'Sem Categoria') ? {
+          category_id: tx.category_id,
+          categoria: tx.categoria
+        } : {})
+      }
+
       if (tx.tipo === 'credito') {
         const income = item as Income
-        await updateIncome(income.id, { status: 'recebido', bank_transaction_id: newTxId })
+        await updateIncome(income.id, syncData as any)
         
         // 2. Se for uma Income vinculada a uma Invoice, marcar a Invoice como paga
         const linkedInvoice = invoices.find(inv => inv.income_id === income.id || inv.id === income.invoiceId)
         if (linkedInvoice) {
-          await updateInvoice(linkedInvoice.id, { status: 'pago', bank_transaction_id: newTxId })
+          await updateInvoice(linkedInvoice.id, { 
+            status: 'pago', 
+            bank_transaction_id: newTxId,
+            ...((!linkedInvoice.bank_transaction_id) ? {
+               // Optional: sync more fields to invoice if needed
+            } : {})
+          })
           
           // Solicitar impressão do recibo
           if (income.status !== 'recebido' && confirm('Lançamento conciliado e fatura quitada! Deseja gerar o recibo agora?')) {
@@ -303,7 +319,7 @@ export default function Conciliacao() {
           }
         }
       } else {
-        await updateBill(item.id, { status: 'pago', bank_transaction_id: newTxId })
+        await updateBill(item.id, syncData as any)
       }
 
       setReconcileDialogOpen(false)
@@ -415,6 +431,34 @@ export default function Conciliacao() {
         setImportedTxs(prev => prev.map(x => x.id === editingTx.id ? editingTx : x))
       } else {
         await updateTx(editingTx.id, editingTx)
+        
+        // Sincronizar edição (descrição, data, valor, categoria) com Conta a Pagar vinculada
+        const linkedBill = bills.find(b => b.bank_transaction_id === editingTx.id)
+        if (linkedBill) {
+          await updateBill(linkedBill.id, { 
+             ...linkedBill,
+             descricao: editingTx.descricao,
+             valor: editingTx.valor,
+             vencimento: editingTx.data,
+             payment_date: editingTx.data,
+             category_id: editingTx.category_id,
+             categoria: editingTx.categoria
+          })
+        }
+        
+        // Sincronizar edição (descrição, data, valor, categoria) com Conta a Receber vinculada
+        const linkedIncome = incomes.find(i => i.bank_transaction_id === editingTx.id)
+        if (linkedIncome) {
+          await updateIncome(linkedIncome.id, { 
+             ...linkedIncome,
+             descricao: editingTx.descricao,
+             valor: editingTx.valor,
+             vencimento: editingTx.data,
+             payment_date: editingTx.data,
+             category_id: editingTx.category_id,
+             categoria: editingTx.categoria
+          })
+        }
       }
       setEditingTx(null)
     } catch (e) {
@@ -590,6 +634,18 @@ export default function Conciliacao() {
                             setImportedTxs(prev => prev.map(x => x.id === t.id ? { ...x, category_id: newCatId, categoria: catName } : x))
                           } else {
                             await updateTx(t.id, { ...t, category_id: newCatId, categoria: catName })
+                            
+                            // Sincronizar categoria com Conta a Pagar vinculada
+                            const linkedBill = bills.find(b => b.bank_transaction_id === t.id)
+                            if (linkedBill) {
+                              await updateBill(linkedBill.id, { ...linkedBill, category_id: newCatId, categoria: catName })
+                            }
+                            
+                            // Sincronizar categoria com Conta a Receber vinculada
+                            const linkedIncome = incomes.find(i => i.bank_transaction_id === t.id)
+                            if (linkedIncome) {
+                              await updateIncome(linkedIncome.id, { ...linkedIncome, category_id: newCatId, categoria: catName })
+                            }
                           }
                         }}
                         className="h-8 text-xs"

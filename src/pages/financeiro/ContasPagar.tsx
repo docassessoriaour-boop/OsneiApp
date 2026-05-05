@@ -25,7 +25,8 @@ const emptyBill: Omit<Bill, 'id'> = {
   vencimento: new Date().toISOString().slice(0, 10), 
   status: 'pendente',
   payment_date: '',
-  bank_account_id: ''
+  bank_account_id: '',
+  destination_bank_account_id: ''
 }
 
 export default function ContasPagar() {
@@ -47,9 +48,18 @@ export default function ContasPagar() {
   const [partialForm, setPartialForm] = useState({ valorPago: 0, dataPagamento: new Date().toISOString().slice(0, 10), bank_account_id: '' })
   const [form, setForm] = useState(emptyBill)
   const [parcelas, setParcelas] = useState(1)
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  
+  // States for split category
+  const [isSplit, setIsSplit] = useState(false)
+  const [splitForm, setSplitForm] = useState({
+    category2_id: '',
+    valor2: 0
+  })
   
   const [nfeForm, setNfeForm] = useState({
     chaveAcesso: '',
@@ -64,12 +74,13 @@ export default function ContasPagar() {
   const filtered = bills.filter(b => {
     const matchesSearch = b.descricao.toLowerCase().includes(search.toLowerCase())
     const matchesStatus = statusFilter === 'todos' || b.status === statusFilter
+    const matchesCategory = !categoryFilter || b.category_id === categoryFilter
     
     let matchesDate = true
     if (startDate) matchesDate = matchesDate && b.vencimento >= startDate
     if (endDate) matchesDate = matchesDate && b.vencimento <= endDate
     
-    return matchesSearch && matchesStatus && matchesDate
+    return matchesSearch && matchesStatus && matchesCategory && matchesDate
   }).sort((a, b) => {
     if (!a.vencimento) return 1
     if (!b.vencimento) return -1
@@ -78,7 +89,14 @@ export default function ContasPagar() {
     return sortDir === 'asc' ? dateA - dateB : dateB - dateA
   })
 
-  function openNew() { setForm(emptyBill); setEditingId(null); setParcelas(1); setDialogOpen(true) }
+  function openNew() { 
+    setForm(emptyBill); 
+    setEditingId(null); 
+    setParcelas(1); 
+    setIsSplit(false);
+    setSplitForm({ category2_id: '', valor2: 0 });
+    setDialogOpen(true) 
+  }
 
   function openEdit(b: Bill) {
     setForm({
@@ -90,10 +108,13 @@ export default function ContasPagar() {
       status: b.status,
       payment_date: b.payment_date || '',
       bank_account_id: b.bank_account_id || '',
-      bank_transaction_id: b.bank_transaction_id || ''
+      bank_transaction_id: b.bank_transaction_id || '',
+      destination_bank_account_id: (b as any).destination_bank_account_id || ''
     })
     setParcelas(1)
     setEditingId(b.id)
+    setIsSplit(false)
+    setSplitForm({ category2_id: '', valor2: 0 })
     setDialogOpen(true)
   }
 
@@ -299,7 +320,21 @@ export default function ContasPagar() {
         payment_date: form.payment_date || null,
         category_id: form.category_id || null,
         bank_account_id: (form as any).bank_account_id || null,
-        bank_transaction_id: (form as any).bank_transaction_id || null
+        bank_transaction_id: (form as any).bank_transaction_id || null,
+        destination_bank_account_id: (form as any).destination_bank_account_id || null
+      }
+
+      if (isSplit) {
+        if (!splitForm.category2_id || splitForm.valor2 <= 0) {
+          alert("Para ratear em 2 categorias, preencha a segunda categoria e o valor correspondente.")
+          return
+        }
+        if (splitForm.valor2 >= form.valor) {
+          alert("O valor da segunda categoria deve ser menor que o valor total.")
+          return
+        }
+        // Adjust the first payload's value
+        payload.valor = Number((form.valor - splitForm.valor2).toFixed(2))
       }
       if (payload.category_id) {
         payload.categoria = categories.find(c => c.id === payload.category_id)?.nome || (payload.categoria || '')
@@ -325,6 +360,23 @@ export default function ContasPagar() {
           const bt = await insertBankTransaction(btData as any)
           btId = bt.id
           ;(payload as any).bank_transaction_id = btId
+        }
+
+        // Se for Aplicação Financeira e tiver conta destino, criar o lançamento de entrada na outra conta
+        const isAplicacao = payload.category_id === '2b84eef7-af3a-404f-b3c1-d9b1d668c478' || payload.categoria === 'Aplicação Financeira'
+        const destId = (payload as any).destination_bank_account_id
+        if (isAplicacao && destId) {
+           await insertBankTransaction({
+             data: btData.data,
+             descricao: `Aplicação (Entrada via Contas a Pagar): ${payload.descricao}`,
+             valor: payload.valor,
+             tipo: 'credito',
+             origem: 'manual',
+             bank_account_id: destId,
+             categoria: 'Aplicação Financeira',
+             category_id: payload.category_id,
+             status: 'recebido'
+           } as any)
         }
       } else if (btId) {
         await removeBankTransaction(btId)
@@ -353,6 +405,19 @@ export default function ContasPagar() {
           await Promise.all(promises)
         } else {
           await update(editingId, payload)
+          
+          if (isSplit) {
+            const cat2 = categories.find(c => c.id === splitForm.category2_id)
+            await insert({
+              ...payload,
+              id: undefined,
+              descricao: `${payload.descricao} (Rateio 2/2)`,
+              valor: splitForm.valor2,
+              category_id: splitForm.category2_id,
+              categoria: cat2?.nome || '',
+              bank_transaction_id: null 
+            } as any)
+          }
         }
       } else {
         if (parcelas > 1) {
@@ -370,6 +435,19 @@ export default function ContasPagar() {
           await Promise.all(promises)
         } else {
           await insert(payload)
+          
+          if (isSplit) {
+            const cat2 = categories.find(c => c.id === splitForm.category2_id)
+            await insert({
+              ...payload,
+              id: undefined,
+              descricao: `${payload.descricao} (Rateio 2/2)`,
+              valor: splitForm.valor2,
+              category_id: splitForm.category2_id,
+              categoria: cat2?.nome || '',
+              bank_transaction_id: null
+            } as any)
+          }
         }
       }
       setDialogOpen(false)
@@ -379,13 +457,18 @@ export default function ContasPagar() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (confirm('Deseja excluir esta conta?')) {
-      try {
-        await remove(id)
-      } catch (error) {
-        console.error('Erro ao excluir:', error)
-      }
+  function handleDeleteClick(id: string) {
+    setDeleteConfirmId(id)
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirmId) return
+    try {
+      await remove(deleteConfirmId)
+      setDeleteConfirmId(null)
+    } catch (error: any) {
+      console.error('Erro ao excluir:', error)
+      alert('Erro ao excluir: ' + (error.message || 'Erro desconhecido'))
     }
   }
 
@@ -407,7 +490,6 @@ export default function ContasPagar() {
   }
 
   function printSyntheticReport() {
-    // Group by category
     const grouped = filtered.reduce((acc, b) => {
       const cat = b.categoria || 'Sem Categoria'
       acc[cat] = (acc[cat] || 0) + b.valor
@@ -416,7 +498,7 @@ export default function ContasPagar() {
 
     const total = Object.values(grouped).reduce((s, v) => s + v, 0)
     const rows = Object.entries(grouped)
-      .sort((a, b) => b[1] - a[1]) // Sort by value descending
+      .sort((a, b) => b[1] - a[1]) 
       .map(([cat, val]) => `<tr><td>${cat}</td><td class="text-right">${formatCurrencyPDF(val)}</td><td class="text-right">${((val/total)*100).toFixed(1)}%</td></tr>`)
       .join('')
 
@@ -458,6 +540,15 @@ export default function ContasPagar() {
             <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="h-9" />
           </div>
           <div className="w-full md:w-48">
+            <Label className="text-xs text-muted-foreground">Categoria</Label>
+            <Select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="h-9">
+                <option value="">Todas Categorias</option>
+                {categories.filter(c => c.tipo === 'despesa').map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+            </Select>
+          </div>
+          <div className="w-full md:w-48">
             <Label className="text-xs text-muted-foreground">Status</Label>
             <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} className="h-9">
                 <option value="todos">Todos Status</option>
@@ -482,9 +573,23 @@ export default function ContasPagar() {
               Mês Atual
             </Button>
             <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => {
+                const now = new Date()
+                const start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10)
+                const end = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10)
+                setStartDate(start)
+                setEndDate(end)
+              }}
+              className="h-9"
+            >
+              Mês Anterior
+            </Button>
+            <Button 
               variant="ghost" 
               size="sm" 
-              onClick={() => { setStartDate(''); setEndDate(''); setSearch(''); setStatusFilter('todos') }}
+              onClick={() => { setStartDate(''); setEndDate(''); setSearch(''); setStatusFilter('todos'); setCategoryFilter('') }}
               className="h-9 text-muted-foreground"
             >
               Limpar
@@ -534,7 +639,7 @@ export default function ContasPagar() {
                         </Button>
                       )}
                       <Button variant="ghost" size="icon" onClick={() => openEdit(b)} title="Editar"><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(b.id)} title="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(b.id)} title="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -554,7 +659,7 @@ export default function ContasPagar() {
             <div><Label>Descrição</Label><Input value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} className="mt-1" placeholder="Ex: Aluguel mensal" /></div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Categoria</Label>
+                <Label>{isSplit ? 'Categoria 1' : 'Categoria'}</Label>
                 <Select 
                   value={form.category_id || ''} 
                   onChange={(e) => setForm({ ...form, category_id: e.target.value })}
@@ -564,8 +669,75 @@ export default function ContasPagar() {
                   {categories.filter(c => c.tipo === 'despesa').map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                 </Select>
               </div>
-              <div><Label>Valor</Label><Input type="number" value={form.valor} onChange={(e) => setForm({ ...form, valor: Number(e.target.value) })} className="mt-1" /></div>
+              <div>
+                <Label>{isSplit ? 'Valor 1' : 'Valor Total'}</Label>
+                <Input 
+                  type="number" 
+                  value={isSplit ? Number((form.valor - splitForm.valor2).toFixed(2)) : form.valor} 
+                  onChange={(e) => {
+                    const newVal = Number(e.target.value)
+                    if (isSplit) {
+                      setForm({ ...form, valor: newVal + splitForm.valor2 })
+                    } else {
+                      setForm({ ...form, valor: newVal })
+                    }
+                  }} 
+                  className="mt-1" 
+                />
+              </div>
             </div>
+
+            {isSplit && (
+              <div className="grid grid-cols-2 gap-4 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                <div>
+                  <Label>Categoria 2</Label>
+                  <Select 
+                    value={splitForm.category2_id} 
+                    onChange={(e) => setSplitForm({ ...splitForm, category2_id: e.target.value })}
+                    className="mt-1"
+                  >
+                    <option value="">-- Selecione --</option>
+                    {categories.filter(c => c.tipo === 'despesa').map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </Select>
+                </div>
+                <div>
+                  <Label>Valor 2</Label>
+                  <Input 
+                    type="number" 
+                    value={splitForm.valor2} 
+                    onChange={(e) => setSplitForm({ ...splitForm, valor2: Number(e.target.value) })} 
+                    className="mt-1" 
+                  />
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[10px] text-blue-600 font-medium">
+                    Valor Total: {formatCurrency(form.valor)} (Soma das 2 categorias)
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {!isSplit && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="w-full gap-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                onClick={() => setIsSplit(true)}
+              >
+                <Split className="h-4 w-4" /> Ratear em 2 categorias
+              </Button>
+            )}
+
+            {isSplit && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="w-full gap-2 text-destructive hover:bg-red-50"
+                onClick={() => setIsSplit(false)}
+              >
+                Cancelar Rateio
+              </Button>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Vencimento</Label><Input type="date" value={form.vencimento} onChange={(e) => setForm({ ...form, vencimento: e.target.value })} className="mt-1" /></div>
               <div><Label>Status</Label><Select value={form.status} onChange={(e) => {
@@ -602,6 +774,23 @@ export default function ContasPagar() {
                       ))}
                     </Select>
                  </div>
+                 
+                 {(form.category_id === '2b84eef7-af3a-404f-b3c1-d9b1d668c478' || form.categoria === 'Aplicação Financeira') && (
+                    <div className="col-span-2 bg-blue-50 p-3 rounded-lg border border-blue-100">
+                      <Label className="text-blue-700 font-medium">Conta de Destino (Aplicação)</Label>
+                      <Select
+                        value={(form as any).destination_bank_account_id || ''}
+                        onChange={(e) => setForm({ ...form, destination_bank_account_id: e.target.value })}
+                        className="mt-1 bg-white"
+                      >
+                        <option value="">-- Selecionar Conta de Destino --</option>
+                        {bankAccounts.map(ba => (
+                          <option key={ba.id} value={ba.id}>{ba.nome} {ba.banco ? `(${ba.banco})` : ''}</option>
+                        ))}
+                      </Select>
+                      <p className="text-[10px] text-blue-600 mt-1">Ao salvar como pago, o sistema gerará automaticamente uma entrada nesta conta.</p>
+                    </div>
+                 )}
                </div>
             )}
             
@@ -779,6 +968,22 @@ export default function ContasPagar() {
           <Button variant="outline" onClick={() => setPartialDialogOpen(false)}>Cancelar</Button>
           <Button onClick={handlePartialPayment}>Confirmar Baixa Parcial</Button>
         </DialogFooter>
+      </Dialog>
+
+      <Dialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+        <DialogHeader>
+          <DialogTitle>Confirmar Exclusão</DialogTitle>
+          <DialogClose onClose={() => setDeleteConfirmId(null)} />
+        </DialogHeader>
+        <DialogContent>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">Tem certeza que deseja excluir esta conta? Esta ação não pode ser desfeita.</p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancelar</Button>
+              <Button variant="destructive" onClick={confirmDelete}>Excluir</Button>
+            </div>
+          </div>
+        </DialogContent>
       </Dialog>
     </div>
   )

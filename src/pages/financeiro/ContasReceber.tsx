@@ -24,7 +24,8 @@ const emptyIncome: Omit<Income, 'id'> = {
   vencimento: new Date().toISOString().slice(0, 10), 
   status: 'pendente',
   payment_date: '',
-  bank_account_id: ''
+  bank_account_id: '',
+  source_bank_account_id: ''
 }
 
 export default function ContasReceber() {
@@ -38,6 +39,7 @@ export default function ContasReceber() {
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'todos' | 'pendente' | 'recebido' | 'vencido'>('todos')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [selectedPatient, setSelectedPatient] = useState('')
@@ -48,26 +50,52 @@ export default function ContasReceber() {
   const [partialForm, setPartialForm] = useState({ valorPago: 0, dataPagamento: new Date().toISOString().slice(0, 10), bank_account_id: '' })
   const [form, setForm] = useState(emptyIncome)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  
+  // State for delete confirmation dialog
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+
+  // States for split category
+  const [isSplit, setIsSplit] = useState(false)
+  const [splitForm, setSplitForm] = useState({
+    category2_id: '',
+    valor2: 0
+  })
 
   const filtered = incomes.filter(i => {
     const matchesSearch = i.descricao.toLowerCase().includes(search.toLowerCase())
     const matchesStatus = statusFilter === 'todos' || i.status === statusFilter
     const matchesPatient = !selectedPatient || i.descricao.toLowerCase().includes(selectedPatient.toLowerCase())
+    const matchesCategory = !categoryFilter || i.category_id === categoryFilter
     
     let matchesPeriod = true
     if (startDate) matchesPeriod = matchesPeriod && i.vencimento >= startDate
     if (endDate) matchesPeriod = matchesPeriod && i.vencimento <= endDate
     
-    return matchesSearch && matchesStatus && matchesPatient && matchesPeriod
+    return matchesSearch && matchesStatus && matchesPatient && matchesPeriod && matchesCategory
   }).sort((a, b) => {
     return sortDir === 'asc' 
       ? a.vencimento.localeCompare(b.vencimento)
       : b.vencimento.localeCompare(a.vencimento)
   })
 
-  function openNew() { setForm(emptyIncome); setEditingId(null); setDialogOpen(true) }
+  function openNew() { 
+    setForm(emptyIncome); 
+    setEditingId(null); 
+    setIsSplit(false);
+    setSplitForm({ category2_id: '', valor2: 0 });
+    setDialogOpen(true) 
+  }
 
-  function openEdit(i: Income) { setForm(i); setEditingId(i.id); setDialogOpen(true) }
+  function openEdit(i: Income) { 
+    setForm({
+      ...i,
+      source_bank_account_id: (i as any).source_bank_account_id || ''
+    }); 
+    setEditingId(i.id); 
+    setIsSplit(false);
+    setSplitForm({ category2_id: '', valor2: 0 });
+    setDialogOpen(true) 
+  }
 
   function openPartial(i: Income) {
     setPartialIncome(i)
@@ -172,7 +200,21 @@ export default function ContasReceber() {
         payment_date: form.payment_date || null,
         category_id: form.category_id || null,
         bank_account_id: form.bank_account_id || null,
-        bank_transaction_id: form.bank_transaction_id || null
+        bank_transaction_id: form.bank_transaction_id || null,
+        source_bank_account_id: (form as any).source_bank_account_id || null
+      }
+
+      if (isSplit) {
+        if (!splitForm.category2_id || splitForm.valor2 <= 0) {
+          alert("Para ratear em 2 categorias, preencha a segunda categoria e o valor correspondente.")
+          return
+        }
+        if (splitForm.valor2 >= form.valor) {
+          alert("O valor da segunda categoria deve ser menor que o valor total.")
+          return
+        }
+        // Adjust the first payload's value
+        payload.valor = Number((form.valor - splitForm.valor2).toFixed(2))
       }
       if (payload.category_id) {
         payload.categoria = categories.find(c => c.id === payload.category_id)?.nome || payload.categoria
@@ -198,6 +240,23 @@ export default function ContasReceber() {
           const bt = await insertBankTransaction(btData as any)
           btId = bt.id
           payload.bank_transaction_id = btId
+        }
+
+        // Se for Resgate de Aplicação e tiver conta origem, criar o lançamento de saída na outra conta
+        const isResgate = payload.category_id === '372443ce-38f3-4cd4-9188-a2053a2cf150' || payload.categoria === 'Resgate Aplicação Financeira'
+        const srcId = (payload as any).source_bank_account_id
+        if (isResgate && srcId) {
+           await insertBankTransaction({
+             data: btData.data,
+             descricao: `Resgate (Saída via Contas a Receber): ${payload.descricao}`,
+             valor: payload.valor,
+             tipo: 'debito',
+             origem: 'manual',
+             bank_account_id: srcId,
+             categoria: 'Resgate Aplicação Financeira',
+             category_id: payload.category_id,
+             status: 'pago'
+           } as any)
         }
       } else if (btId) {
         await removeBankTransaction(btId)
@@ -228,8 +287,34 @@ export default function ContasReceber() {
             })
           }
         }
+        
+        if (isSplit) {
+          const cat2 = categories.find(c => c.id === splitForm.category2_id)
+          await insert({
+            ...payload,
+            id: undefined,
+            descricao: `${payload.descricao} (Rateio 2/2)`,
+            valor: splitForm.valor2,
+            category_id: splitForm.category2_id,
+            categoria: cat2?.nome || '',
+            bank_transaction_id: null
+          } as any)
+        }
       } else {
         await insert(payload)
+        
+        if (isSplit) {
+          const cat2 = categories.find(c => c.id === splitForm.category2_id)
+          await insert({
+            ...payload,
+            id: undefined,
+            descricao: `${payload.descricao} (Rateio 2/2)`,
+            valor: splitForm.valor2,
+            category_id: splitForm.category2_id,
+            categoria: cat2?.nome || '',
+            bank_transaction_id: null
+          } as any)
+        }
       }
       setDialogOpen(false)
     } catch (error: any) {
@@ -238,17 +323,22 @@ export default function ContasReceber() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (confirm('Deseja excluir esta receita? O faturamento (recibo) vinculado também será excluído.')) {
-      try {
-        const relInv = invoices.find(inv => inv.income_id === id)
-        if (relInv) {
-          await removeInvoice(relInv.id)
-        }
-        await remove(id)
-      } catch (error) {
-        console.error('Erro ao excluir:', error)
+  function handleDeleteClick(id: string) {
+    setDeleteConfirmId(id)
+  }
+
+  async function confirmDelete() {
+    if (!deleteConfirmId) return
+    try {
+      const relInv = invoices.find(inv => inv.income_id === deleteConfirmId)
+      if (relInv) {
+        await removeInvoice(relInv.id)
       }
+      await remove(deleteConfirmId)
+      setDeleteConfirmId(null)
+    } catch (error: any) {
+      console.error('Erro ao excluir:', error)
+      alert('Erro ao excluir: ' + (error.message || 'Erro desconhecido'))
     }
   }
 
@@ -308,6 +398,15 @@ export default function ContasReceber() {
             <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="h-9" />
           </div>
 
+          <div className="w-full md:w-48">
+            <Label className="text-xs text-muted-foreground">Categoria</Label>
+            <Select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)} className="h-9">
+                <option value="">Todas Categorias</option>
+                {categories.filter(c => c.tipo === 'receita').map(c => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+            </Select>
+          </div>
           <div className="w-full md:w-40">
             <Label className="text-xs text-muted-foreground">Status</Label>
             <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} className="h-9">
@@ -334,9 +433,23 @@ export default function ContasReceber() {
               Mês Atual
             </Button>
             <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => {
+                const now = new Date()
+                const start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10)
+                const end = new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10)
+                setStartDate(start)
+                setEndDate(end)
+              }}
+              className="h-9"
+            >
+              Mês Anterior
+            </Button>
+            <Button 
               variant="ghost" 
               size="sm" 
-              onClick={() => { setStartDate(''); setEndDate(''); setSearch(''); setStatusFilter('todos'); setSelectedPatient('') }}
+              onClick={() => { setStartDate(''); setEndDate(''); setSearch(''); setStatusFilter('todos'); setSelectedPatient(''); setCategoryFilter('') }}
               className="h-9 text-muted-foreground"
             >
               Limpar
@@ -386,7 +499,7 @@ export default function ContasReceber() {
                         </Button>
                       )}
                       <Button variant="ghost" size="icon" onClick={() => openEdit(i)} title="Editar"><Pencil className="h-4 w-4" /></Button>
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(i.id)} title="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(i.id)} title="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -406,7 +519,7 @@ export default function ContasReceber() {
             <div><Label>Descrição</Label><Input value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} className="mt-1" placeholder="Ex: Mensalidade de paciente" /></div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Categoria</Label>
+                <Label>{isSplit ? 'Categoria 1' : 'Categoria'}</Label>
                 <Select 
                   value={form.category_id || ''} 
                   onChange={(e) => setForm({ ...form, category_id: e.target.value })}
@@ -416,8 +529,75 @@ export default function ContasReceber() {
                   {categories.filter(c => c.tipo === 'receita').map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                 </Select>
               </div>
-              <div><Label>Valor</Label><Input type="number" value={form.valor} onChange={(e) => setForm({ ...form, valor: Number(e.target.value) })} className="mt-1" /></div>
+              <div>
+                <Label>{isSplit ? 'Valor 1' : 'Valor Total'}</Label>
+                <Input 
+                  type="number" 
+                  value={isSplit ? Number((form.valor - splitForm.valor2).toFixed(2)) : form.valor} 
+                  onChange={(e) => {
+                    const newVal = Number(e.target.value)
+                    if (isSplit) {
+                      setForm({ ...form, valor: newVal + splitForm.valor2 })
+                    } else {
+                      setForm({ ...form, valor: newVal })
+                    }
+                  }} 
+                  className="mt-1" 
+                />
+              </div>
             </div>
+
+            {isSplit && (
+              <div className="grid grid-cols-2 gap-4 bg-green-50/50 p-3 rounded-lg border border-green-100">
+                <div>
+                  <Label>Categoria 2</Label>
+                  <Select 
+                    value={splitForm.category2_id} 
+                    onChange={(e) => setSplitForm({ ...splitForm, category2_id: e.target.value })}
+                    className="mt-1"
+                  >
+                    <option value="">-- Selecione --</option>
+                    {categories.filter(c => c.tipo === 'receita').map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                  </Select>
+                </div>
+                <div>
+                  <Label>Valor 2</Label>
+                  <Input 
+                    type="number" 
+                    value={splitForm.valor2} 
+                    onChange={(e) => setSplitForm({ ...splitForm, valor2: Number(e.target.value) })} 
+                    className="mt-1" 
+                  />
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[10px] text-green-600 font-medium">
+                    Valor Total: {formatCurrency(form.valor)} (Soma das 2 categorias)
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {!isSplit && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="w-full gap-2 text-green-600 hover:text-green-700 hover:bg-green-50"
+                onClick={() => setIsSplit(true)}
+              >
+                <Split className="h-4 w-4" /> Ratear em 2 categorias
+              </Button>
+            )}
+
+            {isSplit && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="w-full gap-2 text-destructive hover:bg-red-50"
+                onClick={() => setIsSplit(false)}
+              >
+                Cancelar Rateio
+              </Button>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Vencimento</Label><Input type="date" value={form.vencimento} onChange={(e) => setForm({ ...form, vencimento: e.target.value })} className="mt-1" /></div>
               <div><Label>Status</Label><Select value={form.status} onChange={(e) => {
@@ -454,6 +634,23 @@ export default function ContasReceber() {
                       ))}
                     </Select>
                  </div>
+
+                 {(form.category_id === '372443ce-38f3-4cd4-9188-a2053a2cf150' || form.categoria === 'Resgate Aplicação Financeira') && (
+                    <div className="col-span-2 bg-green-50 p-3 rounded-lg border border-green-100">
+                      <Label className="text-green-700 font-medium">Conta de Origem (Aplicação/Resgate)</Label>
+                      <Select
+                        value={(form as any).source_bank_account_id || ''}
+                        onChange={(e) => setForm({ ...form, source_bank_account_id: e.target.value })}
+                        className="mt-1 bg-white"
+                      >
+                        <option value="">-- Selecionar Conta de Origem --</option>
+                        {bankAccounts.map(ba => (
+                          <option key={ba.id} value={ba.id}>{ba.nome} {ba.banco ? `(${ba.banco})` : ''}</option>
+                        ))}
+                      </Select>
+                      <p className="text-[10px] text-green-600 mt-1">Ao salvar como recebido, o sistema gerará automaticamente uma saída nesta conta.</p>
+                    </div>
+                 )}
                </div>
              )}
           </div>
@@ -520,6 +717,24 @@ export default function ContasReceber() {
           <Button variant="outline" onClick={() => setPartialDialogOpen(false)}>Cancelar</Button>
           <Button onClick={handlePartialPayment}>Confirmar Baixa Parcial</Button>
         </DialogFooter>
+      </Dialog>
+
+      <Dialog open={!!deleteConfirmId} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+        <DialogHeader>
+          <DialogTitle>Confirmar Exclusão</DialogTitle>
+          <DialogClose onClose={() => setDeleteConfirmId(null)} />
+        </DialogHeader>
+        <DialogContent>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Deseja excluir esta receita? O faturamento (recibo) vinculado também será excluído. Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancelar</Button>
+              <Button variant="destructive" onClick={confirmDelete}>Excluir</Button>
+            </div>
+          </div>
+        </DialogContent>
       </Dialog>
     </div>
   )

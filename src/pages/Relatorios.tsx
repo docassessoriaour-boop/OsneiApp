@@ -117,31 +117,36 @@ export default function Relatorios() {
       incomes: {} as Record<string, number>
     }
 
-    filteredData.bills.forEach(b => {
-      const catName = categories.find(c => c.id === b.category_id)?.nome || b.categoria || 'Não Categorizado'
-      categoryBreakdown.bills[catName] = (categoryBreakdown.bills[catName] || 0) + b.valor
-    })
+    if (reportType === 'contasPagar') {
+      filteredData.bills.forEach(b => {
+        const catName = categories.find(c => c.id === b.category_id)?.nome || b.categoria || 'Não Categorizado'
+        categoryBreakdown.bills[catName] = (categoryBreakdown.bills[catName] || 0) + b.valor
+      })
 
-    // Adicionar Folha de Pagamento ao Resumo por Categoria
-    filteredData.payrolls.forEach(p => {
-      const catName = 'Salário'
-      categoryBreakdown.bills[catName] = (categoryBreakdown.bills[catName] || 0) + p.salarioLiquido
-    })
+      filteredData.payrolls.forEach(p => {
+        const catName = 'Salário'
+        categoryBreakdown.bills[catName] = (categoryBreakdown.bills[catName] || 0) + p.salarioLiquido
+      })
+    }
 
-    // Adicionar Transações Bancárias ao Resumo por Categoria
-    filteredData.transactions.forEach(t => {
-      const catName = categories.find(c => c.id === t.category_id)?.nome || t.categoria || 'Não Categorizado'
-      if (t.tipo === 'debito') {
-        categoryBreakdown.bills[catName] = (categoryBreakdown.bills[catName] || 0) + t.valor
-      } else {
-        categoryBreakdown.incomes[catName] = (categoryBreakdown.incomes[catName] || 0) + t.valor
-      }
-    })
+    if (reportType === 'contasReceber') {
+      filteredData.incomes.forEach(i => {
+        const catName = categories.find(c => c.id === i.category_id)?.nome || i.categoria || 'Não Categorizado'
+        categoryBreakdown.incomes[catName] = (categoryBreakdown.incomes[catName] || 0) + i.valor
+      })
+    }
 
-    filteredData.incomes.forEach(i => {
-      const catName = categories.find(c => c.id === i.category_id)?.nome || i.categoria || 'Não Categorizado'
-      categoryBreakdown.incomes[catName] = (categoryBreakdown.incomes[catName] || 0) + i.valor
-    })
+    // Usar transações bancárias para o relatório 'Geral' e 'Bancário'
+    if (reportType === 'geral' || reportType === 'bancario') {
+      filteredData.transactions.forEach(t => {
+        const catName = categories.find(c => c.id === t.category_id)?.nome || t.categoria || 'Não Categorizado'
+        if (t.tipo === 'debito') {
+          categoryBreakdown.bills[catName] = (categoryBreakdown.bills[catName] || 0) + t.valor
+        } else {
+          categoryBreakdown.incomes[catName] = (categoryBreakdown.incomes[catName] || 0) + t.valor
+        }
+      })
+    }
 
     return { 
       pagar, pagarEfetuado, receber, receberEfetuado, 
@@ -149,7 +154,7 @@ export default function Relatorios() {
       patientCount, avgCostPerPatient,
       categoryBreakdown
     }
-  }, [filteredData, categories])
+  }, [filteredData, categories, reportType])
 
   const projectionData = useMemo(() => {
     if (reportType !== 'fluxoCaixa') return []
@@ -481,6 +486,22 @@ export default function Relatorios() {
              <Label className="text-xs">Fim</Label>
              <Input type="date" value={dateEnd} onChange={e => setDateEnd(e.target.value)} />
           </div>
+          <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-4 mt-2">
+             <Button variant="outline" size="sm" onClick={() => {
+               const now = new Date()
+               setDateStart(new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10))
+               setDateEnd(new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().slice(0, 10))
+             }}>Mês Atual</Button>
+             <Button variant="outline" size="sm" onClick={() => {
+               const now = new Date()
+               setDateStart(new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString().slice(0, 10))
+               setDateEnd(new Date(now.getFullYear(), now.getMonth(), 0).toISOString().slice(0, 10))
+             }}>Mês Anterior</Button>
+             <Button variant="ghost" size="sm" onClick={() => {
+               setDateStart('')
+               setDateEnd('')
+             }}>Limpar Período</Button>
+          </div>
           <div className="space-y-1">
              <Label className="text-xs">Banco (Opcional)</Label>
              <Select value={selectedBank} onChange={e => setSelectedBank(e.target.value)}>
@@ -532,61 +553,65 @@ export default function Relatorios() {
 
       {viewMode === 'sintetico' && (reportType === 'geral' || reportType === 'contasPagar' || reportType === 'contasReceber' || reportType === 'bancario') && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {(reportType === 'geral' || reportType === 'contasPagar' || reportType === 'bancario') && (
-            <Card className="p-6">
-              <h3 className="font-bold text-lg mb-4 text-red-700">Resumo por Categoria (Saídas)</h3>
-              <div className="space-y-3">
-                {(()=>{
-                  const tBills = Object.values(totals.categoryBreakdown.bills).reduce((s, v) => s + v, 0) || 1;
-                  return Object.entries(totals.categoryBreakdown.bills)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([cat, val]) => {
-                      const pct = (val / tBills) * 100
-                      return (
-                        <div key={cat} className="space-y-1">
-                          <div className="flex justify-between text-sm">
-                            <span>{cat}</span>
-                            <span className="font-bold">{formatCurrency(val)} ({pct.toFixed(1)}%)</span>
-                          </div>
-                          <div className="w-full bg-muted rounded-full h-2">
-                            <div className="bg-red-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
-                          </div>
+          {reportType === 'geral' || reportType === 'contasPagar' || reportType === 'bancario' ? (
+            <Card className="p-4 flex flex-col">
+              <h3 className="font-bold text-lg mb-4 text-red-700">
+                Resumo por Categoria ({reportType === 'bancario' || reportType === 'geral' ? 'Saídas' : 'Contas a Pagar'})
+              </h3>
+              <div className="space-y-4 flex-1">
+                {Object.entries(totals.categoryBreakdown.bills)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([cat, val]) => {
+                    const denominator = (reportType === 'bancario' || reportType === 'geral') ? totals.bankOut : totals.pagar;
+                    const pct = denominator > 0 ? (val / denominator) * 100 : 0;
+                    return (
+                      <div key={cat}>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>{cat}</span>
+                          <span className="font-bold">{formatCurrency(val)} ({pct.toFixed(1)}%)</span>
                         </div>
-                      )
-                    })
-                })()}
-                {Object.keys(totals.categoryBreakdown.bills).length === 0 && <p className="text-sm text-muted-foreground italic text-center py-4">Nenhuma saída no período.</p>}
+                        <div className="h-2 w-full bg-red-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-red-500" style={{ width: `${pct}%` }}></div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                {Object.keys(totals.categoryBreakdown.bills).length === 0 && (
+                  <p className="text-muted-foreground text-sm text-center py-4">Nenhum dado para exibir</p>
+                )}
               </div>
             </Card>
-          )}
+          ) : null}
 
-          {(reportType === 'geral' || reportType === 'contasReceber' || reportType === 'bancario') && (
-            <Card className="p-6">
-              <h3 className="font-bold text-lg mb-4 text-green-700">Resumo por Categoria (Entradas)</h3>
-              <div className="space-y-3">
-                {(()=>{
-                  const tIncomes = Object.values(totals.categoryBreakdown.incomes).reduce((s, v) => s + v, 0) || 1;
-                  return Object.entries(totals.categoryBreakdown.incomes)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([cat, val]) => {
-                      const pct = (val / tIncomes) * 100
-                      return (
-                        <div key={cat} className="space-y-1">
-                          <div className="flex justify-between text-sm">
-                            <span>{cat}</span>
-                            <span className="font-bold">{formatCurrency(val)} ({pct.toFixed(1)}%)</span>
-                          </div>
-                          <div className="w-full bg-muted rounded-full h-2">
-                            <div className="bg-green-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
-                          </div>
+          {reportType === 'geral' || reportType === 'contasReceber' || reportType === 'bancario' ? (
+            <Card className="p-4 flex flex-col">
+              <h3 className="font-bold text-lg mb-4 text-green-700">
+                Resumo por Categoria ({reportType === 'bancario' || reportType === 'geral' ? 'Entradas' : 'Contas a Receber'})
+              </h3>
+              <div className="space-y-4 flex-1">
+                {Object.entries(totals.categoryBreakdown.incomes)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([cat, val]) => {
+                    const denominator = (reportType === 'bancario' || reportType === 'geral') ? totals.bankIn : totals.receber;
+                    const pct = denominator > 0 ? (val / denominator) * 100 : 0;
+                    return (
+                      <div key={cat}>
+                        <div className="flex justify-between text-sm mb-1">
+                          <span>{cat}</span>
+                          <span className="font-bold">{formatCurrency(val)} ({pct.toFixed(1)}%)</span>
                         </div>
-                      )
-                    })
-                })()}
-                {Object.keys(totals.categoryBreakdown.incomes).length === 0 && <p className="text-sm text-muted-foreground italic text-center py-4">Nenhuma entrada no período.</p>}
+                        <div className="h-2 w-full bg-green-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-green-500" style={{ width: `${pct}%` }}></div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                {Object.keys(totals.categoryBreakdown.incomes).length === 0 && (
+                  <p className="text-muted-foreground text-sm text-center py-4">Nenhum dado para exibir</p>
+                )}
               </div>
             </Card>
-          )}
+          ) : null}
         </div>
       )}
       

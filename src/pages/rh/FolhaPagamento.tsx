@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Pencil, Trash2, FileText, Plus, X, CalendarClock, Loader2 } from 'lucide-react'
+import { Pencil, Trash2, FileText, Plus, X, CalendarClock, Loader2, Banknote } from 'lucide-react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInCalendarDays } from 'date-fns'
 
 const emptyAdicional: PayrollAdicional = { descricao: '', tipo: 'provento', valor: 0 }
@@ -148,6 +148,20 @@ export default function FolhaPagamento() {
                 valor: 0 // Valor a ser preenchido manualmente
              })
           }
+          if (emp.tem_vt) {
+             payloadAdicionais.push({
+                descricao: 'Vale Transporte',
+                tipo: 'provento',
+                valor: emp.vt_valor || 0
+             })
+          }
+          if (emp.tem_insalubridade && emp.insalubridade_percentual) {
+             payloadAdicionais.push({
+                descricao: `Adicional Insalubridade (${emp.insalubridade_percentual}%)`,
+                tipo: 'provento',
+                valor: (emp.salario || 0) * (emp.insalubridade_percentual / 100)
+             })
+          }
 
           const payrollResult = await insert({
             funcionarioId: emp.id,
@@ -234,6 +248,38 @@ export default function FolhaPagamento() {
     setAdicionais(adicionais.map((a, i) => i === idx ? { ...a, [field]: value } : a))
   }
 
+  function updatePeriodAndSalary(val: 'mes' | 'periodo', start: string, end: string, month: string) {
+    setForm(prev => {
+      const emp = employees.find(e => e.id === prev.funcionarioId)
+      let baseSalario = emp?.salario || 0
+      let novoSalario = baseSalario
+      let multiplier = 1
+
+      if (val === 'periodo' && start && end) {
+        const dias = differenceInCalendarDays(parseISO(end), parseISO(start)) + 1
+        if (dias > 0) {
+          multiplier = dias / 30
+          novoSalario = Number((baseSalario * multiplier).toFixed(2))
+        }
+      }
+
+      setAdicionais(prevAdics => {
+        return prevAdics.map(a => {
+          if (a.descricao === 'Vale Transporte' && emp?.tem_vt) {
+            return { ...a, valor: Number(((emp.vt_valor || 0) * multiplier).toFixed(2)) }
+          }
+          if (a.descricao.startsWith('Adicional Insalubridade') && emp?.tem_insalubridade) {
+            const fullInsalubridade = baseSalario * (emp.insalubridade_percentual / 100)
+            return { ...a, valor: Number((fullInsalubridade * multiplier).toFixed(2)) }
+          }
+          return a
+        })
+      })
+
+      return { ...prev, tipo_periodo: val, periodoInicio: start, periodoFim: end, mesReferencia: month, salarioBruto: novoSalario }
+    })
+  }
+
   // PDF Pay Receipt
   function printReceipt(p: Payroll) {
     const emp = employees.find(e => e.id === p.funcionarioId)
@@ -275,6 +321,23 @@ export default function FolhaPagamento() {
       </div>
     `
     printPDF(`Recibo de Pagamento — ${p.funcionarioNome}`, html, clinic)
+  }
+
+  async function gerarContaPagar(p: Payroll) {
+    if (confirm(`Deseja gerar uma Conta a Pagar no valor de ${formatCurrency(p.salarioLiquido)} para ${p.funcionarioNome}?`)) {
+      try {
+        await insertBill({
+          descricao: `Folha de Pagamento - ${p.funcionarioNome} - ${p.mesReferencia}`,
+          valor: p.salarioLiquido,
+          vencimento: new Date().toISOString().slice(0, 10),
+          status: 'pendente',
+          categoria: 'Folha de Pagamento'
+        } as Omit<Bill, 'id'>)
+        alert('Conta a Pagar gerada com sucesso!')
+      } catch (error) {
+        alert('Erro ao gerar Conta a Pagar')
+      }
+    }
   }
 
   return (
@@ -333,7 +396,7 @@ export default function FolhaPagamento() {
                     <TableCell>{p.cargo}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {p.periodoInicio && p.periodoFim
-                        ? `${new Date(p.periodoInicio).toLocaleDateString('pt-BR')} — ${new Date(p.periodoFim).toLocaleDateString('pt-BR')}`
+                        ? `${formatDatePDF(p.periodoInicio)} — ${formatDatePDF(p.periodoFim)}`
                         : p.mesReferencia}
                     </TableCell>
                     <TableCell>{formatCurrency(p.salarioBruto)}</TableCell>
@@ -346,6 +409,9 @@ export default function FolhaPagamento() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
+                        <Button variant="ghost" size="icon" title="Gerar Conta a Pagar" onClick={() => gerarContaPagar(p)}>
+                          <Banknote className="h-4 w-4 text-emerald-600" />
+                        </Button>
                         <Button variant="ghost" size="icon" title="Gerar Recibo PDF" onClick={() => printReceipt(p)}>
                           <FileText className="h-4 w-4 text-blue-600" />
                         </Button>
@@ -378,7 +444,31 @@ export default function FolhaPagamento() {
                 value={form.funcionarioId}
                 onChange={(e) => {
                   const emp = employees.find(x => x.id === e.target.value)
-                  setForm({ ...form, funcionarioId: e.target.value, salarioBruto: emp?.salario || 0 })
+                  let multiplier = 1
+                  if (form.tipo_periodo === 'periodo' && form.periodoInicio && form.periodoFim) {
+                    const dias = differenceInCalendarDays(parseISO(form.periodoFim), parseISO(form.periodoInicio)) + 1
+                    if (dias > 0) multiplier = dias / 30
+                  }
+                  
+                  setForm({ ...form, funcionarioId: e.target.value, salarioBruto: Number(((emp?.salario || 0) * multiplier).toFixed(2)) })
+                  
+                  const newAdicionais: PayrollAdicional[] = []
+                  if (emp?.tem_vt) {
+                    newAdicionais.push({
+                      descricao: 'Vale Transporte',
+                      tipo: 'provento',
+                      valor: Number(((emp.vt_valor || 0) * multiplier).toFixed(2))
+                    })
+                  }
+                  if (emp?.tem_insalubridade && emp.insalubridade_percentual) {
+                    const fullInsalubridade = (emp.salario || 0) * (emp.insalubridade_percentual / 100)
+                    newAdicionais.push({
+                      descricao: `Adicional Insalubridade (${emp.insalubridade_percentual}%)`,
+                      tipo: 'provento',
+                      valor: Number((fullInsalubridade * multiplier).toFixed(2))
+                    })
+                  }
+                  setAdicionais(newAdicionais)
                 }}
                 className="mt-1"
               >
@@ -406,7 +496,7 @@ export default function FolhaPagamento() {
                       end = format(endOfMonth(date), 'yyyy-MM-dd')
                     }
                     
-                    setForm({ ...form, tipo_periodo: val, periodoInicio: start, periodoFim: end })
+                    updatePeriodAndSalary(val, start, end, form.mesReferencia)
                   }} 
                   className="mt-1"
                 >
@@ -430,7 +520,7 @@ export default function FolhaPagamento() {
                       end = format(endOfMonth(date), 'yyyy-MM-dd')
                     }
                     
-                    setForm({ ...form, mesReferencia: month, periodoInicio: start, periodoFim: end })
+                    updatePeriodAndSalary(form.tipo_periodo, start, end, month)
                   }} 
                   className="mt-1" 
                 />
@@ -441,11 +531,11 @@ export default function FolhaPagamento() {
               <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-1">
                 <div>
                   <Label>Início do Período</Label>
-                  <Input type="date" value={form.periodoInicio} onChange={(e) => setForm({ ...form, periodoInicio: e.target.value })} className="mt-1" />
+                  <Input type="date" value={form.periodoInicio} onChange={(e) => updatePeriodAndSalary(form.tipo_periodo, e.target.value, form.periodoFim, form.mesReferencia)} className="mt-1" />
                 </div>
                 <div>
                   <Label>Fim do Período</Label>
-                  <Input type="date" value={form.periodoFim} onChange={(e) => setForm({ ...form, periodoFim: e.target.value })} className="mt-1" />
+                  <Input type="date" value={form.periodoFim} onChange={(e) => updatePeriodAndSalary(form.tipo_periodo, form.periodoInicio, e.target.value, form.mesReferencia)} className="mt-1" />
                 </div>
               </div>
             )}

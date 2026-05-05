@@ -14,7 +14,10 @@ import { Plus, Pencil, Trash2, Landmark, Wallet, CreditCard, PiggyBank } from 'l
 
 export default function Bancos() {
   const { data: accounts, loading, insert, update, remove } = useDb<BankAccount>('bank_accounts')
+  const { insert: insertTx } = useDb<any>('bank_transactions')
+  
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false)
   const [editing, setEditing] = useState<BankAccount | null>(null)
   const [form, setForm] = useState<Partial<BankAccount>>({
     nome: '',
@@ -25,19 +28,96 @@ export default function Bancos() {
     cor_identificacao: '#3b82f6'
   })
 
+  const [transferForm, setTransferForm] = useState({
+    origem_id: '',
+    destino_id: '',
+    valor: 0,
+    data: new Date().toISOString().slice(0, 10),
+    descricao: 'Transferência entre contas'
+  })
+
   const handleSubmit = async () => {
-    if (!form.nome) return
+    console.log('Botão Salvar clicado!', form)
+    if (!form.nome) {
+      alert('O nome da conta é obrigatório.')
+      return
+    }
+
     try {
+      // Enviar apenas os campos necessários para evitar erros de colunas protegidas
+      const updateData = {
+        nome: form.nome,
+        banco: form.banco,
+        tipo: form.tipo,
+        saldo_inicial: form.saldo_inicial,
+        cor_identificacao: form.cor_identificacao
+      }
+
       if (editing) {
-        await update(editing.id, form)
+        console.log('Atualizando conta...', editing.id, updateData)
+        await update(editing.id, updateData)
+        alert('Conta bancária atualizada com sucesso!')
       } else {
-        await insert({ ...form, saldo_atual: form.saldo_inicial })
+        console.log('Inserindo nova conta...', updateData)
+        await insert({ ...updateData, saldo_atual: form.saldo_inicial })
+        alert('Nova conta bancária criada com sucesso!')
       }
       setDialogOpen(false)
       setEditing(null)
       setForm({ nome: '', banco: '', tipo: 'corrente', saldo_inicial: 0, saldo_atual: 0, cor_identificacao: '#3b82f6' })
-    } catch (e) {
+    } catch (e: any) {
+      console.error('Erro detalhado no catch:', e)
+      alert('Erro crítico ao salvar: ' + (e?.message || JSON.stringify(e) || 'Erro desconhecido'))
+    }
+  }
+
+  const handleTransfer = async () => {
+    if (!transferForm.origem_id || !transferForm.destino_id || transferForm.valor <= 0) {
+      alert('Preencha todos os campos da transferência.')
+      return
+    }
+    if (transferForm.origem_id === transferForm.destino_id) {
+      alert('A conta de origem deve ser diferente da conta de destino.')
+      return
+    }
+
+    try {
+      // 1. Lançamento de saída na conta de origem
+      await insertTx({
+        data: transferForm.data,
+        descricao: `${transferForm.descricao} (Saída)`,
+        valor: transferForm.valor,
+        tipo: 'debito',
+        origem: 'manual',
+        bank_account_id: transferForm.origem_id,
+        categoria: 'Transferência',
+        status: 'pago'
+      })
+
+      // 2. Lançamento de entrada na conta de destino
+      await insertTx({
+        data: transferForm.data,
+        descricao: `${transferForm.descricao} (Entrada)`,
+        valor: transferForm.valor,
+        tipo: 'credito',
+        origem: 'manual',
+        bank_account_id: transferForm.destino_id,
+        categoria: 'Transferência',
+        status: 'recebido'
+      })
+
+      alert('Transferência realizada com sucesso!')
+      setTransferDialogOpen(false)
+      setTransferForm({
+        origem_id: '',
+        destino_id: '',
+        valor: 0,
+        data: new Date().toISOString().slice(0, 10),
+        descricao: 'Transferência entre contas'
+      })
+    } catch (e: any) {
       console.error(e)
+      alert('Erro ao realizar transferência: ' + e.message)
     }
   }
 
@@ -70,9 +150,14 @@ export default function Bancos() {
           title="Contas Bancárias / Caixas" 
           description="Gerencie suas contas e saldos disponíveis" 
         />
-        <Button onClick={() => { setEditing(null); setForm({ nome: '', banco: '', tipo: 'corrente', saldo_inicial: 0, saldo_atual: 0, cor_identificacao: '#3b82f6' }); setDialogOpen(true) }} className="gap-2">
-          <Plus className="h-4 w-4" /> Nova Conta
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => setTransferDialogOpen(true)} className="gap-2 border-blue-500 text-blue-600 hover:bg-blue-50">
+            <Plus className="h-4 w-4" /> Transferência
+          </Button>
+          <Button onClick={() => { setEditing(null); setForm({ nome: '', banco: '', tipo: 'corrente', saldo_inicial: 0, saldo_atual: 0, cor_identificacao: '#3b82f6' }); setDialogOpen(true) }} className="gap-2">
+            <Plus className="h-4 w-4" /> Nova Conta
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -106,19 +191,27 @@ export default function Bancos() {
       </div>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogHeader>
-          <DialogTitle>{editing ? 'Editar Conta' : 'Nova Conta Bancária'}</DialogTitle>
-        </DialogHeader>
         <DialogContent>
-          <div className="space-y-4">
+          <DialogHeader>
+            <DialogTitle>{editing ? 'Editar Conta' : 'Nova Conta Bancária'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Nome da Conta / Identificação</Label>
-              <Input value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} placeholder="Ex: Itau Principal, Google Pay, Caixa Interno" />
+              <Input 
+                value={form.nome || ''} 
+                onChange={e => setForm({ ...form, nome: e.target.value })} 
+                placeholder="Ex: Itau Principal, Google Pay, Caixa Interno" 
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Banco (Opcional)</Label>
-                <Input value={form.banco} onChange={e => setForm({ ...form, banco: e.target.value })} placeholder="Ex: Itau, Bradesco" />
+                <Input 
+                  value={form.banco || ''} 
+                  onChange={e => setForm({ ...form, banco: e.target.value })} 
+                  placeholder="Ex: Itau, Bradesco" 
+                />
               </div>
               <div className="space-y-2">
                 <Label>Tipo de Conta</Label>
@@ -133,19 +226,84 @@ export default function Bancos() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>Saldo Inicial</Label>
-                <Input type="number" value={form.saldo_inicial} onChange={e => setForm({ ...form, saldo_inicial: Number(e.target.value) })} />
+                <Input 
+                  type="number" 
+                  value={form.saldo_inicial || 0} 
+                  onChange={e => setForm({ ...form, saldo_inicial: Number(e.target.value) })} 
+                />
               </div>
               <div className="space-y-2">
                 <Label>Cor de Identificação</Label>
-                <Input type="color" value={form.cor_identificacao} onChange={e => setForm({ ...form, cor_identificacao: e.target.value })} className="h-10 p-1" />
+                <Input 
+                  type="color" 
+                  value={form.cor_identificacao || '#3b82f6'} 
+                  onChange={e => setForm({ ...form, cor_identificacao: e.target.value })} 
+                  className="h-10 p-1" 
+                />
               </div>
             </div>
           </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSubmit}>Salvar Conta (Atualizado)</Button>
+          </DialogFooter>
         </DialogContent>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-          <Button onClick={handleSubmit}>Salvar Conta</Button>
-        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={transferDialogOpen} onOpenChange={setTransferDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transferência entre Contas</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Conta de Origem (Saída)</Label>
+                <Select value={transferForm.origem_id} onChange={e => setTransferForm({ ...transferForm, origem_id: e.target.value })}>
+                  <option value="">-- Selecione --</option>
+                  {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.nome}</option>)}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Conta de Destino (Entrada)</Label>
+                <Select value={transferForm.destino_id} onChange={e => setTransferForm({ ...transferForm, destino_id: e.target.value })}>
+                  <option value="">-- Selecione --</option>
+                  {accounts.map(acc => <option key={acc.id} value={acc.id}>{acc.nome}</option>)}
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Valor</Label>
+                <Input 
+                  type="number" 
+                  value={transferForm.valor} 
+                  onChange={e => setTransferForm({ ...transferForm, valor: Number(e.target.value) })} 
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Data</Label>
+                <Input 
+                  type="date" 
+                  value={transferForm.data} 
+                  onChange={e => setTransferForm({ ...transferForm, data: e.target.value })} 
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Descrição / Observação</Label>
+              <Input 
+                value={transferForm.descricao} 
+                onChange={e => setTransferForm({ ...transferForm, descricao: e.target.value })} 
+                placeholder="Ex: Aplicação em CDB, Resgate, etc." 
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTransferDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleTransfer}>Confirmar Transferência</Button>
+          </DialogFooter>
+        </DialogContent>
       </Dialog>
     </div>
   )
