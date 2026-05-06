@@ -250,6 +250,22 @@ export default function CalculadoraAcerto() {
     }
   }
 
+  const handleSendToContasAPagar = async (t: Termination) => {
+    try {
+      await insertBill({
+        id: crypto.randomUUID(),
+        descricao: `RESCISÃO: ${t.funcionarioNome}`,
+        valor: Number(t.valorTotal.toFixed(2)),
+        vencimento: t.dataDemissao,
+        status: 'pendente'
+      } as Bill)
+      alert('Lançamento gerado no Contas a Pagar com sucesso!')
+    } catch (error: any) {
+      console.error(error)
+      alert(`Erro ao lançar no Contas a Pagar: ${error.message || 'Erro desconhecido'}`)
+    }
+  }
+
   const printReport = (isOfficial = false) => {
     if (!results) return
     const title = isOfficial ? 'Recibo de Rescisão' : 'Simulação de Rescisão'
@@ -438,6 +454,9 @@ export default function CalculadoraAcerto() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => handleSendToContasAPagar(t)} title="Enviar para Contas a Pagar">
+                            <ExternalLink className="h-4 w-4 text-blue-500" />
+                          </Button>
                           <Button variant="ghost" size="icon" onClick={() => printSavedTermination(t)} title="Imprimir Recibo">
                             <Printer className="h-4 w-4" />
                           </Button>
