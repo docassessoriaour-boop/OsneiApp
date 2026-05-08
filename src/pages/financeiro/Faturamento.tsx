@@ -223,13 +223,19 @@ export default function Faturamento() {
         }
       }
 
-      // Atualizar Invoice com o ID da transação
-      await updateInvoice(invoiceToPay.id, { 
-        status: 'pago',
+      // 1. Atualizar Invoice com todos os dados do pagamento
+      const updatedInv = {
+        ...invoiceToPay,
+        status: 'pago' as const,
         payment_date: payDate,
         bank_account_id: selectedBankId || null,
-        bank_transaction_id: btId || null
-      })
+        bank_transaction_id: btId || null,
+        paid_by: paidBy.name,
+        paid_by_phone: paidBy.phone,
+        paid_by_document: paidBy.document
+      }
+
+      await updateInvoice(invoiceToPay.id, updatedInv)
 
       // 2. Se houver income_id, atualizar Income
       if (invoiceToPay.income_id) {
@@ -244,19 +250,6 @@ export default function Faturamento() {
         })
       }
 
-      const updatedInv = {
-        ...invoiceToPay,
-        status: 'pago' as const,
-        payment_date: payDate,
-        bank_account_id: selectedBankId || null,
-        bank_transaction_id: btId || null,
-        paid_by: paidBy.name,
-        paid_by_phone: paidBy.phone,
-        paid_by_document: paidBy.document
-      }
-
-      await updateInvoice(invoiceToPay.id, updatedInv)
-      
       setPayDialogOpen(false)
       
       if (confirm('Fatura marcada como paga! Deseja enviar o recibo via WhatsApp?')) {

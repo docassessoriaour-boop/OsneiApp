@@ -46,6 +46,7 @@ export interface Responsible {
   cpf: string
   rg?: string
   telefone?: string
+  is_whatsapp?: boolean
   email?: string
   endereco?: string
   cidade?: string
@@ -65,6 +66,7 @@ export interface Patient {
   data_nascimento: string
   responsavel: string
   telefoneResponsavel: string
+  resp_is_whatsapp?: boolean
   resp_rg: string
   resp_cpf: string
   resp_endereco: string

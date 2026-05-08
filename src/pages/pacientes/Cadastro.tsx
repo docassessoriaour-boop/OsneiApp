@@ -23,6 +23,7 @@ import { useAuth } from '@/contexts/AuthContext'
 const emptyPatient: Omit<Patient, 'id'> = {
   nome: '', cpf: '', rg: '', idade: 0, data_nascimento: '', responsavel: '', telefoneResponsavel: '',
   resp_rg: '', resp_cpf: '', resp_endereco: '', resp_cidade: '', resp_uf: '', resp_cep: '', resp_email: '',
+  resp_is_whatsapp: false,
   resp_nacionalidade: 'Brasileira', resp_estado_civil: 'Casado(a)', resp_profissao: '',
   status: 'ativo', unidade: 'Vila Moraes', dataEntrada: new Date().toISOString().slice(0, 10), observacoes: '',
   outros_responsaveis: []
@@ -184,7 +185,7 @@ export default function Cadastro() {
         <h3 style="background: #f3f4f6; padding: 0.5rem; font-size: 1rem; text-transform: uppercase; margin-bottom: 1rem; border-left: 4px solid #3b82f6;">Dados do Responsável</h3>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
           <div style="grid-column: span 2;"><strong>Responsável Principal:</strong> ${p.responsavel}</div>
-          <div><strong>Telefone:</strong> ${p.telefoneResponsavel}</div>
+          <div><strong>Telefone:</strong> ${p.telefoneResponsavel} ${p.resp_is_whatsapp ? '(WhatsApp)' : ''}</div>
           <div><strong>Email:</strong> ${p.resp_email || '---'}</div>
           <div><strong>CPF:</strong> ${p.resp_cpf || '---'}</div>
           <div><strong>RG:</strong> ${p.resp_rg || '---'}</div>
@@ -197,7 +198,7 @@ export default function Cadastro() {
           ${p.outros_responsaveis.map((r, i) => `
             <div style="margin-bottom: 0.5rem; padding: 0.5rem; border: 1px solid #eee; border-radius: 4px;">
               <div><strong>Responsável ${i + 2}:</strong> ${r.nome}</div>
-              <div style="font-size: 0.8rem; color: #444;">CPF: ${r.cpf} | RG: ${r.rg || '---'} | Telefone: ${r.telefone || '---'}</div>
+              <div style="font-size: 0.8rem; color: #444;">CPF: ${r.cpf} | RG: ${r.rg || '---'} | Telefone: ${r.telefone || '---'} ${r.is_whatsapp ? '(WhatsApp)' : ''}</div>
               <div style="font-size: 0.8rem; color: #444;">Nacionalidade: ${r.nacionalidade || '---'} | Estado Civil: ${r.estado_civil || '---'} | Profissão: ${r.profissao || '---'}</div>
             </div>
           `).join('')}
@@ -369,7 +370,7 @@ export default function Cadastro() {
         <h3 style="background: #f3f4f6; padding: 0.5rem; font-size: 1rem; text-transform: uppercase; margin-bottom: 1rem; border-left: 4px solid #3b82f6;">Dados do Responsável</h3>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
           <div style="grid-column: span 2;"><strong>Responsável Principal:</strong> ${p.responsavel}</div>
-          <div><strong>Telefone:</strong> ${p.telefoneResponsavel}</div>
+          <div><strong>Telefone:</strong> ${p.telefoneResponsavel} ${p.resp_is_whatsapp ? '(WhatsApp)' : ''}</div>
           <div><strong>Email:</strong> ${p.resp_email || '---'}</div>
           <div><strong>CPF:</strong> ${p.resp_cpf || '---'}</div>
           <div><strong>RG:</strong> ${p.resp_rg || '---'}</div>
@@ -382,7 +383,7 @@ export default function Cadastro() {
           ${p.outros_responsaveis.map((r, i) => `
             <div style="margin-bottom: 0.5rem; padding: 0.5rem; border: 1px solid #eee; border-radius: 4px;">
               <div><strong>Responsável ${i + 2}:</strong> ${r.nome}</div>
-              <div style="font-size: 0.8rem; color: #444;">CPF: ${r.cpf} | RG: ${r.rg || '---'} | Telefone: ${r.telefone || '---'}</div>
+              <div style="font-size: 0.8rem; color: #444;">CPF: ${r.cpf} | RG: ${r.rg || '---'} | Telefone: ${r.telefone || '---'} ${r.is_whatsapp ? '(WhatsApp)' : ''}</div>
               <div style="font-size: 0.8rem; color: #444;">Nacionalidade: ${r.nacionalidade || '---'} | Estado Civil: ${r.estado_civil || '---'} | Profissão: ${r.profissao || '---'}</div>
             </div>
           `).join('')}
@@ -595,7 +596,20 @@ export default function Cadastro() {
               <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Dados do Responsável</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                 <div className="md:col-span-2"><Label>Nome do Responsável Principal</Label><Input value={form.responsavel} onChange={(e) => setForm({ ...form, responsavel: e.target.value })} className="mt-1" /></div>
-                <div><Label>Telefone</Label><Input value={form.telefoneResponsavel} onChange={(e) => setForm({ ...form, telefoneResponsavel: e.target.value })} className="mt-1" /></div>
+                <div>
+                  <Label>Telefone</Label>
+                  <div className="flex gap-2 items-center mt-1">
+                    <Input value={form.telefoneResponsavel} onChange={(e) => setForm({ ...form, telefoneResponsavel: e.target.value })} className="flex-1" />
+                    <label className="flex items-center gap-1 text-xs cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        checked={form.resp_is_whatsapp} 
+                        onChange={(e) => setForm({ ...form, resp_is_whatsapp: e.target.checked })} 
+                      />
+                      Whats?
+                    </label>
+                  </div>
+                </div>
                 <div><Label>RG</Label><Input value={form.resp_rg} onChange={(e) => setForm({ ...form, resp_rg: e.target.value })} className="mt-1" /></div>
                 <div><Label>CPF</Label><Input value={form.resp_cpf} onChange={(e) => setForm({ ...form, resp_cpf: e.target.value })} className="mt-1" /></div>
                 <div><Label>CEP</Label><Input value={form.resp_cep} onChange={(e) => setForm({ ...form, resp_cep: e.target.value })} className="mt-1" /></div>
@@ -668,15 +682,29 @@ export default function Cadastro() {
                       </div>
                       <div>
                         <Label>Telefone</Label>
-                        <Input 
-                          value={resp.telefone} 
-                          onChange={(e) => {
-                            const others = [...(form.outros_responsaveis || [])];
-                            others[idx].telefone = e.target.value;
-                            setForm({ ...form, outros_responsaveis: others });
-                          }} 
-                          className="mt-1" 
-                        />
+                        <div className="flex gap-2 items-center mt-1">
+                          <Input 
+                            value={resp.telefone} 
+                            onChange={(e) => {
+                              const others = [...(form.outros_responsaveis || [])];
+                              others[idx].telefone = e.target.value;
+                              setForm({ ...form, outros_responsaveis: others });
+                            }} 
+                            className="flex-1" 
+                          />
+                          <label className="flex items-center gap-1 text-xs cursor-pointer select-none">
+                            <input 
+                              type="checkbox" 
+                              checked={resp.is_whatsapp} 
+                              onChange={(e) => {
+                                const others = [...(form.outros_responsaveis || [])];
+                                others[idx].is_whatsapp = e.target.checked;
+                                setForm({ ...form, outros_responsaveis: others });
+                              }} 
+                            />
+                            Whats?
+                          </label>
+                        </div>
                       </div>
                       <div>
                         <Label>E-mail</Label>
