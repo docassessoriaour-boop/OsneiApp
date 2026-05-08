@@ -542,6 +542,11 @@ export default function ContasReceber() {
                   <TableCell>{statusBadge(i.status)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1">
+                      {i.status === 'recebido' && (
+                        <Button variant="ghost" size="icon" onClick={() => sendWhatsAppReceipt(i, i.valor, i.paid_by || '', i.paid_by_phone || '')} title="WhatsApp Recibo">
+                          <FileText className="h-4 w-4 text-green-600" />
+                        </Button>
+                      )}
                       {(i.status === 'pendente' || i.status === 'vencido') && (
                         <Button variant="ghost" size="icon" onClick={() => openPartial(i)} title="Baixa Parcial">
                           <Split className="h-4 w-4 text-blue-600" />
