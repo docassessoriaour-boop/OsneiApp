@@ -551,12 +551,12 @@ export default function Cadastro() {
         </div>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen} className="max-w-7xl w-[98vw] max-h-[95vh]">
-        <DialogContent className="p-0 overflow-hidden flex flex-col h-[95vh]">
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-7xl w-[98vw] h-[95vh] p-0 overflow-hidden flex flex-col">
           <DialogHeader className="px-6 pt-6">
             <DialogTitle>{editingId ? 'Editar Paciente' : 'Novo Paciente'}</DialogTitle>
           </DialogHeader>
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full flex flex-col h-full">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
             <div className="px-6 pt-4 border-b bg-muted/20">
               <TabsList className="grid w-full grid-cols-2 mb-4">
                 <TabsTrigger value="dados" className="gap-2">
@@ -895,10 +895,10 @@ export default function Cadastro() {
             </div>
             <div className="flex items-center gap-3">
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Fechar</Button>
-              {activeTab === 'dados' && !isStandard && (
+              {!isStandard && (
                 <Button onClick={handleSave}>Salvar Alterações</Button>
               )}
-              {activeTab === 'dados' && isStandard && (
+              {isStandard && (
                 <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">
                   <ShieldAlert className="h-3 w-3" /> Somente Visualização
                 </div>
