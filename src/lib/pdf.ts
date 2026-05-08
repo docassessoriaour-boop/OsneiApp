@@ -148,7 +148,7 @@ export function printReceipt(invoice: Invoice, patient: Patient | undefined, cli
         <div>
           <p style="font-size: 11px; color: #666; margin-bottom: 2px;">PAGADOR / RESPONSÁVEL</p>
           <p><strong>${invoice.paid_by || patient?.responsavel || invoice.client_name}</strong></p>
-          <p style="font-size: 11px;">CPF: ${patient?.resp_cpf || invoice.client_document || '—'}</p>
+          <p style="font-size: 11px;">CPF: ${invoice.paid_by_document || patient?.resp_cpf || invoice.client_document || '—'}</p>
         </div>
         <div>
           <p style="font-size: 11px; color: #666; margin-bottom: 2px;">PACIENTE</p>

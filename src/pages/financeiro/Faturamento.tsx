@@ -30,12 +30,12 @@ export default function Faturamento() {
     const p = patients.find(px => px.id === inv.patient_id)
     if (!p) return []
     const options = [
-      { name: p.nome, phone: p.telefoneResponsavel || '', type: 'Paciente' },
-      { name: p.responsavel, phone: p.telefoneResponsavel || '', type: 'Responsável (Principal)' }
+      { name: p.nome, phone: p.telefoneResponsavel || '', document: p.cpf || '', type: 'Paciente' },
+      { name: p.responsavel, phone: p.telefoneResponsavel || '', document: p.resp_cpf || '', type: 'Responsável (Principal)' }
     ]
     if (p.outros_responsaveis) {
       p.outros_responsaveis.forEach(r => {
-        options.push({ name: r.nome, phone: r.telefone || '', type: `Responsável (${r.nome})` })
+        options.push({ name: r.nome, phone: r.telefone || '', document: r.cpf || '', type: `Responsável (${r.nome})` })
       })
     }
     return options.filter(o => o.name)
@@ -177,15 +177,15 @@ export default function Faturamento() {
   const [payDialogOpen, setPayDialogOpen] = useState(false)
   const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10))
   const [selectedBankId, setSelectedBankId] = useState('')
-  const [paidBy, setPaidBy] = useState({ name: '', phone: '' })
+  const [paidBy, setPaidBy] = useState({ name: '', phone: '', document: '' })
   const [invoiceToPay, setInvoiceToPay] = useState<Invoice | null>(null)
 
   function openPayDialog(inv: Invoice) {
     setInvoiceToPay(inv)
     setPayDate(new Date().toISOString().slice(0, 10))
     setSelectedBankId(inv.bank_account_id || '')
-    const payer = getPayerOptions(inv)[0] || { name: '', phone: '' }
-    setPaidBy({ name: inv.paid_by || payer.name, phone: inv.paid_by_phone || payer.phone })
+    const payer = getPayerOptions(inv)[0] || { name: '', phone: '', document: '' }
+    setPaidBy({ name: inv.paid_by || payer.name, phone: inv.paid_by_phone || payer.phone, document: inv.paid_by_document || (payer as any).document })
     setPayDialogOpen(true)
   }
 
@@ -239,7 +239,8 @@ export default function Faturamento() {
           bank_account_id: selectedBankId || null,
           bank_transaction_id: btId || null,
           paid_by: paidBy.name,
-          paid_by_phone: paidBy.phone
+          paid_by_phone: paidBy.phone,
+          paid_by_document: paidBy.document
         })
       }
 
@@ -250,7 +251,8 @@ export default function Faturamento() {
         bank_account_id: selectedBankId || null,
         bank_transaction_id: btId || null,
         paid_by: paidBy.name,
-        paid_by_phone: paidBy.phone
+        paid_by_phone: paidBy.phone,
+        paid_by_document: paidBy.document
       }
 
       await updateInvoice(invoiceToPay.id, updatedInv)
@@ -618,7 +620,11 @@ export default function Faturamento() {
                 value={paidBy.name}
                 onChange={(e) => {
                   const opt = getPayerOptions(invoiceToPay!).find(o => o.name === e.target.value)
-                  setPaidBy({ name: e.target.value, phone: opt?.phone || '' })
+                  setPaidBy({ 
+                    name: e.target.value, 
+                    phone: opt?.phone || '',
+                    document: (opt as any)?.document || ''
+                  })
                 }}
               >
                 <option value="">-- Selecionar Pagador --</option>

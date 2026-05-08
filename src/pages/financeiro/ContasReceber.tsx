@@ -52,7 +52,8 @@ export default function ContasReceber() {
     dataPagamento: new Date().toISOString().slice(0, 10), 
     bank_account_id: '',
     paid_by: '',
-    paid_by_phone: ''
+    paid_by_phone: '',
+    paid_by_document: ''
   })
   const [form, setForm] = useState(emptyIncome)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
@@ -69,12 +70,12 @@ export default function ContasReceber() {
     const p = findPatientForIncome(income)
     if (!p) return []
     const options = [
-      { name: p.nome, phone: p.telefoneResponsavel || '', type: 'Paciente' },
-      { name: p.responsavel, phone: p.telefoneResponsavel || '', type: 'Responsável (Principal)' }
+      { name: p.nome, phone: p.telefoneResponsavel || '', document: p.cpf || '', type: 'Paciente' },
+      { name: p.responsavel, phone: p.telefoneResponsavel || '', document: p.resp_cpf || '', type: 'Responsável (Principal)' }
     ]
     if (p.outros_responsaveis) {
       p.outros_responsaveis.forEach(r => {
-        options.push({ name: r.nome, phone: r.telefone || '', type: `Responsável (${r.nome})` })
+        options.push({ name: r.nome, phone: r.telefone || '', document: r.cpf || '', type: `Responsável (${r.nome})` })
       })
     }
     return options.filter(o => o.name)
@@ -145,7 +146,8 @@ export default function ContasReceber() {
       dataPagamento: new Date().toISOString().slice(0, 10),
       bank_account_id: '',
       paid_by: '',
-      paid_by_phone: ''
+      paid_by_phone: '',
+      paid_by_document: ''
     })
     setPartialDialogOpen(true)
   }
@@ -174,7 +176,8 @@ export default function ContasReceber() {
         categoria: partialIncome.categoria,
         category_id: partialIncome.category_id,
         paid_by: partialForm.paid_by,
-        paid_by_phone: partialForm.paid_by_phone
+        paid_by_phone: partialForm.paid_by_phone,
+        paid_by_document: partialForm.paid_by_document
       } as any)
 
       // 2. Atualizar a conta atual para refletir o valor pago
@@ -187,7 +190,8 @@ export default function ContasReceber() {
         bank_transaction_id: bt.id,
         descricao: `${partialIncome.descricao} (Parcial)`,
         paid_by: partialForm.paid_by,
-        paid_by_phone: partialForm.paid_by_phone
+        paid_by_phone: partialForm.paid_by_phone,
+        paid_by_document: partialForm.paid_by_document
       } as any)
 
       // 3. Criar a nova conta com o saldo restante
@@ -771,7 +775,12 @@ export default function ContasReceber() {
                   value={partialForm.paid_by}
                   onChange={(e) => {
                     const opt = getPayerOptions(partialIncome).find(o => o.name === e.target.value)
-                    setPartialForm({ ...partialForm, paid_by: e.target.value, paid_by_phone: opt?.phone || '' })
+                    setPartialForm({ 
+                      ...partialForm, 
+                      paid_by: e.target.value, 
+                      paid_by_phone: opt?.phone || '',
+                      paid_by_document: opt?.document || ''
+                    })
                   }}
                   className="mt-1"
                 >

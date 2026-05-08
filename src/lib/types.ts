@@ -178,6 +178,7 @@ export interface Income {
   bank_transaction_id?: string
   paid_by?: string
   paid_by_phone?: string
+  paid_by_document?: string
 }
 
 export interface InvoiceItem {
@@ -202,6 +203,7 @@ export interface Invoice {
   bank_transaction_id?: string
   paid_by?: string
   paid_by_phone?: string
+  paid_by_document?: string
 }
 
 export interface Product {
@@ -279,6 +281,7 @@ export interface BankTransaction {
   status?: string
   paid_by?: string
   paid_by_phone?: string
+  paid_by_document?: string
 }
 
 export interface ScheduleException {
