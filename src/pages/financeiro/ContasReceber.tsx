@@ -216,7 +216,10 @@ export default function ContasReceber() {
           bank_account_id: partialForm.bank_account_id,
           bank_transaction_id: bt.id,
           total_amount: partialForm.valorPago,
-          items: (relatedInvoice.items || []).map(i => ({...i, price: (i.price / relatedInvoice.total_amount) * partialForm.valorPago}))
+          items: (relatedInvoice.items || []).map(i => ({...i, price: (i.price / relatedInvoice.total_amount) * partialForm.valorPago})),
+          paid_by: partialForm.paid_by,
+          paid_by_phone: partialForm.paid_by_phone,
+          paid_by_document: partialForm.paid_by_document
         })
         
         // Cria uma nova fatura com o restante pendente

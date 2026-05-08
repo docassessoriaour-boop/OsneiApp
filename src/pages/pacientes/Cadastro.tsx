@@ -551,8 +551,8 @@ export default function Cadastro() {
         </div>
       </Card>
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="!max-w-none w-[98vw] h-[98vh] p-0 overflow-hidden flex flex-col bg-white border-none shadow-2xl">
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen} className="!max-w-[98vw] w-[98vw] !max-h-[98vh] h-[98vh] flex flex-col p-0 overflow-hidden bg-white border-none shadow-2xl">
+        <DialogContent className="p-0 flex-1 flex flex-col overflow-hidden">
           <div className="px-6 py-4 border-b flex items-center justify-between bg-muted/5">
             <h2 className="text-xl font-bold text-slate-800">{editingId ? 'Editar Paciente' : 'Novo Paciente'}</h2>
             <div className="flex items-center gap-3">
