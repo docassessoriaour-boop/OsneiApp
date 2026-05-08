@@ -93,12 +93,16 @@ export default function ContasReceber() {
       }
     }
 
+    const userInputPhone = window.prompt("Confirme ou digite o número do WhatsApp (com DDD):", finalPhone);
+    if (userInputPhone === null) return; // Usuário cancelou
+    finalPhone = userInputPhone;
+
     const date = new Date().toLocaleDateString('pt-BR')
     const message = `Olá! Confirmamos o recebimento de ${formatCurrency(valor)} referente a ${income.descricao}, pago por ${finalPayer} em ${date}. Obrigado! - ${clinic.nome_fantasia || clinic.razao_social}`
     const encoded = encodeURIComponent(message)
     const cleanPhone = finalPhone.replace(/\D/g, '')
-    if (!cleanPhone) {
-      alert("Telefone do responsável não cadastrado.")
+    if (!cleanPhone || cleanPhone.length < 10) {
+      alert("Número de telefone inválido ou não informado.")
       return
     }
     window.open(`https://wa.me/55${cleanPhone}?text=${encoded}`, '_blank')
