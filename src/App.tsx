@@ -62,16 +62,16 @@ export default function App() {
           {/* RH */}
           <Route path="/rh/funcionarios" element={<ProtectedRoute><Funcionarios /></ProtectedRoute>} />
           <Route path="/rh/curriculos" element={<ProtectedRoute><Curriculos /></ProtectedRoute>} />
-          <Route path="/rh/escalas" element={<ProtectedRoute allowStandard={true}><Escalas /></ProtectedRoute>} />
+          <Route path="/rh/escalas" element={<ProtectedRoute><Escalas /></ProtectedRoute>} />
           <Route path="/rh/folha-pagamento" element={<ProtectedRoute><FolhaPagamento /></ProtectedRoute>} />
           <Route path="/rh/ferias" element={<ProtectedRoute><Ferias /></ProtectedRoute>} />
           <Route path="/rh/calculadora-acerto" element={<ProtectedRoute><CalculadoraAcerto /></ProtectedRoute>} />
           
           {/* Pacientes */}
-          <Route path="/pacientes/cadastro" element={<ProtectedRoute allowStandard={true}><Cadastro /></ProtectedRoute>} />
-          <Route path="/pacientes/medicacao" element={<ProtectedRoute allowStandard={true}><Medicacao /></ProtectedRoute>} />
-          <Route path="/pacientes/laudos" element={<ProtectedRoute allowStandard={true}><Laudos /></ProtectedRoute>} />
-          <Route path="/pacientes/profissionais" element={<ProtectedRoute allowStandard={true}><Profissionais /></ProtectedRoute>} />
+          <Route path="/pacientes/cadastro" element={<ProtectedRoute><Cadastro /></ProtectedRoute>} />
+          <Route path="/pacientes/medicacao" element={<ProtectedRoute><Medicacao /></ProtectedRoute>} />
+          <Route path="/pacientes/laudos" element={<ProtectedRoute><Laudos /></ProtectedRoute>} />
+          <Route path="/pacientes/profissionais" element={<ProtectedRoute><Profissionais /></ProtectedRoute>} />
           <Route path="/pacientes/catalogo-medicos" element={<ProtectedRoute><MedicamentosBase /></ProtectedRoute>} />
           <Route path="/pacientes/agendamentos" element={<ProtectedRoute><Agendamentos /></ProtectedRoute>} />
           <Route path="/pacientes/contratos" element={<ProtectedRoute><Contratos /></ProtectedRoute>} />

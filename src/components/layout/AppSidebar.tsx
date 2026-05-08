@@ -57,14 +57,7 @@ export function AppSidebar({ open, onClose }: SidebarProps) {
           { name: 'Calculadora de Acerto', href: '/rh/calculadora-acerto', icon: Calculator },
         ],
       }
-    ] : [
-      {
-        section: 'RH',
-        items: [
-          { name: 'Escalas de Trabalho', href: '/rh/escalas', icon: CalendarDays },
-        ],
-      }
-    ]),
+    ] : []),
     ...(isAdmin || profile?.role === 'manager' ? [
       {
         section: 'MENSALIDADE/SERVIÇOS',
@@ -78,17 +71,7 @@ export function AppSidebar({ open, onClose }: SidebarProps) {
           { name: 'Laudos Técnicos', href: '/pacientes/laudos', icon: FileText },
         ],
       }
-    ] : [
-      {
-        section: 'MENSALIDADE/SERVIÇOS',
-        items: [
-          { name: 'Inserir/Editar Medicação', href: '/pacientes/cadastro', icon: Pill },
-          { name: 'Escala de Medicação', href: '/pacientes/medicacao', icon: ClipboardList },
-          { name: 'Técnicos/Profissionais', href: '/pacientes/profissionais', icon: Users },
-          { name: 'Laudos Técnicos', href: '/pacientes/laudos', icon: FileText },
-        ],
-      }
-    ]),
+    ] : []),
     ...(isAdmin || profile?.role === 'manager' ? [
       {
         section: 'FINANCEIRO',

@@ -4,7 +4,7 @@ import { useDb } from '@/hooks/useDb'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF, formatCurrencyPDF, formatDatePDF } from '@/lib/pdf'
-import type { Bill, TransactionCategory, BankAccount } from '@/lib/types'
+import type { Bill, TransactionCategory, BankAccount, Termination } from '@/lib/types'
 import { SearchBar } from '@/components/shared/SearchBar'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Card } from '@/components/ui/card'
@@ -34,7 +34,8 @@ export default function ContasPagar() {
   const { data: categories } = useDb<TransactionCategory>('transaction_categories')
   const { data: entities, insert: insertEntity } = useDb<any>('entities')
   const { data: bankAccounts } = useDb<BankAccount>('bank_accounts')
-  const { insert: insertBankTransaction, update: updateBankTransaction, remove: removeBankTransaction } = useDb<BankTransaction>('bank_transactions')
+  const { insert: insertBankTransaction, update: updateBankTransaction, remove: removeBankTransaction } = useDb<any>('bank_transactions')
+  const { update: updateTermination } = useDb<Termination>('terminations')
   
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
@@ -163,6 +164,11 @@ export default function ContasPagar() {
         bank_transaction_id: bt.id,
         descricao: `${partialBill.descricao} (Parcial)`
       })
+
+      // Se for uma rescisão, dar baixa nela também
+      if ((partialBill as any).termination_id) {
+        await updateTermination((partialBill as any).termination_id, { status: 'pago' })
+      }
 
       // 3. Criar a nova conta com o saldo restante
       await insert({
@@ -406,6 +412,11 @@ export default function ContasPagar() {
         } else {
           await update(editingId, payload)
           
+          // Se for uma rescisão e estiver sendo paga agora, dar baixa nela também
+          if (payload.status === 'pago' && (payload as any).termination_id) {
+            await updateTermination((payload as any).termination_id, { status: 'pago' })
+          }
+          
           if (isSplit) {
             const cat2 = categories.find(c => c.id === splitForm.category2_id)
             await insert({
@@ -434,7 +445,12 @@ export default function ContasPagar() {
           }
           await Promise.all(promises)
         } else {
-          await insert(payload)
+          const insertedBill = await insert(payload)
+          
+          // Se for uma rescisão e já estiver sendo inserida como paga, dar baixa nela também
+          if (payload.status === 'pago' && (payload as any).termination_id) {
+             await updateTermination((payload as any).termination_id, { status: 'pago' })
+          }
           
           if (isSplit) {
             const cat2 = categories.find(c => c.id === splitForm.category2_id)

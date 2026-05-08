@@ -238,8 +238,9 @@ export default function CalculadoraAcerto() {
         descricao: `RESCISÃO: ${form.name}`,
         valor: Number(results.netTotal.toFixed(2)),
         vencimento: form.terminationDate, // Vencimento na data de desligamento (ou pode ser +10 dias)
-        status: 'pendente'
-      } as Bill)
+        status: 'pendente',
+        termination_id: terminationId
+      } as any)
 
       alert('Rescisão salva com sucesso e lançada no Contas a Pagar!')
     } catch (error: any) {
@@ -257,8 +258,9 @@ export default function CalculadoraAcerto() {
         descricao: `RESCISÃO: ${t.funcionarioNome}`,
         valor: Number(t.valorTotal.toFixed(2)),
         vencimento: t.dataDemissao,
-        status: 'pendente'
-      } as Bill)
+        status: 'pendente',
+        termination_id: t.id
+      } as any)
       alert('Lançamento gerado no Contas a Pagar com sucesso!')
     } catch (error: any) {
       console.error(error)
