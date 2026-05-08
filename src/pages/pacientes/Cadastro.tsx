@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Pencil, Trash2, FileText, Loader2, Pill, Plus, Calendar, ShieldAlert } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, Pill, Plus, Calendar, ShieldAlert, Save } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -552,10 +552,20 @@ export default function Cadastro() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-7xl w-[98vw] h-[95vh] p-0 overflow-hidden flex flex-col">
-          <DialogHeader className="px-6 pt-6">
-            <DialogTitle>{editingId ? 'Editar Paciente' : 'Novo Paciente'}</DialogTitle>
-          </DialogHeader>
+        <DialogContent className="max-w-7xl w-[98vw] h-[98vh] p-0 overflow-hidden flex flex-col bg-white">
+          <div className="px-6 py-4 border-b flex items-center justify-between bg-muted/5">
+            <h2 className="text-xl font-bold text-slate-800">{editingId ? 'Editar Paciente' : 'Novo Paciente'}</h2>
+            <div className="flex items-center gap-3">
+              {!isStandard && (
+                <Button onClick={handleSave} className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-lg">
+                  <Save className="h-4 w-4" /> SALVAR ALTERAÇÕES
+                </Button>
+              )}
+              <Button variant="ghost" size="icon" onClick={() => setDialogOpen(false)}>
+                <Plus className="h-5 w-5 rotate-45" />
+              </Button>
+            </div>
+          </div>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
             <div className="px-6 pt-4 border-b bg-muted/20">
               <TabsList className="grid w-full grid-cols-2 mb-4">
