@@ -26,6 +26,33 @@ export default function Faturamento() {
   const { insert: insertBankTransaction, update: updateBankTransaction } = useDb<BankTransaction>('bank_transactions')
   const [clinic] = useClinic()
 
+  const getPayerOptions = (inv: Invoice) => {
+    const p = patients.find(px => px.id === inv.patient_id)
+    if (!p) return []
+    const options = [
+      { name: p.nome, phone: p.telefoneResponsavel || '', type: 'Paciente' },
+      { name: p.responsavel, phone: p.telefoneResponsavel || '', type: 'Responsável (Principal)' }
+    ]
+    if (p.outros_responsaveis) {
+      p.outros_responsaveis.forEach(r => {
+        options.push({ name: r.nome, phone: r.telefone || '', type: `Responsável (${r.nome})` })
+      })
+    }
+    return options.filter(o => o.name)
+  }
+
+  const sendWhatsAppReceipt = (inv: Invoice, valor: number, payer: string, phone: string) => {
+    const date = new Date().toLocaleDateString('pt-BR')
+    const message = `Olá! Confirmamos o recebimento de ${formatCurrency(valor)} referente a ${inv.items?.[0]?.description || 'Serviços Assistenciais'}, pago por ${payer} em ${date}. Obrigado! - ${clinic.nome_fantasia || clinic.razao_social}`
+    const encoded = encodeURIComponent(message)
+    const cleanPhone = phone.replace(/\D/g, '')
+    if (!cleanPhone) {
+      alert("Telefone do responsável não cadastrado.")
+      return
+    }
+    window.open(`https://wa.me/55${cleanPhone}?text=${encoded}`, '_blank')
+  }
+
   const [dialogOpen, setDialogOpen] = useState(false)
   const [batchDialogOpen, setBatchDialogOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -150,12 +177,15 @@ export default function Faturamento() {
   const [payDialogOpen, setPayDialogOpen] = useState(false)
   const [payDate, setPayDate] = useState(new Date().toISOString().slice(0, 10))
   const [selectedBankId, setSelectedBankId] = useState('')
+  const [paidBy, setPaidBy] = useState({ name: '', phone: '' })
   const [invoiceToPay, setInvoiceToPay] = useState<Invoice | null>(null)
 
   function openPayDialog(inv: Invoice) {
     setInvoiceToPay(inv)
     setPayDate(new Date().toISOString().slice(0, 10))
     setSelectedBankId(inv.bank_account_id || '')
+    const payer = getPayerOptions(inv)[0] || { name: '', phone: '' }
+    setPaidBy({ name: inv.paid_by || payer.name, phone: inv.paid_by_phone || payer.phone })
     setPayDialogOpen(true)
   }
 
@@ -207,14 +237,28 @@ export default function Faturamento() {
           status: 'recebido',
           payment_date: payDate,
           bank_account_id: selectedBankId || null,
-          bank_transaction_id: btId || null
+          bank_transaction_id: btId || null,
+          paid_by: paidBy.name,
+          paid_by_phone: paidBy.phone
         })
       }
+
+      const updatedInv = {
+        ...invoiceToPay,
+        status: 'pago' as const,
+        payment_date: payDate,
+        bank_account_id: selectedBankId || null,
+        bank_transaction_id: btId || null,
+        paid_by: paidBy.name,
+        paid_by_phone: paidBy.phone
+      }
+
+      await updateInvoice(invoiceToPay.id, updatedInv)
       
       setPayDialogOpen(false)
       
-      if (confirm('Fatura marcada como paga! Deseja gerar o recibo agora?')) {
-        handlePrintReceipt(updatedInv)
+      if (confirm('Fatura marcada como paga! Deseja enviar o recibo via WhatsApp?')) {
+        sendWhatsAppReceipt(updatedInv, updatedInv.total_amount, updatedInv.paid_by || '', updatedInv.paid_by_phone || '')
       }
     } catch (error) {
        console.error(error)
@@ -429,6 +473,9 @@ export default function Faturamento() {
                           <Button variant="ghost" size="icon" onClick={() => handlePrintReceipt(inv)} title="Imprimir Recibo" className="text-blue-600">
                             <Receipt className="h-4 w-4" />
                           </Button>
+                          <Button variant="ghost" size="icon" onClick={() => sendWhatsAppReceipt(inv, inv.total_amount, inv.paid_by || '', inv.paid_by_phone || '')} title="WhatsApp Recibo" className="text-green-600">
+                            <FileText className="h-4 w-4" />
+                          </Button>
                           <Button variant="ghost" size="icon" onClick={() => openEditPayDialog(inv)} title="Editar Data do Pagamento" className="text-orange-500">
                             <Calendar className="h-4 w-4" />
                           </Button>
@@ -565,6 +612,25 @@ export default function Faturamento() {
                 ))}
               </Select>
             </div>
+            <div className="space-y-2">
+              <Label>Responsável pelo Pagamento</Label>
+              <Select
+                value={paidBy.name}
+                onChange={(e) => {
+                  const opt = getPayerOptions(invoiceToPay!).find(o => o.name === e.target.value)
+                  setPaidBy({ name: e.target.value, phone: opt?.phone || '' })
+                }}
+              >
+                <option value="">-- Selecionar Pagador --</option>
+                {invoiceToPay && getPayerOptions(invoiceToPay).map((o, idx) => (
+                  <option key={idx} value={o.name}>{o.name} ({o.type})</option>
+                ))}
+              </Select>
+              {paidBy.phone && (
+                <p className="text-[10px] text-muted-foreground">WhatsApp: {paidBy.phone}</p>
+              )}
+            </div>
+
             <div className="p-3 bg-muted rounded-md text-sm">
                <strong>Valor:</strong> {formatCurrency(invoiceToPay?.total_amount || 0)}
             </div>

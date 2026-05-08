@@ -47,9 +47,50 @@ export default function ContasReceber() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [partialDialogOpen, setPartialDialogOpen] = useState(false)
   const [partialIncome, setPartialIncome] = useState<Income | null>(null)
-  const [partialForm, setPartialForm] = useState({ valorPago: 0, dataPagamento: new Date().toISOString().slice(0, 10), bank_account_id: '' })
+  const [partialForm, setPartialForm] = useState({ 
+    valorPago: 0, 
+    dataPagamento: new Date().toISOString().slice(0, 10), 
+    bank_account_id: '',
+    paid_by: '',
+    paid_by_phone: ''
+  })
   const [form, setForm] = useState(emptyIncome)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  
+  const findPatientForIncome = (income: Income) => {
+    const relInv = invoices.find(inv => inv.income_id === income.id)
+    if (relInv && relInv.patient_id) {
+      return patients.find(p => p.id === relInv.patient_id)
+    }
+    return patients.find(p => income.descricao.toLowerCase().includes(p.nome.toLowerCase()))
+  }
+
+  const getPayerOptions = (income: Income) => {
+    const p = findPatientForIncome(income)
+    if (!p) return []
+    const options = [
+      { name: p.nome, phone: p.telefoneResponsavel || '', type: 'Paciente' },
+      { name: p.responsavel, phone: p.telefoneResponsavel || '', type: 'Responsável (Principal)' }
+    ]
+    if (p.outros_responsaveis) {
+      p.outros_responsaveis.forEach(r => {
+        options.push({ name: r.nome, phone: r.telefone || '', type: `Responsável (${r.nome})` })
+      })
+    }
+    return options.filter(o => o.name)
+  }
+
+  const sendWhatsAppReceipt = (income: Income, valor: number, payer: string, phone: string) => {
+    const date = new Date().toLocaleDateString('pt-BR')
+    const message = `Olá! Confirmamos o recebimento de ${formatCurrency(valor)} referente a ${income.descricao}, pago por ${payer} em ${date}. Obrigado! - ${clinic.nome_fantasia || clinic.razao_social}`
+    const encoded = encodeURIComponent(message)
+    const cleanPhone = phone.replace(/\D/g, '')
+    if (!cleanPhone) {
+      alert("Telefone do responsável não cadastrado.")
+      return
+    }
+    window.open(`https://wa.me/55${cleanPhone}?text=${encoded}`, '_blank')
+  }
   
   // State for delete confirmation dialog
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
@@ -102,7 +143,9 @@ export default function ContasReceber() {
     setPartialForm({
       valorPago: 0,
       dataPagamento: new Date().toISOString().slice(0, 10),
-      bank_account_id: ''
+      bank_account_id: '',
+      paid_by: '',
+      paid_by_phone: ''
     })
     setPartialDialogOpen(true)
   }
@@ -129,7 +172,9 @@ export default function ContasReceber() {
         origem: 'manual',
         bank_account_id: partialForm.bank_account_id,
         categoria: partialIncome.categoria,
-        category_id: partialIncome.category_id
+        category_id: partialIncome.category_id,
+        paid_by: partialForm.paid_by,
+        paid_by_phone: partialForm.paid_by_phone
       } as any)
 
       // 2. Atualizar a conta atual para refletir o valor pago
@@ -140,8 +185,10 @@ export default function ContasReceber() {
         payment_date: partialForm.dataPagamento,
         bank_account_id: partialForm.bank_account_id,
         bank_transaction_id: bt.id,
-        descricao: `${partialIncome.descricao} (Parcial)`
-      })
+        descricao: `${partialIncome.descricao} (Parcial)`,
+        paid_by: partialForm.paid_by,
+        paid_by_phone: partialForm.paid_by_phone
+      } as any)
 
       // 3. Criar a nova conta com o saldo restante
       const novaConta = await insert({
@@ -183,7 +230,9 @@ export default function ContasReceber() {
       }
 
       setPartialDialogOpen(false)
-      alert("Baixa parcial efetuada com sucesso!")
+      if (confirm("Baixa parcial efetuada com sucesso! Deseja enviar o recibo via WhatsApp?")) {
+        sendWhatsAppReceipt(partialIncome, partialForm.valorPago, partialForm.paid_by, partialForm.paid_by_phone)
+      }
     } catch (e: any) {
       console.error(e)
       alert("Erro ao realizar baixa parcial: " + e.message)
@@ -709,6 +758,26 @@ export default function ContasReceber() {
                     ))}
                   </Select>
                 </div>
+              </div>
+
+              <div>
+                <Label>Responsável pelo Pagamento</Label>
+                <Select
+                  value={partialForm.paid_by}
+                  onChange={(e) => {
+                    const opt = getPayerOptions(partialIncome).find(o => o.name === e.target.value)
+                    setPartialForm({ ...partialForm, paid_by: e.target.value, paid_by_phone: opt?.phone || '' })
+                  }}
+                  className="mt-1"
+                >
+                  <option value="">-- Selecione o Payer --</option>
+                  {getPayerOptions(partialIncome).map((o, idx) => (
+                    <option key={idx} value={o.name}>{o.name} ({o.type})</option>
+                  ))}
+                </Select>
+                {partialForm.paid_by_phone && (
+                  <p className="text-[10px] text-muted-foreground mt-1">WhatsApp: {partialForm.paid_by_phone}</p>
+                )}
               </div>
             </div>
           )}
