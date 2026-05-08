@@ -42,10 +42,21 @@ export default function Faturamento() {
   }
 
   const sendWhatsAppReceipt = (inv: Invoice, valor: number, payer: string, phone: string) => {
+    let finalPhone = phone;
+    let finalPayer = payer;
+
+    if (!finalPhone) {
+      const p = patients.find(px => px.id === inv.patient_id)
+      if (p) {
+        finalPhone = p.telefoneResponsavel || '';
+        finalPayer = finalPayer || p.responsavel || p.nome;
+      }
+    }
+
     const date = new Date().toLocaleDateString('pt-BR')
-    const message = `Olá! Confirmamos o recebimento de ${formatCurrency(valor)} referente a ${inv.items?.[0]?.description || 'Serviços Assistenciais'}, pago por ${payer} em ${date}. Obrigado! - ${clinic.nome_fantasia || clinic.razao_social}`
+    const message = `Olá! Confirmamos o recebimento de ${formatCurrency(valor)} referente a ${inv.items?.[0]?.description || 'Serviços Assistenciais'}, pago por ${finalPayer} em ${date}. Obrigado! - ${clinic.nome_fantasia || clinic.razao_social}`
     const encoded = encodeURIComponent(message)
-    const cleanPhone = phone.replace(/\D/g, '')
+    const cleanPhone = finalPhone.replace(/\D/g, '')
     if (!cleanPhone) {
       alert("Telefone do responsável não cadastrado.")
       return
