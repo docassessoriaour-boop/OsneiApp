@@ -67,7 +67,7 @@ export function AppSidebar({ open, onClose }: SidebarProps) {
     ]),
     ...(isAdmin || profile?.role === 'manager' ? [
       {
-        section: 'PACIENTES',
+        section: 'MENSALIDADE/SERVIÇOS',
         items: [
           { name: 'Cadastro', href: '/pacientes/cadastro', icon: Heart },
           { name: 'Medicação', href: '/pacientes/medicacao', icon: Pill },
@@ -80,7 +80,7 @@ export function AppSidebar({ open, onClose }: SidebarProps) {
       }
     ] : [
       {
-        section: 'PACIENTES',
+        section: 'MENSALIDADE/SERVIÇOS',
         items: [
           { name: 'Inserir/Editar Medicação', href: '/pacientes/cadastro', icon: Pill },
           { name: 'Escala de Medicação', href: '/pacientes/medicacao', icon: ClipboardList },

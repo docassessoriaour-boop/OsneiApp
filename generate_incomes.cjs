@@ -36,7 +36,7 @@ for (const c of contractsData) {
     const monthYear = (dueDate.getMonth() + 1).toString().padStart(2, '0') + '/' + dueDate.getFullYear();
     const description = `Mensalidade: ${c.nome} - ${monthYear}`;
     
-    genSql.push(`INSERT INTO incomes (descricao, valor, vencimento, status, category_id, categoria) VALUES ('${description.replace(/'/g, "''")}', ${c.valor}, '${dueDateStr}', 'pendente', '${categoryId}', 'Paciente');`);
+    genSql.push(`INSERT INTO incomes (descricao, valor, vencimento, status, category_id, categoria) VALUES ('${description.replace(/'/g, "''")}', ${c.valor}, '${dueDateStr}', 'pendente', '${categoryId}', 'Mensalidade/Serviços');`);
   }
 }
 

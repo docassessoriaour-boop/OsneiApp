@@ -181,7 +181,7 @@ export default function Faturamento() {
           tipo: 'credito' as const,
           origem: 'manual' as const,
           bank_account_id: selectedBankId,
-          categoria: linkedIncome?.categoria || 'Paciente',
+          categoria: linkedIncome?.categoria || 'Mensalidade/Serviços',
           category_id: linkedIncome?.category_id || null
         }
 
