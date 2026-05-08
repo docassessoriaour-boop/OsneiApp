@@ -309,6 +309,9 @@ export interface CompanyInfo {
   email: string
   website: string
   logotipo_url: string
+  assinatura_url?: string
+  configuracoes_adicionais?: any
+  created_at?: string
 }
 
 export interface CompanySettings {
@@ -330,6 +333,7 @@ export interface CompanySettings {
   email: string
   website: string
   logo_url: string
+  assinatura_url?: string
   updated_at?: string
   created_at?: string
 }

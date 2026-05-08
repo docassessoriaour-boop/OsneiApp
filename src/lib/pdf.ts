@@ -169,8 +169,9 @@ export function printReceipt(invoice: Invoice, patient: Patient | undefined, cli
     <div style="margin-top: 60px; text-align: center;">
       <p>${clinic.city || 'Ourinhos'} (SP), ${invoice.payment_date ? formatDatePDF(invoice.payment_date) : new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
       
-      <div style="margin-top: 50px;">
-        <div style="border-top: 1px solid #000; width: 300px; margin: 0 auto;"></div>
+      <div style="margin-top: 50px; position: relative;">
+        ${clinic.assinatura_url ? `<img src="${clinic.assinatura_url}" alt="Assinatura" style="max-height: 80px; margin-bottom: -20px; position: relative; z-index: 1;" />` : ''}
+        <div style="border-top: 1px solid #000; width: 300px; margin: 0 auto; position: relative; z-index: 0;"></div>
         <p style="margin-top: 5px;"><strong>${clinic.razao_social || clinic.name}</strong><br/>CNPJ: ${clinic.cnpj || ''}</p>
       </div>
     </div>

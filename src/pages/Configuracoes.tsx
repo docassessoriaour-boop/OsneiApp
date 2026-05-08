@@ -357,6 +357,21 @@ export default function Configuracoes() {
               placeholder="https://link-para-sua-logo.png"
             />
           </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="assinatura_url">URL da Assinatura Digital (PNG Transparente Recomendado)</Label>
+            <Input 
+              id="assinatura_url"
+              value={form.assinatura_url || ''} 
+              onChange={(e) => setForm({ ...form, assinatura_url: e.target.value })} 
+              placeholder="https://link-para-sua-assinatura.png"
+            />
+            {form.assinatura_url && (
+              <div className="mt-2 p-2 border rounded bg-white flex justify-center">
+                <img src={form.assinatura_url} alt="Prévia da Assinatura" className="max-h-20 object-contain" />
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="mt-8 flex justify-end">
