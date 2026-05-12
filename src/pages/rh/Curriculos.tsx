@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useDb } from '@/hooks/useDb'
+import { useCep } from '@/hooks/useCep'
 import { useClinic } from '@/lib/clinicConfig'
 import type { Curriculum, Employee } from '@/lib/types'
 
@@ -38,7 +39,10 @@ const emptyCurriculum: Omit<Curriculum, 'id'> = {
   cpf: '',
   cargo_pretendido: '',
   status: 'em_analise',
-  data_nascimento: ''
+  data_nascimento: '',
+  cep: '',
+  cidade: '',
+  uf: '',
 }
 
 export default function Curriculos() {
@@ -47,6 +51,7 @@ export default function Curriculos() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyCurriculum)
   const { data: curriculums, loading, insert, update, remove, reload } = useDb<Curriculum>('curriculums')
+  const { fetchCep } = useCep()
   const { insert: insertEmployee } = useDb<Employee>('employees')
   const [search, setSearch] = useState('')
   const [saving, setSaving] = useState(false)
@@ -154,6 +159,20 @@ export default function Curriculos() {
     printPDF('CONVITE PARA ENTREVISTA', bodyHtml, clinic)
   }
 
+  const handleCepBlur = async (cep: string) => {
+    if (!cep) return
+    const data = await fetchCep(cep)
+    if (data) {
+      setForm(f => ({
+        ...f,
+        endereco: `${data.logradouro}${data.bairro ? `, ${data.bairro}` : ''}`,
+        cidade: data.localidade,
+        uf: data.uf,
+        cep: data.cep
+      }))
+    }
+  }
+
   async function handleSave() {
     if (!form.nome) {
       alert('Por favor, preencha o nome.')
@@ -205,6 +224,9 @@ export default function Curriculos() {
           rg: curr.rg,
           telefone: curr.telefone,
           endereco: curr.endereco,
+          cep: curr.cep,
+          cidade: curr.cidade,
+          uf: curr.uf,
           cargo: curr.cargo_pretendido || '',
           unidade: 'Vila Moraes',
           turno: 'Diurno',
@@ -356,9 +378,27 @@ export default function Curriculos() {
               <Label>CPF</Label>
               <Input value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} className="mt-1" />
             </div>
-            <div className="md:col-span-2">
-              <Label>Endereço</Label>
-              <Input value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} className="mt-1" />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:col-span-2">
+              <div className="md:col-span-1">
+                <Label>CEP</Label>
+                <Input value={form.cep || ''} onChange={(e) => setForm({ ...form, cep: e.target.value })} onBlur={(e) => handleCepBlur(e.target.value)} className="mt-1" />
+              </div>
+              <div className="md:col-span-2">
+                <Label>Endereço Completo</Label>
+                <Input value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} className="mt-1" placeholder="Rua, Número, Bairro" />
+              </div>
+              <div className="md:col-span-1">
+                <Label>Cidade (UF)</Label>
+                <Input value={form.uf ? `${form.cidade} - ${form.uf}` : (form.cidade || '')} onChange={(e) => {
+                  const val = e.target.value;
+                  if (val.includes(' - ')) {
+                    const [cit, st] = val.split(' - ');
+                    setForm({ ...form, cidade: cit, uf: st });
+                  } else {
+                    setForm({ ...form, cidade: val });
+                  }
+                }} className="mt-1" placeholder="Cidade - UF" />
+              </div>
             </div>
             <div className="md:col-span-2">
               <Label>Status do Currículo</Label>

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useDb } from '@/hooks/useDb'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
-import { printPDF, formatCurrencyPDF, formatDatePDF } from '@/lib/pdf'
+import { printPDF, formatCurrencyPDF, formatDatePDF, printReceipt } from '@/lib/pdf'
 import type { Income, TransactionCategory, Patient, BankAccount, BankTransaction, Invoice } from '@/lib/types'
 import { SearchBar } from '@/components/shared/SearchBar'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -14,7 +14,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, Loader2, ArrowUp, ArrowDown, Split } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, ArrowUp, ArrowDown, Split, Receipt } from 'lucide-react'
 
 const emptyIncome: Omit<Income, 'id'> = {
   descricao: '', 
@@ -25,7 +25,10 @@ const emptyIncome: Omit<Income, 'id'> = {
   status: 'pendente',
   payment_date: '',
   bank_account_id: '',
-  source_bank_account_id: ''
+  source_bank_account_id: '',
+  paid_by: '',
+  paid_by_phone: '',
+  paid_by_document: ''
 }
 
 export default function ContasReceber() {
@@ -107,6 +110,25 @@ export default function ContasReceber() {
     }
     window.open(`https://wa.me/55${cleanPhone}?text=${encoded}`, '_blank')
   }
+
+  const handlePrintReceipt = (income: Income) => {
+    const patient = findPatientForIncome(income)
+    const pseudoInvoice: Invoice = {
+      id: income.id,
+      client_name: income.descricao.split(':')[1]?.trim() || income.descricao,
+      client_document: income.paid_by_document || '',
+      date_issued: income.vencimento,
+      due_date: income.vencimento,
+      total_amount: income.valor,
+      status: 'pago',
+      items: [{ description: income.descricao, quantity: 1, price: income.valor }],
+      payment_date: income.payment_date,
+      paid_by: income.paid_by,
+      paid_by_phone: income.paid_by_phone,
+      paid_by_document: income.paid_by_document
+    }
+    printReceipt(pseudoInvoice, patient, clinic)
+  }
   
   // State for delete confirmation dialog
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
@@ -146,7 +168,10 @@ export default function ContasReceber() {
   function openEdit(i: Income) { 
     setForm({
       ...i,
-      source_bank_account_id: (i as any).source_bank_account_id || ''
+      source_bank_account_id: (i as any).source_bank_account_id || '',
+      paid_by: i.paid_by || '',
+      paid_by_phone: i.paid_by_phone || '',
+      paid_by_document: i.paid_by_document || ''
     }); 
     setEditingId(i.id); 
     setIsSplit(false);
@@ -302,7 +327,10 @@ export default function ContasReceber() {
           origem: 'manual' as const,
           bank_account_id: payload.bank_account_id,
           categoria: payload.categoria,
-          category_id: payload.category_id
+          category_id: payload.category_id,
+          paid_by: payload.paid_by,
+          paid_by_phone: payload.paid_by_phone,
+          paid_by_document: payload.paid_by_document
         }
 
         if (btId) {
@@ -565,9 +593,14 @@ export default function ContasReceber() {
                   <TableCell>
                     <div className="flex items-center gap-1">
                       {i.status === 'recebido' && (
-                        <Button variant="ghost" size="icon" onClick={() => sendWhatsAppReceipt(i, i.valor, i.paid_by || '', i.paid_by_phone || '')} title="WhatsApp Recibo">
-                          <FileText className="h-4 w-4 text-green-600" />
-                        </Button>
+                        <>
+                          <Button variant="ghost" size="icon" onClick={() => handlePrintReceipt(i)} title="Imprimir Recibo" className="text-blue-600">
+                            <Receipt className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => sendWhatsAppReceipt(i, i.valor, i.paid_by || '', i.paid_by_phone || '')} title="WhatsApp Recibo">
+                            <FileText className="h-4 w-4 text-green-600" />
+                          </Button>
+                        </>
                       )}
                       {(i.status === 'pendente' || i.status === 'vencido') && (
                         <Button variant="ghost" size="icon" onClick={() => openPartial(i)} title="Baixa Parcial">
@@ -710,6 +743,31 @@ export default function ContasReceber() {
                       ))}
                     </Select>
                  </div>
+
+                  <div className="col-span-2">
+                    <Label>Responsável pelo Pagamento (Para o Recibo)</Label>
+                    <Select
+                      value={form.paid_by}
+                      onChange={(e) => {
+                        const opt = getPayerOptions(form as any).find(o => o.name === e.target.value)
+                        setForm({ 
+                          ...form, 
+                          paid_by: e.target.value, 
+                          paid_by_phone: opt?.phone || '',
+                          paid_by_document: opt?.document || ''
+                        })
+                      }}
+                      className="mt-1"
+                    >
+                      <option value="">-- Selecionar Pagador --</option>
+                      {getPayerOptions(form as any).map((o, idx) => (
+                        <option key={idx} value={o.name}>{o.name} ({o.type})</option>
+                      ))}
+                    </Select>
+                    {form.paid_by_phone && (
+                      <p className="text-[10px] text-muted-foreground mt-1 px-1">WhatsApp: {form.paid_by_phone}</p>
+                    )}
+                  </div>
 
                  {(form.category_id === '372443ce-38f3-4cd4-9188-a2053a2cf150' || form.categoria === 'Resgate Aplicação Financeira') && (
                     <div className="col-span-2 bg-green-50 p-3 rounded-lg border border-green-100">

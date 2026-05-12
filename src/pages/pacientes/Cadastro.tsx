@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useDb } from '@/hooks/useDb'
+import { useCep } from '@/hooks/useCep'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
 import type { Patient, Medication, BaseMedication } from '@/lib/types'
@@ -37,6 +38,7 @@ export default function Cadastro() {
   const { data: allMedications, insert: insertMed, update: updateMed, remove: removeMed, reload: reloadMeds } = useDb<Medication>('medications')
   const { data: rawProducts } = useDb<any>('products')
   const baseMeds = rawProducts.filter((p: any) => p.tipo === 'medicamento')
+  const { fetchCep } = useCep()
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'inativo'>('todos')
@@ -158,6 +160,36 @@ export default function Cadastro() {
     const age = calculateAge(dob);
     setForm({ ...form, data_nascimento: dob, idade: age });
   };
+
+  const handleCepBlur = async (cep: string) => {
+    if (!cep) return
+    const data = await fetchCep(cep)
+    if (data) {
+      setForm(f => ({
+        ...f,
+        resp_endereco: `${data.logradouro}${data.bairro ? `, ${data.bairro}` : ''}`,
+        resp_cidade: data.localidade,
+        resp_uf: data.uf,
+        resp_cep: data.cep
+      }))
+    }
+  }
+
+  const handleOtherCepBlur = async (cep: string, index: number) => {
+    if (!cep) return
+    const data = await fetchCep(cep)
+    if (data) {
+      const others = [...(form.outros_responsaveis || [])]
+      others[index] = {
+        ...others[index],
+        endereco: `${data.logradouro}${data.bairro ? `, ${data.bairro}` : ''}`,
+        cidade: data.localidade,
+        uf: data.uf,
+        cep: data.cep
+      }
+      setForm(f => ({ ...f, outros_responsaveis: others }))
+    }
+  }
 
   async function handleSave() {
     if (!form.nome || !form.cpf) {
@@ -671,9 +703,17 @@ export default function Cadastro() {
                 </div>
                 <div><Label>RG</Label><Input value={form.resp_rg} onChange={(e) => setForm({ ...form, resp_rg: e.target.value })} className="mt-1" /></div>
                 <div><Label>CPF</Label><Input value={form.resp_cpf} onChange={(e) => setForm({ ...form, resp_cpf: e.target.value })} className="mt-1" /></div>
-                <div><Label>CEP</Label><Input value={form.resp_cep} onChange={(e) => setForm({ ...form, resp_cep: e.target.value })} className="mt-1" /></div>
+                <div><Label>CEP</Label><Input value={form.resp_cep} onChange={(e) => setForm({ ...form, resp_cep: e.target.value })} onBlur={(e) => handleCepBlur(e.target.value)} className="mt-1" /></div>
                 <div className="md:col-span-2"><Label>Endereço</Label><Input value={form.resp_endereco} onChange={(e) => setForm({ ...form, resp_endereco: e.target.value })} className="mt-1" /></div>
-                <div><Label>Cidade (UF)</Label><Input value={form.resp_cidade} onChange={(e) => setForm({ ...form, resp_cidade: e.target.value })} placeholder="Ex: São Paulo - SP" className="mt-1" /></div>
+                <div><Label>Cidade (UF)</Label><Input value={form.resp_uf ? `${form.resp_cidade} - ${form.resp_uf}` : form.resp_cidade} onChange={(e) => {
+                  const val = e.target.value;
+                  if (val.includes(' - ')) {
+                    const [cit, st] = val.split(' - ');
+                    setForm({ ...form, resp_cidade: cit, resp_uf: st });
+                  } else {
+                    setForm({ ...form, resp_cidade: val });
+                  }
+                }} placeholder="Ex: São Paulo - SP" className="mt-1" /></div>
                 <div className="md:col-span-2"><Label>E-mail</Label><Input type="email" value={form.resp_email} onChange={(e) => setForm({ ...form, resp_email: e.target.value })} className="mt-1" /></div>
                 <div><Label>Nacionalidade</Label><Input value={form.resp_nacionalidade} onChange={(e) => setForm({ ...form, resp_nacionalidade: e.target.value })} className="mt-1" /></div>
                 <div><Label>Estado Civil</Label><Input value={form.resp_estado_civil} onChange={(e) => setForm({ ...form, resp_estado_civil: e.target.value })} className="mt-1" /></div>
@@ -786,6 +826,51 @@ export default function Cadastro() {
                             others[idx].rg = e.target.value;
                             setForm({ ...form, outros_responsaveis: others });
                           }} 
+                          className="mt-1" 
+                        />
+                      </div>
+                      <div>
+                        <Label>CEP</Label>
+                        <Input 
+                          value={resp.cep} 
+                          onChange={(e) => {
+                            const others = [...(form.outros_responsaveis || [])];
+                            others[idx].cep = e.target.value;
+                            setForm({ ...form, outros_responsaveis: others });
+                          }}
+                          onBlur={(e) => handleOtherCepBlur(e.target.value, idx)}
+                          className="mt-1" 
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <Label>Endereço</Label>
+                        <Input 
+                          value={resp.endereco} 
+                          onChange={(e) => {
+                            const others = [...(form.outros_responsaveis || [])];
+                            others[idx].endereco = e.target.value;
+                            setForm({ ...form, outros_responsaveis: others });
+                          }} 
+                          className="mt-1" 
+                        />
+                      </div>
+                      <div>
+                        <Label>Cidade (UF)</Label>
+                        <Input 
+                          value={resp.uf ? `${resp.cidade} - ${resp.uf}` : resp.cidade} 
+                          onChange={(e) => {
+                            const others = [...(form.outros_responsaveis || [])];
+                            const val = e.target.value;
+                            if (val.includes(' - ')) {
+                              const [cit, st] = val.split(' - ');
+                              others[idx].cidade = cit;
+                              others[idx].uf = st;
+                            } else {
+                              others[idx].cidade = val;
+                            }
+                            setForm({ ...form, outros_responsaveis: others });
+                          }} 
+                          placeholder="Ex: São Paulo - SP"
                           className="mt-1" 
                         />
                       </div>

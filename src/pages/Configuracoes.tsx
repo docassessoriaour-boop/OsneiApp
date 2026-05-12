@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useDb } from '@/hooks/useDb'
+import { useCep } from '@/hooks/useCep'
 import type { CompanyInfo } from '@/lib/types'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -18,7 +19,8 @@ export default function Configuracoes() {
     telefone: '',
     email: '',
     website: '',
-    logotipo_url: ''
+    logotipo_url: '',
+    cep: ''
   })
 
   const [saving, setSaving] = useState(false)
@@ -53,6 +55,19 @@ export default function Configuracoes() {
       alert('Erro ao salvar configurações. Verifique sua conexão ou se o banco de dados está configurado.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  const { fetchCep } = useCep()
+
+  const handleCepBlur = async (cep: string) => {
+    if (!cep) return
+    const data = await fetchCep(cep)
+    if (data) {
+      setForm(f => ({
+        ...f,
+        endereco: `${data.logradouro}${data.bairro ? `, ${data.bairro}` : ''}, ${data.localidade} - ${data.uf}`
+      }))
     }
   }
 
@@ -307,7 +322,18 @@ export default function Configuracoes() {
             />
           </div>
 
-          <div className="md:col-span-2 space-y-2">
+          <div className="md:col-span-1 space-y-2">
+            <Label htmlFor="cep">CEP</Label>
+            <Input 
+              id="cep"
+              value={form.cep || ''}
+              onChange={(e) => setForm({ ...form, cep: e.target.value })}
+              placeholder="00000-000"
+              onBlur={(e) => handleCepBlur(e.target.value)}
+            />
+          </div>
+
+          <div className="md:col-span-1 space-y-2">
             <Label htmlFor="endereco">Endereço Completo</Label>
             <Input 
               id="endereco"

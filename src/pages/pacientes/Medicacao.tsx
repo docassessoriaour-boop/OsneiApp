@@ -32,11 +32,17 @@ export default function Medicacao() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
 
   const [selectedPatientId, setSelectedPatientId] = useState('all')
+  const [selectedUnit, setSelectedUnit] = useState('all')
 
-  const filtered = medications.filter(m =>
-    (m.pacienteNome || '').toLowerCase().includes(search.toLowerCase()) ||
-    m.medicamento.toLowerCase().includes(search.toLowerCase())
-  ).sort((a, b) => {
+  const filtered = medications.filter(m => {
+    const patient = patients.find(p => p.id === m.pacienteId)
+    const matchesUnit = selectedUnit === 'all' || (patient && patient.unidade === selectedUnit)
+    const matchesPatient = selectedPatientId === 'all' || m.pacienteId === selectedPatientId
+    const matchesSearch = (m.pacienteNome || '').toLowerCase().includes(search.toLowerCase()) ||
+                        m.medicamento.toLowerCase().includes(search.toLowerCase())
+    
+    return matchesUnit && matchesPatient && matchesSearch
+  }).sort((a, b) => {
     const patientCompare = (a.pacienteNome || '').localeCompare(b.pacienteNome || '');
     if (patientCompare !== 0) return patientCompare;
 
@@ -190,6 +196,107 @@ export default function Medicacao() {
       </style>
       ${htmlContent || '<p>Nenhuma medicação encontrada para o filtro selecionado.</p>'}
     `, clinic, { hideClinicHeader: true, compactLayout: true })
+  }
+
+  function printTimeTableReport() {
+    // Identificar todos os horários únicos que possuem medicamentos (apenas para escala regular)
+    const activeTimes = Array.from(new Set(
+      filtered
+        .filter(m => m.tipo_escala === 'regular' || !m.tipo_escala)
+        .flatMap(m => m.horario ? m.horario.split(',').map(t => t.trim()) : [])
+    )).sort((a, b) => a.localeCompare(b));
+
+    // Agrupar por paciente
+    const medsByPatient: Record<string, { patientName: string, meds: Medication[] }> = {};
+    filtered.forEach(m => {
+      if (!medsByPatient[m.pacienteId]) {
+        medsByPatient[m.pacienteId] = { patientName: m.pacienteNome || 'Desconhecido', meds: [] };
+      }
+      medsByPatient[m.pacienteId].meds.push(m);
+    });
+
+    const patientIds = Object.keys(medsByPatient).sort((a, b) => 
+      medsByPatient[a].patientName.localeCompare(medsByPatient[b].patientName)
+    );
+
+    const fullHtml = patientIds.map(pId => {
+      const { patientName, meds } = medsByPatient[pId];
+      
+      // Identificar horários ativos para ESTE paciente específico
+      const patientActiveTimes = Array.from(new Set(
+        meds
+          .filter(m => m.tipo_escala === 'regular' || !m.tipo_escala)
+          .flatMap(m => m.horario ? m.horario.split(',').map(t => t.trim()) : [])
+      )).sort((a, b) => a.localeCompare(b));
+
+      if (patientActiveTimes.length === 0 && meds.length === 0) return '';
+
+      return `
+        <div style="page-break-after: always; margin-bottom: 30px;">
+          <h2 style="font-size: 14px; background: #334155; color: white; padding: 6px; border-radius: 4px; margin-bottom: 10px;">
+            Quadro de Horários: ${patientName}
+          </h2>
+          <table class="report-table">
+            <thead>
+              <tr>
+                ${patientActiveTimes.map(time => `<th style="width: ${100 / (patientActiveTimes.length + 1)}%;">${time}</th>`).join('')}
+                <th style="width: ${100 / (patientActiveTimes.length + 1)}%;">Especiais / Outros</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                ${patientActiveTimes.map(time => {
+                  const medsAtTime = meds.filter(m => 
+                    (m.tipo_escala === 'regular' || !m.tipo_escala) && 
+                    m.horario?.split(',').map(t => t.trim()).includes(time)
+                  );
+                  return `
+                    <td>
+                      ${medsAtTime.map(m => `
+                        <div class="med-item">
+                          <span class="med-name">${m.medicamento}</span>
+                          <span class="med-info">${m.dosagem || ''} • ${m.qtd_por_dose || 1}${m.unidade_medida || 'un'}</span>
+                          ${m.observacoes ? `<div style="font-size: 8px; margin-top: 2px; border-top: 1px solid #e2e8f0; color: #475569;">${m.observacoes}</div>` : ''}
+                        </div>
+                      `).join('')}
+                    </td>
+                  `;
+                }).join('')}
+                <td class="special-section">
+                  ${meds.filter(m => m.tipo_escala && m.tipo_escala !== 'regular').map(m => `
+                    <div class="med-item" style="border-color: #fcd34d; background: white;">
+                      <span class="med-name">${m.medicamento}</span>
+                      <span class="med-info" style="color: #92400e; font-weight: bold;">
+                        ${m.tipo_escala === 'se_necessario' ? 'Se Nec.' : 
+                          m.tipo_escala === 'dias_impares' ? 'Ímpares' :
+                          m.tipo_escala === 'dias_pares' ? 'Pares' : 
+                          m.tipo_escala === 'dias_semana' ? `Dias: ${m.dias_semana?.join(',')}` : 'Espec.'}
+                      </span>
+                      <div class="med-info">${m.dosagem || ''} • ${m.qtd_por_dose || 1}${m.unidade_medida || 'un'}</div>
+                    </div>
+                  `).join('')}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `;
+    }).join('');
+
+    const containerHtml = `
+      <style>
+        .report-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .report-table th, .report-table td { border: 1px solid #cbd5e1; padding: 6px; font-size: 10px; vertical-align: top; word-break: break-word; }
+        .report-table th { background: #f1f5f9; font-weight: bold; text-align: center; color: #1e293b; }
+        .med-item { margin-bottom: 6px; padding: 4px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; }
+        .med-name { font-weight: bold; color: #0f172a; display: block; font-size: 10px; margin-bottom: 2px; }
+        .med-info { color: #64748b; font-size: 9px; }
+        .special-section { background: #fffbeb; border: 1px solid #fde68a; }
+      </style>
+      ${fullHtml || '<p>Nenhuma medicação encontrada para o filtro selecionado.</p>'}
+    `;
+
+    printPDF('Quadro de Horários Individualizado', containerHtml, clinic, { orientation: 'landscape', compactLayout: true })
   }
 
   function printStockReport() {
@@ -374,46 +481,62 @@ export default function Medicacao() {
       <PageHeader title="Medicação" description="Relatórios e escalas de medicação (Gerenciamento individual no cadastro do paciente)" />
 
       <Card className="p-6">
-        <div className="flex flex-col md:flex-row gap-4 mb-6 items-center justify-between">
-          <div className="flex-1 w-full">
-            <SearchBar value={search} onChange={setSearch} placeholder="Buscar por paciente ou medicamento..." />
+        <div className="flex flex-col gap-4 mb-6">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex-1 min-w-[250px]">
+              <SearchBar value={search} onChange={setSearch} placeholder="Buscar por paciente ou medicamento..." />
+            </div>
+            
+            <div className="flex bg-muted p-1 rounded-lg shrink-0">
+              <Button 
+                  variant={viewMode === 'list' ? 'secondary' : 'ghost'} 
+                  size="sm" 
+                  onClick={() => setViewMode('list')}
+                  className="px-4 h-8"
+              >
+                  Lista
+              </Button>
+              <Button 
+                  variant={viewMode === 'grid' ? 'secondary' : 'ghost'} 
+                  size="sm" 
+                  onClick={() => setViewMode('grid')}
+                  className="px-4 h-8"
+              >
+                  Quadro de Horários
+              </Button>
+            </div>
+
+            <div className="flex gap-2 flex-wrap">
+              <Select value={selectedUnit} onChange={(e) => setSelectedUnit(e.target.value)} className="h-9 w-40 text-xs">
+                <option value="all">Todas Unidades</option>
+                <option value="Vila Moraes">Vila Moraes</option>
+                <option value="Jardim Matilde">Jardim Matilde</option>
+              </Select>
+
+              <Select value={selectedPatientId} onChange={(e) => setSelectedPatientId(e.target.value)} className="h-9 w-48 text-xs">
+                <option value="all">Todos os Pacientes</option>
+                {patients.filter(p => selectedUnit === 'all' || p.unidade === selectedUnit).map(p => (
+                  <option key={p.id} value={p.id}>{p.nome}</option>
+                ))}
+              </Select>
+            </div>
           </div>
-          <div className="flex bg-muted p-1 rounded-lg">
-            <Button 
-                variant={viewMode === 'list' ? 'secondary' : 'ghost'} 
-                size="sm" 
-                onClick={() => setViewMode('list')}
-                className="px-4 h-8"
-            >
-                Lista
-            </Button>
-            <Button 
-                variant={viewMode === 'grid' ? 'secondary' : 'ghost'} 
-                size="sm" 
-                onClick={() => setViewMode('grid')}
-                className="px-4 h-8"
-            >
-                Quadro de Horários
-            </Button>
-          </div>
-          <div className="flex gap-2">
-            <Select value={selectedPatientId} onChange={(e) => setSelectedPatientId(e.target.value)} className="h-9 w-48 text-sm">
-              <option value="all">Todos os Pacientes</option>
-              {patients.map(p => (
-                <option key={p.id} value={p.id}>{p.nome}</option>
-              ))}
-            </Select>
-            <Button variant="outline" size="sm" onClick={printStockReport} className="gap-2 h-9 text-red-600 border-red-200 hover:bg-red-50">
+
+          <div className="flex flex-wrap gap-2 pt-2 border-t border-border/50">
+            <Button variant="outline" size="sm" onClick={printStockReport} className="gap-2 h-8 text-xs text-red-600 border-red-200 hover:bg-red-50">
                 <FileText className="h-4 w-4" /> Alertas de Estoque
             </Button>
-            <Button variant="outline" size="sm" onClick={printConsolidatedMedicationReport} className="gap-2 h-9 text-blue-600 border-blue-200 hover:bg-blue-50">
+            <Button variant="outline" size="sm" onClick={printConsolidatedMedicationReport} className="gap-2 h-8 text-xs text-blue-600 border-blue-200 hover:bg-blue-50">
                 <FileText className="h-4 w-4" /> Consumo Consolidado
             </Button>
-            <Button variant="outline" size="sm" onClick={exportToCatalog} disabled={exporting} className="gap-2 h-9 text-green-600 border-green-200 hover:bg-green-50">
-              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />} Exportar p/ Catálogo
+            <Button variant="outline" size="sm" onClick={exportToCatalog} disabled={exporting} className="gap-2 h-8 text-xs text-green-600 border-green-200 hover:bg-green-50">
+              {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />} Catálogo
             </Button>
-            <Button variant="outline" size="sm" onClick={printReport} className="gap-2 h-9">
-                <FileText className="h-4 w-4" /> PDF da Escala
+            <Button variant="outline" size="sm" onClick={printReport} className="gap-2 h-8 text-xs">
+                <FileText className="h-4 w-4" /> PDF Escala
+            </Button>
+            <Button variant="default" size="sm" onClick={printTimeTableReport} className="gap-2 h-8 text-xs shadow-sm">
+                <FileText className="h-4 w-4" /> PDF Quadro Horários
             </Button>
           </div>
         </div>

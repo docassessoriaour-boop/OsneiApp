@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useDb } from '@/hooks/useDb'
+import { useCep } from '@/hooks/useCep'
 import { formatCurrency } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF, formatCurrencyPDF, formatDatePDF } from '@/lib/pdf'
@@ -43,10 +44,14 @@ const emptyEmployee: Omit<Employee, 'id'> = {
   chave_pix: '',
   is_pro_labore: false,
   descontos_fixos: 0,
+  cep: '',
+  cidade: '',
+  uf: '',
 }
 
 export default function Funcionarios() {
   const { data: employees, loading, insert, update, remove } = useDb<Employee>('employees')
+  const { fetchCep } = useCep()
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'inativo' | 'ferias' | 'contrato_cancelado'>('todos')
@@ -74,6 +79,20 @@ export default function Funcionarios() {
       age--
     }
     return age
+  }
+
+  const handleCepBlur = async (cep: string) => {
+    if (!cep) return
+    const data = await fetchCep(cep)
+    if (data) {
+      setForm(f => ({
+        ...f,
+        endereco: `${data.logradouro}${data.bairro ? `, ${data.bairro}` : ''}`,
+        cidade: data.localidade,
+        uf: data.uf,
+        cep: data.cep
+      }))
+    }
   }
 
   function openNew() {
@@ -481,9 +500,27 @@ export default function Funcionarios() {
               <Label>RG</Label>
               <Input value={form.rg} onChange={(e) => setForm({ ...form, rg: e.target.value })} className="mt-1" placeholder="Digite o RG" />
             </div>
-            <div className="md:col-span-2">
-              <Label>Endereço Completo</Label>
-              <Input value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} className="mt-1" placeholder="Rua, Número, Bairro, Cidade - UF" />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 md:col-span-2">
+              <div className="md:col-span-1">
+                <Label>CEP</Label>
+                <Input value={form.cep || ''} onChange={(e) => setForm({ ...form, cep: e.target.value })} onBlur={(e) => handleCepBlur(e.target.value)} className="mt-1" />
+              </div>
+              <div className="md:col-span-2">
+                <Label>Endereço Completo</Label>
+                <Input value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} className="mt-1" placeholder="Rua, Número, Bairro" />
+              </div>
+              <div className="md:col-span-1">
+                <Label>Cidade (UF)</Label>
+                <Input value={form.uf ? `${form.cidade} - ${form.uf}` : (form.cidade || '')} onChange={(e) => {
+                  const val = e.target.value;
+                  if (val.includes(' - ')) {
+                    const [cit, st] = val.split(' - ');
+                    setForm({ ...form, cidade: cit, uf: st });
+                  } else {
+                    setForm({ ...form, cidade: val });
+                  }
+                }} className="mt-1" placeholder="Cidade - UF" />
+              </div>
             </div>
             <div>
               <Label>Cargo</Label>

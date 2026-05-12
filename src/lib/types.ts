@@ -18,6 +18,9 @@ export interface Employee {
   vt_valor: number
   tem_insalubridade: boolean
   insalubridade_percentual: number
+  cep?: string
+  cidade?: string
+  uf?: string
   data_nascimento?: string
   dados_bancarios?: string
   chave_pix?: string
@@ -39,6 +42,9 @@ export interface Curriculum {
   data_entrevista?: string
   hora_entrevista?: string
   local_entrevista?: string
+  cep?: string
+  cidade?: string
+  uf?: string
 }
 
 export interface Responsible {
@@ -310,6 +316,7 @@ export interface CompanyInfo {
   razao_social: string
   cnpj: string
   endereco: string
+  cep?: string
   telefone: string
   email: string
   website: string
