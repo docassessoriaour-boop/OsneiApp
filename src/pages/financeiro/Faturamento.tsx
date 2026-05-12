@@ -460,10 +460,19 @@ export default function Faturamento() {
             ) : filtered.length === 0 ? (
               <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">Nenhuma fatura encontrada</TableCell></TableRow>
             ) : (
-              filtered.map(inv => (
+              filtered.map(inv => {
+                const patient = patients.find(p => p.id === inv.patient_id)
+                return (
                 <TableRow key={inv.id}>
                   <TableCell className="font-mono text-xs">{inv.id.slice(0, 8).toUpperCase()}</TableCell>
-                  <TableCell className="font-medium">{inv.client_name}</TableCell>
+                  <TableCell className="font-medium">
+                    <div>{inv.client_name}</div>
+                    {patient?.responsavel && (
+                      <div className="text-[10px] text-muted-foreground font-normal">
+                        Resp: {patient.responsavel}
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell>{formatDate(inv.date_issued)}</TableCell>
                   <TableCell>{formatDate(inv.due_date)}</TableCell>
                   <TableCell>{inv.payment_date ? formatDate(inv.payment_date) : '—'}</TableCell>
@@ -501,7 +510,8 @@ export default function Faturamento() {
                     </div>
                   </TableCell>
                 </TableRow>
-              ))
+                )
+              })
             )}
           </TableBody>
         </Table>
@@ -711,6 +721,11 @@ export default function Faturamento() {
                 <div>
                   <p className="text-muted-foreground">Cliente</p>
                   <p className="font-semibold">{selectedInvoice.client_name}</p>
+                  {patients.find(p => p.id === selectedInvoice.patient_id)?.responsavel && (
+                    <p className="text-xs text-muted-foreground">
+                      Resp: {patients.find(p => p.id === selectedInvoice.patient_id)?.responsavel}
+                    </p>
+                  )}
                 </div>
                 <div>
                   <p className="text-muted-foreground">Documento</p>
