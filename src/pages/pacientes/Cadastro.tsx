@@ -16,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Pencil, Trash2, FileText, Loader2, Pill, Plus, Calendar, ShieldAlert, Save } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, Pill, Plus, Calendar, ShieldAlert, Save, Receipt, Printer } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -54,6 +54,56 @@ export default function Cadastro() {
   const [genStartTime, setGenStartTime] = useState('08:00')
   const [genFrequency, setGenFrequency] = useState('1')
   const [activeTab, setActiveTab] = useState('dados')
+  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false)
+  const [receiptForm, setReceiptForm] = useState({
+    tipo: 'Cuidadora de Idosos',
+    local: 'Santa Casa de Ourinhos',
+    dataInicio: new Date().toISOString().slice(0, 10),
+    horaInicio: '07:00',
+    dataFim: new Date().toISOString().slice(0, 10),
+    horaFim: '19:00',
+    responsavel: '',
+    idoso: '',
+    valor: 0
+  })
+
+  function openReceiptDialog(p: Patient) {
+    setReceiptForm({
+      tipo: 'Cuidadora de Idosos',
+      local: 'Santa Casa de Ourinhos',
+      dataInicio: new Date().toISOString().slice(0, 10),
+      horaInicio: '07:00',
+      dataFim: new Date().toISOString().slice(0, 10),
+      horaFim: '19:00',
+      responsavel: p.responsavel || '',
+      idoso: p.nome || '',
+      valor: 0
+    })
+    setReceiptDialogOpen(true)
+  }
+
+  function handlePrintReceipt() {
+    const period = `${formatDate(receiptForm.dataInicio)} às ${receiptForm.horaInicio} até ${formatDate(receiptForm.dataFim)} às ${receiptForm.horaFim}`
+    const bodyHtml = `
+      <div style="font-size: 16px; line-height: 1.8; text-align: justify; margin-top: 20px;">
+        <p>Recebi de <strong>${receiptForm.responsavel}</strong> a importância de <strong>${formatCurrency(receiptForm.valor)}</strong> 
+        referente aos serviços de <strong>${receiptForm.tipo}</strong> prestados ao(à) Sr(a). <strong>${receiptForm.idoso}</strong>, 
+        no local <strong>${receiptForm.local}</strong>, durante o período de <strong>${period}</strong>.</p>
+        
+        <p style="margin-top: 20px;">Pelo que firmo o presente recibo para que produza os efeitos legais.</p>
+      </div>
+
+      <div style="margin-top: 60px; text-align: center;">
+        <p>Ourinhos (SP), ${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+        
+        <div style="margin-top: 80px;">
+          <div style="border-top: 1px solid #000; width: 300px; margin: 0 auto;"></div>
+          <p style="margin-top: 5px;">Assinatura</p>
+        </div>
+      </div>
+    `
+    printPDF('RECIBO DE PRESTAÇÃO DE SERVIÇO', bodyHtml, clinic)
+  }
 
   const patientMedications = allMedications
     .filter(m => m.pacienteId === editingId)
@@ -533,6 +583,7 @@ export default function Cadastro() {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" title="Gerar Recibo de Acompanhamento" onClick={() => openReceiptDialog(patient)}><Receipt className="h-4 w-4 text-green-600" /></Button>
                         <Button variant="ghost" size="icon" title="Ficha + Medicação" onClick={() => printPatientFullReport(patient)}><FileText className="h-4 w-4 text-purple-600" /></Button>
                         <Button variant="ghost" size="icon" title="Ficha Cadastral" onClick={() => printPatientFile(patient)}><FileText className="h-4 w-4 text-blue-600" /></Button>
                         <Button variant="ghost" size="icon" title={isStandard ? "Ver Medicação" : "Editar"} onClick={() => openEdit(patient)}>
@@ -1068,6 +1119,71 @@ export default function Cadastro() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setMedDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleSaveMed}>Salvar Medicação</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={receiptDialogOpen} onOpenChange={setReceiptDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Gerar Recibo de Acompanhamento</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Referente a:</Label>
+              <Select 
+                value={receiptForm.tipo} 
+                onChange={(e) => setReceiptForm({ ...receiptForm, tipo: e.target.value })}
+              >
+                <option value="Cuidadora de Idosos">Cuidadora de Idosos</option>
+                <option value="Acompanhante">Acompanhante</option>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Local:</Label>
+              <Select 
+                value={receiptForm.local} 
+                onChange={(e) => setReceiptForm({ ...receiptForm, local: e.target.value })}
+              >
+                <option value="Santa Casa de Ourinhos">Santa Casa de Ourinhos</option>
+                <option value="UPA (Unidade de Pronto Atendimento)">UPA (Unidade de Pronto Atendimento)</option>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Início do Acompanhamento</Label>
+                <Input type="date" value={receiptForm.dataInicio} onChange={(e) => setReceiptForm({ ...receiptForm, dataInicio: e.target.value })} />
+                <Input type="time" value={receiptForm.horaInicio} onChange={(e) => setReceiptForm({ ...receiptForm, horaInicio: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Fim do Acompanhamento</Label>
+                <Input type="date" value={receiptForm.dataFim} onChange={(e) => setReceiptForm({ ...receiptForm, dataFim: e.target.value })} />
+                <Input type="time" value={receiptForm.horaFim} onChange={(e) => setReceiptForm({ ...receiptForm, horaFim: e.target.value })} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Responsável (Recibo em nome de)</Label>
+              <Input value={receiptForm.responsavel} onChange={(e) => setReceiptForm({ ...receiptForm, responsavel: e.target.value })} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Nome do Idoso</Label>
+              <Input value={receiptForm.idoso} onChange={(e) => setReceiptForm({ ...receiptForm, idoso: e.target.value })} />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Valor Total (R$)</Label>
+              <Input type="number" value={receiptForm.valor} onChange={(e) => setReceiptForm({ ...receiptForm, valor: Number(e.target.value) })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setReceiptDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handlePrintReceipt} className="gap-2 bg-green-600 hover:bg-green-700 text-white">
+              <Printer className="h-4 w-4" /> Gerar Recibo PDF
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
