@@ -59,9 +59,7 @@ export default function Cadastro() {
     tipo: 'Cuidadora de Idosos',
     local: 'Santa Casa de Ourinhos',
     dataInicio: new Date().toISOString().slice(0, 10),
-    horaInicio: '07:00',
     dataFim: new Date().toISOString().slice(0, 10),
-    horaFim: '19:00',
     responsavel: '',
     idoso: '',
     valor: 0
@@ -72,9 +70,7 @@ export default function Cadastro() {
       tipo: 'Cuidadora de Idosos',
       local: 'Santa Casa de Ourinhos',
       dataInicio: new Date().toISOString().slice(0, 10),
-      horaInicio: '07:00',
       dataFim: new Date().toISOString().slice(0, 10),
-      horaFim: '19:00',
       responsavel: p.responsavel || '',
       idoso: p.nome || '',
       valor: 0
@@ -83,7 +79,9 @@ export default function Cadastro() {
   }
 
   function handlePrintReceipt() {
-    const period = `${formatDate(receiptForm.dataInicio)} às ${receiptForm.horaInicio} até ${formatDate(receiptForm.dataFim)} às ${receiptForm.horaFim}`
+    const period = receiptForm.dataInicio === receiptForm.dataFim 
+      ? formatDate(receiptForm.dataInicio)
+      : `${formatDate(receiptForm.dataInicio)} até ${formatDate(receiptForm.dataFim)}`
     const bodyHtml = `
       <div style="font-size: 16px; line-height: 1.8; text-align: justify; margin-top: 20px;">
         <p>Recebi de <strong>${receiptForm.responsavel}</strong> a importância de <strong>${formatCurrency(receiptForm.valor)}</strong> 
@@ -1155,12 +1153,10 @@ export default function Cadastro() {
               <div className="space-y-2">
                 <Label>Início do Acompanhamento</Label>
                 <Input type="date" value={receiptForm.dataInicio} onChange={(e) => setReceiptForm({ ...receiptForm, dataInicio: e.target.value })} />
-                <Input type="time" value={receiptForm.horaInicio} onChange={(e) => setReceiptForm({ ...receiptForm, horaInicio: e.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label>Fim do Acompanhamento</Label>
                 <Input type="date" value={receiptForm.dataFim} onChange={(e) => setReceiptForm({ ...receiptForm, dataFim: e.target.value })} />
-                <Input type="time" value={receiptForm.horaFim} onChange={(e) => setReceiptForm({ ...receiptForm, horaFim: e.target.value })} />
               </div>
             </div>
 
