@@ -115,6 +115,15 @@ export interface BaseMedication {
   created_at?: string
 }
 
+export interface MedicationEntry {
+  id: string
+  medication_id: string
+  paciente_id: string
+  data: string
+  quantidade: number
+  observacoes?: string
+}
+
 export interface Appointment {
   id: string
   pacienteId: string

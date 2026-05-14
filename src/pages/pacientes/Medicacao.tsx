@@ -78,7 +78,21 @@ export default function Medicacao() {
 
     targetPatients = [...targetPatients].sort((a, b) => a.nome.localeCompare(b.nome))
 
-    const htmlContent = targetPatients.map(patient => {
+    const getHeader = () => `
+      <div style="text-align:center;margin-bottom:24px;border-bottom:2px solid #1a1f2e;padding-bottom:16px;">
+        <img src="/logo.png" alt="Logo" style="max-height:80px; width: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;" />
+        <h1 style="margin:0;font-size:20px;color:#1a1f2e;">${clinic.razao_social || (clinic as any).name || (clinic as any).nome_fantasia || ''}</h1>
+        <p style="margin:4px 0 0;font-size:11px;color:#555;">CNPJ: ${clinic.cnpj || ''}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#555;">${clinic.address || (clinic as any).endereco || ''}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#555;">Tel: ${clinic.phone || (clinic as any).telefone || ''}</p>
+      </div>
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h2 style="font-size: 16pt; text-transform: uppercase; margin-bottom: 5px;">Escala de Medicação</h2>
+        <p style="font-size: 9pt; color: #666;">Gerado em: ${new Date().toLocaleString('pt-BR')}</p>
+      </div>
+    `;
+
+    const htmlContent = targetPatients.map((patient, pIdx) => {
       const patientMeds = medications.filter(m => m.pacienteId === patient.id)
       if (patientMeds.length === 0) return ''
 
@@ -177,7 +191,8 @@ export default function Medicacao() {
       ` : '';
 
       return `
-          <div style="margin-bottom: 20px; page-break-inside: avoid;">
+          <div style="margin-bottom: 20px; page-break-before: always;">
+              ${getHeader()}
               <h3 style="background: #e2e8f0; padding: 6px; border-radius: 4px; margin-bottom: 8px; font-size: 14px; border-left: 4px solid #334155;">
                   Paciente: ${patient.nome}
               </h3>
@@ -219,6 +234,20 @@ export default function Medicacao() {
       medsByPatient[a].patientName.localeCompare(medsByPatient[b].patientName)
     );
 
+    const getHeader = (title: string) => `
+      <div style="text-align:center;margin-bottom:24px;border-bottom:2px solid #1a1f2e;padding-bottom:16px;">
+        <img src="/logo.png" alt="Logo" style="max-height:80px; width: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;" />
+        <h1 style="margin:0;font-size:20px;color:#1a1f2e;">${clinic.razao_social || (clinic as any).name || (clinic as any).nome_fantasia || ''}</h1>
+        <p style="margin:4px 0 0;font-size:11px;color:#555;">CNPJ: ${clinic.cnpj || ''}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#555;">${clinic.address || (clinic as any).endereco || ''}</p>
+        <p style="margin:2px 0 0;font-size:11px;color:#555;">Tel: ${clinic.phone || (clinic as any).telefone || ''}</p>
+      </div>
+      <div style="text-align: center; margin-bottom: 20px;">
+        <h2 style="font-size: 16pt; text-transform: uppercase; margin-bottom: 5px;">${title}</h2>
+        <p style="font-size: 9pt; color: #666;">Gerado em: ${new Date().toLocaleString('pt-BR')}</p>
+      </div>
+    `;
+
     const fullHtml = patientIds.map(pId => {
       const { patientName, meds } = medsByPatient[pId];
       
@@ -233,8 +262,9 @@ export default function Medicacao() {
 
       return `
         <div style="page-break-after: always; margin-bottom: 30px;">
+          ${getHeader('Quadro de Horários Individualizado')}
           <h2 style="font-size: 14px; background: #334155; color: white; padding: 6px; border-radius: 4px; margin-bottom: 10px;">
-            Quadro de Horários: ${patientName}
+            Paciente: ${patientName}
           </h2>
           <table class="report-table">
             <thead>
@@ -296,7 +326,7 @@ export default function Medicacao() {
       ${fullHtml || '<p>Nenhuma medicação encontrada para o filtro selecionado.</p>'}
     `;
 
-    printPDF('Quadro de Horários Individualizado', containerHtml, clinic, { orientation: 'landscape', compactLayout: true })
+    printPDF('Quadro de Horários Individualizado', containerHtml, clinic, { orientation: 'landscape', compactLayout: true, hideClinicHeader: true })
   }
 
   function printStockReport() {
@@ -336,7 +366,7 @@ export default function Medicacao() {
           ${rows || '<tr><td colspan="6" style="text-align:center;">Nenhum alerta de estoque crítico no momento.</td></tr>'}
         </tbody>
       </table>
-    `, clinic, { hideClinicHeader: true })
+    `, clinic)
   }
 
   function printConsolidatedMedicationReport() {
@@ -416,7 +446,7 @@ export default function Medicacao() {
           ${rows || '<tr><td colspan="5" style="text-align:center;">Nenhuma medicação cadastrada.</td></tr>'}
         </tbody>
       </table>
-    `, clinic, { hideClinicHeader: true })
+    `, clinic)
   }
 
   async function exportToCatalog() {

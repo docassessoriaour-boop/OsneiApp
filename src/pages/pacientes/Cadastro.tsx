@@ -3,7 +3,7 @@ import { useDb } from '@/hooks/useDb'
 import { useCep } from '@/hooks/useCep'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
-import type { Patient, Medication, BaseMedication } from '@/lib/types'
+import type { Patient, Medication, BaseMedication, MedicationEntry } from '@/lib/types'
 
 import { SearchBar } from '@/components/shared/SearchBar'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Pencil, Trash2, FileText, Loader2, Pill, Plus, Calendar, ShieldAlert, Save, Receipt, Printer } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, Pill, Plus, Calendar, ShieldAlert, Save, Receipt, Printer, History, ArrowDownToLine } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -36,6 +36,7 @@ export default function Cadastro() {
   
   const { data: patients, loading: loadingPatients, insert, update, remove } = useDb<Patient>('patients')
   const { data: allMedications, insert: insertMed, update: updateMed, remove: removeMed, reload: reloadMeds } = useDb<Medication>('medications')
+  const { data: allMedEntries, insert: insertMedEntry } = useDb<MedicationEntry>('medication_entries')
   const { data: rawProducts } = useDb<any>('products')
   const baseMeds = rawProducts.filter((p: any) => p.tipo === 'medicamento')
   const { fetchCep } = useCep()
@@ -56,6 +57,11 @@ export default function Cadastro() {
   const [genStartTime, setGenStartTime] = useState('08:00')
   const [genFrequency, setGenFrequency] = useState('1')
   const [activeTab, setActiveTab] = useState('dados')
+  const [entryDialogOpen, setEntryDialogOpen] = useState(false)
+  const [entryMed, setEntryMed] = useState<Medication | null>(null)
+  const [entryForm, setEntryForm] = useState({ data: new Date().toISOString().slice(0, 10), quantidade: 0, responsavel: '', observacoes: '' })
+  const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
+  const [historyMed, setHistoryMed] = useState<Medication | null>(null)
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false)
   const [receiptForm, setReceiptForm] = useState({
     tipo: 'Cuidadora de Idosos',
@@ -303,6 +309,73 @@ export default function Cadastro() {
         </div>
       </div>
     `, clinic)
+  }
+
+  async function handleSaveEntry() {
+    if (!entryMed || !entryForm.quantidade) return
+    try {
+      await insertMedEntry({
+        medication_id: entryMed.id,
+        paciente_id: entryMed.pacienteId,
+        data: entryForm.data,
+        quantidade: entryForm.quantidade,
+        responsavel: entryForm.responsavel,
+        observacoes: entryForm.observacoes
+      } as any)
+      
+      const novoEstoque = (entryMed.estoque_atual || 0) + entryForm.quantidade
+      await updateMed(entryMed.id, { estoque_atual: novoEstoque } as any)
+      
+      setEntryDialogOpen(false)
+      reloadMeds()
+      alert('Entrada de medicamento registrada com sucesso!')
+    } catch (error) {
+      console.error(error)
+      alert('Erro ao registrar entrada')
+    }
+  }
+
+  function printMedicationHistory() {
+    if (!historyMed) return;
+
+    const entries = allMedEntries.filter(e => e.medication_id === historyMed.id).sort((a,b) => new Date(b.data).getTime() - new Date(a.data).getTime());
+
+    const rows = entries.map(e => `
+      <tr>
+        <td style="border: 1px solid #cbd5e1; padding: 10px;">${formatDate(e.data)}</td>
+        <td style="border: 1px solid #cbd5e1; padding: 10px; font-weight: bold; color: #16a34a;">+${e.quantidade} ${historyMed.unidade_medida || 'un'}</td>
+        <td style="border: 1px solid #cbd5e1; padding: 10px;">${e.responsavel || '-'}</td>
+        <td style="border: 1px solid #cbd5e1; padding: 10px;">${e.observacoes || '-'}</td>
+      </tr>
+    `).join('');
+
+    const html = `
+      <div style="margin-bottom: 20px;">
+        <h3 style="background: #e2e8f0; padding: 10px; border-radius: 4px; margin-bottom: 8px; font-size: 16px; border-left: 4px solid #334155;">
+            Histórico de Entradas de Estoque: ${historyMed.medicamento}
+        </h3>
+        <p style="font-size: 12px; color: #666; margin-left: 5px;">Paciente: ${historyMed.pacienteNome || form.nome}</p>
+        <p style="font-size: 12px; color: #666; margin-left: 5px;">Gerado em: ${new Date().toLocaleString('pt-BR')}</p>
+      </div>
+      
+      ${entries.length === 0 ? '<p>Nenhuma entrada registrada para este medicamento.</p>' : `
+        <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+          <thead>
+            <tr>
+              <th style="border: 1px solid #cbd5e1; padding: 10px; background-color: #f8fafc; font-size: 13px; font-weight: bold; color:#334155; text-align: left; width: 20%;">Data</th>
+              <th style="border: 1px solid #cbd5e1; padding: 10px; background-color: #f8fafc; font-size: 13px; font-weight: bold; color:#334155; text-align: left; width: 20%;">Quantidade</th>
+              <th style="border: 1px solid #cbd5e1; padding: 10px; background-color: #f8fafc; font-size: 13px; font-weight: bold; color:#334155; text-align: left; width: 30%;">Responsável</th>
+              <th style="border: 1px solid #cbd5e1; padding: 10px; background-color: #f8fafc; font-size: 13px; font-weight: bold; color:#334155; text-align: left; width: 30%;">Observações</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows}
+          </tbody>
+        </table>
+      `}
+    `;
+
+    printPDF(`Histórico de Entradas - ${historyMed.medicamento}`, html, clinic);
   }
 
   async function handleSaveMed() {
@@ -996,6 +1069,19 @@ export default function Cadastro() {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
+                            <Button variant="ghost" size="icon" title="Entrada de Estoque" onClick={() => {
+                              setEntryMed(m)
+                              setEntryForm({ data: new Date().toISOString().slice(0, 10), quantidade: 0, responsavel: '', observacoes: '' })
+                              setEntryDialogOpen(true)
+                            }}>
+                              <ArrowDownToLine className="h-4 w-4 text-green-600" />
+                            </Button>
+                            <Button variant="ghost" size="icon" title="Histórico de Entradas" onClick={() => {
+                              setHistoryMed(m)
+                              setHistoryDialogOpen(true)
+                            }}>
+                              <History className="h-4 w-4 text-blue-600" />
+                            </Button>
                             <Button variant="ghost" size="icon" onClick={() => {
                               setMedForm(m)
                               setEditingMedId(m.id)
@@ -1202,6 +1288,80 @@ export default function Cadastro() {
           <DialogFooter>
             <Button variant="outline" onClick={() => setMedDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handleSaveMed}>Salvar Medicação</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={entryDialogOpen} onOpenChange={setEntryDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Entrada de Estoque - {entryMed?.medicamento}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Data</Label>
+                <Input type="date" value={entryForm.data} onChange={(e) => setEntryForm({ ...entryForm, data: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Quantidade ({entryMed?.unidade_medida || 'un'})</Label>
+                <Input type="number" value={entryForm.quantidade} onChange={(e) => setEntryForm({ ...entryForm, quantidade: Number(e.target.value) })} />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Responsável pela entrega (opcional)</Label>
+              <Input value={entryForm.responsavel} onChange={(e) => setEntryForm({ ...entryForm, responsavel: e.target.value })} />
+            </div>
+            <div className="space-y-2">
+              <Label>Observações (opcional)</Label>
+              <Textarea value={entryForm.observacoes} onChange={(e) => setEntryForm({ ...entryForm, observacoes: e.target.value })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEntryDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveEntry} className="bg-green-600 hover:bg-green-700 text-white">Registrar Entrada</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={historyDialogOpen} onOpenChange={setHistoryDialogOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <div className="flex justify-between items-center pr-8">
+              <DialogTitle>Histórico de Entradas - {historyMed?.medicamento}</DialogTitle>
+              <Button variant="outline" size="sm" onClick={printMedicationHistory} className="gap-2">
+                <Printer className="h-4 w-4" /> PDF
+              </Button>
+            </div>
+          </DialogHeader>
+          <div className="py-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Data</TableHead>
+                  <TableHead>Quantidade</TableHead>
+                  <TableHead>Responsável</TableHead>
+                  <TableHead>Observações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {allMedEntries.filter(e => e.medication_id === historyMed?.id).length === 0 ? (
+                  <TableRow><TableCell colSpan={4} className="text-center py-4">Nenhuma entrada registrada.</TableCell></TableRow>
+                ) : (
+                  allMedEntries.filter(e => e.medication_id === historyMed?.id).sort((a,b) => new Date(b.data).getTime() - new Date(a.data).getTime()).map(entry => (
+                    <TableRow key={entry.id}>
+                      <TableCell>{formatDate(entry.data)}</TableCell>
+                      <TableCell className="font-bold text-green-600">+{entry.quantidade}</TableCell>
+                      <TableCell>{entry.responsavel || '-'}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground">{entry.observacoes || '-'}</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setHistoryDialogOpen(false)}>Fechar</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
