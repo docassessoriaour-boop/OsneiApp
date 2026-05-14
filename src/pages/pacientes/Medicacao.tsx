@@ -336,7 +336,10 @@ export default function Medicacao() {
       <tr>
         <td>${m.pacienteNome}</td>
         <td>${m.medicamento}</td>
-        <td style="text-align:center; color:${(m.estoque_atual || 0) <= (m.estoque_minimo || 0) ? 'red' : 'inherit'}; font-weight:bold;">${m.estoque_atual} ${m.unidade_medida}</td>
+        <td style="text-align:center; color:${(m.estoque_atual || 0) <= (m.estoque_minimo || 0) ? 'red' : 'inherit'}; font-weight:bold;">
+          ${m.estoque_atual} ${m.unidade_medida}
+          ${m.embalagem_completa && m.embalagem_completa > 0 ? `<br/><span style="font-size:9px; color:#666; font-weight:normal;">${Math.floor((m.estoque_atual || 0) / m.embalagem_completa)} emb. fechada(s) + ${(m.estoque_atual || 0) % m.embalagem_completa} ${m.unidade_medida}</span>` : ''}
+        </td>
         <td style="text-align:center;">${m.estoque_minimo}</td>
         <td style="text-align:center;">${calculateDailyConsumption(m)} /dia</td>
         <td style="text-align:center; background:${calculateDaysRemaining(m) <= 5 ? '#fee2e2' : 'transparent'};">${calculateDaysRemaining(m)} dias</td>
@@ -376,7 +379,8 @@ export default function Medicacao() {
       pacientes: string[], 
       estoqueTotal: number, 
       consumoDiario: number,
-      unidade: string
+      unidade: string,
+      embalagem_completa: number
     }> = {};
 
     medications.forEach(m => {
@@ -391,7 +395,8 @@ export default function Medicacao() {
           pacientes: [],
           estoqueTotal: 0,
           consumoDiario: 0,
-          unidade: m.unidade_medida || 'un'
+          unidade: m.unidade_medida || 'un',
+          embalagem_completa: m.embalagem_completa || 0
         };
       }
       
@@ -416,7 +421,10 @@ export default function Medicacao() {
             <strong>${tituloMed}</strong><br/>
             <span style="font-size: 10px; color: #666;">Pacientes: ${m.pacientes.join(', ')}</span>
           </td>
-          <td style="text-align: center;">${m.estoqueTotal} ${m.unidade}</td>
+          <td style="text-align: center;">
+            ${m.estoqueTotal} ${m.unidade}
+            ${(m as any).embalagem_completa && (m as any).embalagem_completa > 0 ? `<br/><span style="font-size:9px; color:#666;">${Math.floor(m.estoqueTotal / (m as any).embalagem_completa)} emb. fechada(s) + ${m.estoqueTotal % (m as any).embalagem_completa} ${m.unidade}</span>` : ''}
+          </td>
           <td style="text-align: center;">${m.consumoDiario.toFixed(1)}</td>
           <td style="text-align: center;">${consumoQuinzenal.toFixed(1)}</td>
           <td style="text-align: center;">${consumoMensal.toFixed(1)}</td>
@@ -606,6 +614,11 @@ export default function Medicacao() {
                         <span className={`font-bold ${ (m.estoque_atual || 0) <= (m.estoque_minimo || 0) ? "text-red-600" : ""}`}>
                           {m.estoque_atual} {m.unidade_medida}
                         </span>
+                        {m.embalagem_completa && m.embalagem_completa > 0 ? (
+                          <span className="text-[10px] text-muted-foreground mt-1">
+                            {Math.floor((m.estoque_atual || 0) / m.embalagem_completa)} cx/frasco(s) + {(m.estoque_atual || 0) % m.embalagem_completa} avulsos
+                          </span>
+                        ) : null}
                         <span className="text-[10px] text-muted-foreground">Mín: {m.estoque_minimo}</span>
                       </div>
                     </TableCell>

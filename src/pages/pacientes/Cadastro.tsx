@@ -52,7 +52,7 @@ export default function Cadastro() {
   const [medForm, setMedForm] = useState<Partial<Medication>>({
     medicamento: '', dosagem: '', horario: '', frequencia: '', observacoes: '',
     estoque_atual: 0, estoque_minimo: 0, qtd_por_dose: 1, unidade_medida: 'comprimido',
-    tipo_escala: 'regular', dias_semana: []
+    tipo_escala: 'regular', dias_semana: [], embalagem_completa: 0
   })
   const [genStartTime, setGenStartTime] = useState('08:00')
   const [genFrequency, setGenFrequency] = useState('1')
@@ -1062,7 +1062,7 @@ export default function Cadastro() {
                 setMedForm({
                   medicamento: '', dosagem: '', horario: '', frequencia: '', observacoes: '',
                   estoque_atual: 0, estoque_minimo: 0, qtd_por_dose: 1, unidade_medida: 'comprimido',
-                  tipo_escala: 'regular', dias_semana: []
+                  tipo_escala: 'regular', dias_semana: [], embalagem_completa: 0
                 })
                 setEditingMedId(null)
                 setMedDialogOpen(true)
@@ -1118,6 +1118,11 @@ export default function Cadastro() {
                           <div className="text-xs font-medium">
                             {m.estoque_atual} {m.unidade_medida}
                           </div>
+                          {m.embalagem_completa && m.embalagem_completa > 0 ? (
+                            <div className="text-[10px] text-muted-foreground mt-1">
+                              {Math.floor((m.estoque_atual || 0) / m.embalagem_completa)} cx/frasco(s) <br/>+ {(m.estoque_atual || 0) % m.embalagem_completa} avulsos
+                            </div>
+                          ) : null}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex justify-end gap-1">
@@ -1313,7 +1318,7 @@ export default function Cadastro() {
 
             <div className="bg-primary/5 p-3 rounded-lg border border-primary/20">
               <p className="text-[10px] font-semibold text-primary uppercase mb-3">Estoque e Dose</p>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-4 gap-4">
                 <div className="col-span-1">
                   <Label className="text-xs">Qtd. por Dose</Label>
                   <div className="flex gap-1 mt-1">
@@ -1333,6 +1338,10 @@ export default function Cadastro() {
                 <div className="col-span-1">
                   <Label className="text-xs">Estoque Atual</Label>
                   <Input type="number" value={medForm.estoque_atual} onChange={(e) => setMedForm({ ...medForm, estoque_atual: Number(e.target.value) })} className="mt-1" />
+                </div>
+                <div className="col-span-1">
+                  <Label className="text-xs" title="Qtd. em uma embalagem completa (Ex: 30 comp. por caixa)">Qtd. Embalagem</Label>
+                  <Input type="number" value={medForm.embalagem_completa || ''} onChange={(e) => setMedForm({ ...medForm, embalagem_completa: Number(e.target.value) })} placeholder="Ex: 30" className="mt-1" />
                 </div>
               </div>
             </div>

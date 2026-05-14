@@ -105,6 +105,7 @@ export interface Medication {
   unidade_medida?: string
   tipo_escala?: 'regular' | 'dias_impares' | 'dias_pares' | 'dias_semana' | 'se_necessario'
   dias_semana?: string[]
+  embalagem_completa?: number
 }
 
 export interface BaseMedication {
