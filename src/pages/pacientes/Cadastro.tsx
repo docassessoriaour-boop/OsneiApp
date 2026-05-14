@@ -36,7 +36,7 @@ export default function Cadastro() {
   
   const { data: patients, loading: loadingPatients, insert, update, remove } = useDb<Patient>('patients')
   const { data: allMedications, insert: insertMed, update: updateMed, remove: removeMed, reload: reloadMeds } = useDb<Medication>('medications')
-  const { data: allMedEntries, insert: insertMedEntry } = useDb<MedicationEntry>('medication_entries')
+  const { data: allMedEntries, insert: insertMedEntry, update: updateMedEntry, remove: removeMedEntry } = useDb<MedicationEntry>('medication_entries')
   const { data: rawProducts } = useDb<any>('products')
   const baseMeds = rawProducts.filter((p: any) => p.tipo === 'medicamento')
   const { fetchCep } = useCep()
@@ -60,6 +60,8 @@ export default function Cadastro() {
   const [entryDialogOpen, setEntryDialogOpen] = useState(false)
   const [entryMed, setEntryMed] = useState<Medication | null>(null)
   const [entryForm, setEntryForm] = useState({ data: new Date().toISOString().slice(0, 10), quantidade: 0, responsavel: '', observacoes: '' })
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null)
+  const [entryOldQtd, setEntryOldQtd] = useState<number>(0)
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [historyMed, setHistoryMed] = useState<Medication | null>(null)
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false)
@@ -314,24 +316,74 @@ export default function Cadastro() {
   async function handleSaveEntry() {
     if (!entryMed || !entryForm.quantidade) return
     try {
-      await insertMedEntry({
-        medication_id: entryMed.id,
-        paciente_id: entryMed.pacienteId,
-        data: entryForm.data,
-        quantidade: entryForm.quantidade,
-        responsavel: entryForm.responsavel,
-        observacoes: entryForm.observacoes
-      } as any)
-      
-      const novoEstoque = (entryMed.estoque_atual || 0) + entryForm.quantidade
-      await updateMed(entryMed.id, { estoque_atual: novoEstoque } as any)
+      if (editingEntryId) {
+        await updateMedEntry(editingEntryId, {
+          data: entryForm.data,
+          quantidade: entryForm.quantidade,
+          responsavel: entryForm.responsavel,
+          observacoes: entryForm.observacoes
+        } as any)
+        
+        const diff = entryForm.quantidade - entryOldQtd
+        const novoEstoque = (entryMed.estoque_atual || 0) + diff
+        await updateMed(entryMed.id, { estoque_atual: Math.max(0, novoEstoque) } as any)
+        
+        alert('Entrada de medicamento atualizada com sucesso!')
+      } else {
+        await insertMedEntry({
+          medication_id: entryMed.id,
+          paciente_id: entryMed.pacienteId,
+          data: entryForm.data,
+          quantidade: entryForm.quantidade,
+          responsavel: entryForm.responsavel,
+          observacoes: entryForm.observacoes
+        } as any)
+        
+        const novoEstoque = (entryMed.estoque_atual || 0) + entryForm.quantidade
+        await updateMed(entryMed.id, { estoque_atual: novoEstoque } as any)
+        
+        alert('Entrada de medicamento registrada com sucesso!')
+      }
       
       setEntryDialogOpen(false)
+      setEditingEntryId(null)
       reloadMeds()
-      alert('Entrada de medicamento registrada com sucesso!')
     } catch (error) {
       console.error(error)
-      alert('Erro ao registrar entrada')
+      alert('Erro ao salvar entrada')
+    }
+  }
+
+  function handleEditEntry(entry: MedicationEntry) {
+    if (!historyMed) return;
+    setEntryMed(historyMed);
+    setEditingEntryId(entry.id);
+    setEntryOldQtd(entry.quantidade);
+    setEntryForm({
+      data: entry.data,
+      quantidade: entry.quantidade,
+      responsavel: entry.responsavel || '',
+      observacoes: entry.observacoes || ''
+    });
+    setEntryDialogOpen(true);
+    setHistoryDialogOpen(false);
+  }
+
+  async function handleDeleteEntry(entry: MedicationEntry) {
+    if (!historyMed) return;
+    if (confirm('Tem certeza que deseja excluir esta entrada? O estoque será recalculado.')) {
+      try {
+        await removeMedEntry(entry.id);
+        
+        const currentStock = (historyMed.estoque_atual || 0) - entry.quantidade;
+        await updateMed(historyMed.id, { estoque_atual: Math.max(0, currentStock) } as any);
+        
+        reloadMeds();
+        alert('Entrada excluída com sucesso!');
+      } catch (error) {
+        console.error('Erro ao excluir entrada:', error);
+        alert('Erro ao excluir entrada');
+      }
     }
   }
 
@@ -1071,6 +1123,8 @@ export default function Cadastro() {
                           <div className="flex justify-end gap-1">
                             <Button variant="ghost" size="icon" title="Entrada de Estoque" onClick={() => {
                               setEntryMed(m)
+                              setEditingEntryId(null)
+                              setEntryOldQtd(0)
                               setEntryForm({ data: new Date().toISOString().slice(0, 10), quantidade: 0, responsavel: '', observacoes: '' })
                               setEntryDialogOpen(true)
                             }}>
@@ -1295,7 +1349,7 @@ export default function Cadastro() {
       <Dialog open={entryDialogOpen} onOpenChange={setEntryDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Entrada de Estoque - {entryMed?.medicamento}</DialogTitle>
+            <DialogTitle>{editingEntryId ? 'Editar Entrada de Estoque' : 'Entrada de Estoque'} - {entryMed?.medicamento}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="grid grid-cols-2 gap-4">
@@ -1319,7 +1373,7 @@ export default function Cadastro() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEntryDialogOpen(false)}>Cancelar</Button>
-            <Button onClick={handleSaveEntry} className="bg-green-600 hover:bg-green-700 text-white">Registrar Entrada</Button>
+            <Button onClick={handleSaveEntry} className="bg-green-600 hover:bg-green-700 text-white">{editingEntryId ? 'Salvar Alterações' : 'Registrar Entrada'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1342,11 +1396,12 @@ export default function Cadastro() {
                   <TableHead>Quantidade</TableHead>
                   <TableHead>Responsável</TableHead>
                   <TableHead>Observações</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {allMedEntries.filter(e => e.medication_id === historyMed?.id).length === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="text-center py-4">Nenhuma entrada registrada.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="text-center py-4">Nenhuma entrada registrada.</TableCell></TableRow>
                 ) : (
                   allMedEntries.filter(e => e.medication_id === historyMed?.id).sort((a,b) => new Date(b.data).getTime() - new Date(a.data).getTime()).map(entry => (
                     <TableRow key={entry.id}>
@@ -1354,6 +1409,12 @@ export default function Cadastro() {
                       <TableCell className="font-bold text-green-600">+{entry.quantidade}</TableCell>
                       <TableCell>{entry.responsavel || '-'}</TableCell>
                       <TableCell className="text-xs text-muted-foreground">{entry.observacoes || '-'}</TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="icon" onClick={() => handleEditEntry(entry)}><Pencil className="h-4 w-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleDeleteEntry(entry)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))
                 )}

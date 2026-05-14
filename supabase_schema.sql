@@ -163,6 +163,18 @@ CREATE TABLE IF NOT EXISTS bank_transactions (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Tabela de Histórico de Entradas de Medicamentos
+CREATE TABLE IF NOT EXISTS medication_entries (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  medication_id UUID REFERENCES medications(id) ON DELETE CASCADE,
+  paciente_id UUID REFERENCES patients(id) ON DELETE CASCADE,
+  data DATE NOT NULL,
+  quantidade NUMERIC NOT NULL,
+  responsavel TEXT,
+  observacoes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Habilitar RLS (Opcional, mas recomendado)
 -- Por enquanto, como você está usando a service_role key, o RLS será ignorado.
 -- Mas no futuro, você deve configurar as Policies.
