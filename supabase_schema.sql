@@ -175,6 +175,22 @@ CREATE TABLE IF NOT EXISTS medication_entries (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Tabela de Acompanhamentos
+CREATE TABLE IF NOT EXISTS patient_companionships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  paciente_id UUID REFERENCES patients(id) ON DELETE CASCADE,
+  paciente_nome TEXT,
+  data_inicio DATE NOT NULL,
+  data_fim DATE NOT NULL,
+  nome_acompanhante TEXT,
+  tipo TEXT,
+  local TEXT,
+  responsavel TEXT,
+  valor NUMERIC NOT NULL,
+  status TEXT DEFAULT 'ativo',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Habilitar RLS (Opcional, mas recomendado)
 -- Por enquanto, como você está usando a service_role key, o RLS será ignorado.
 -- Mas no futuro, você deve configurar as Policies.

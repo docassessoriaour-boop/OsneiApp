@@ -137,6 +137,21 @@ export interface Appointment {
   observacoes: string
 }
 
+export interface CompanionEntry {
+  id: string
+  paciente_id: string
+  paciente_nome?: string
+  data_inicio: string
+  data_fim: string
+  nome_acompanhante?: string
+  tipo?: string
+  local?: string
+  responsavel?: string
+  valor: number
+  status?: string
+  created_at?: string
+}
+
 export interface Contract {
   id: string
   numero_contrato?: string

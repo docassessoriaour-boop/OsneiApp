@@ -3,7 +3,7 @@ import { useDb } from '@/hooks/useDb'
 import { useCep } from '@/hooks/useCep'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
-import type { Patient, Medication, BaseMedication, MedicationEntry } from '@/lib/types'
+import type { Patient, Medication, BaseMedication, MedicationEntry, CompanionEntry } from '@/lib/types'
 
 import { SearchBar } from '@/components/shared/SearchBar'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -37,6 +37,7 @@ export default function Cadastro() {
   const { data: patients, loading: loadingPatients, insert, update, remove } = useDb<Patient>('patients')
   const { data: allMedications, insert: insertMed, update: updateMed, remove: removeMed, reload: reloadMeds } = useDb<Medication>('medications')
   const { data: allMedEntries, insert: insertMedEntry, update: updateMedEntry, remove: removeMedEntry } = useDb<MedicationEntry>('medication_entries')
+  const { data: allCompanionships, insert: insertComp, update: updateComp, remove: removeComp } = useDb<CompanionEntry>('patient_companionships')
   const { data: rawProducts } = useDb<any>('products')
   const baseMeds = rawProducts.filter((p: any) => p.tipo === 'medicamento')
   const { fetchCep } = useCep()
@@ -64,6 +65,20 @@ export default function Cadastro() {
   const [entryOldQtd, setEntryOldQtd] = useState<number>(0)
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [historyMed, setHistoryMed] = useState<Medication | null>(null)
+  
+  const [compDialogOpen, setCompDialogOpen] = useState(false)
+  const [editingCompId, setEditingCompId] = useState<string | null>(null)
+  const [compForm, setCompForm] = useState<Partial<CompanionEntry>>({
+    data_inicio: new Date().toISOString().slice(0, 10),
+    data_fim: new Date().toISOString().slice(0, 10),
+    nome_acompanhante: '',
+    tipo: 'Cuidadora de Idosos',
+    local: 'Santa Casa de Ourinhos',
+    responsavel: '',
+    valor: 0,
+    status: 'ativo'
+  })
+
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false)
   const [receiptForm, setReceiptForm] = useState({
     tipo: 'Cuidadora de Idosos',
@@ -112,6 +127,61 @@ export default function Cadastro() {
     `
     printPDF('RECIBO DE PRESTAÇÃO DE SERVIÇO', bodyHtml, clinic)
   }
+
+  async function handleSaveComp() {
+    if (!editingId) return
+    try {
+      const payload = {
+        ...compForm,
+        paciente_id: editingId,
+        paciente_nome: form.nome,
+        responsavel: compForm.responsavel || form.responsavel
+      }
+      if (editingCompId) {
+        await updateComp(editingCompId, payload)
+      } else {
+        await insertComp(payload)
+      }
+      setCompDialogOpen(false)
+    } catch(e) {
+      alert('Erro ao salvar acompanhamento')
+    }
+  }
+
+  async function handleDeleteComp(id: string) {
+    if(confirm('Excluir este acompanhamento?')) {
+      await removeComp(id)
+    }
+  }
+
+  function printCompanionReceipt(comp: CompanionEntry) {
+    const period = comp.data_inicio === comp.data_fim 
+      ? formatDate(comp.data_inicio)
+      : `${formatDate(comp.data_inicio)} até ${formatDate(comp.data_fim)}`
+    
+    const bodyHtml = `
+      <div style="font-size: 16px; line-height: 1.8; text-align: justify; margin-top: 20px;">
+        <p>Recebi de <strong>${comp.responsavel || form.responsavel}</strong> a importância de <strong>${formatCurrency(comp.valor)}</strong> 
+        referente aos serviços de <strong>${comp.tipo || 'Acompanhante'}</strong> prestados ao(à) Sr(a). <strong>${comp.paciente_nome || form.nome}</strong>, 
+        no local <strong>${comp.local || 'Não informado'}</strong>, durante o período de <strong>${period}</strong>.</p>
+        
+        ${comp.nome_acompanhante ? `<p><strong>Nome do Profissional:</strong> ${comp.nome_acompanhante}</p>` : ''}
+        
+        <p style="margin-top: 20px;">Pelo que firmo o presente recibo para que produza os efeitos legais.</p>
+      </div>
+
+      <div style="margin-top: 60px; text-align: center;">
+        <p>Ourinhos (SP), ${new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}</p>
+        
+        <div style="margin-top: 80px;">
+          <div style="border-top: 1px solid #000; width: 300px; margin: 0 auto;"></div>
+          <p style="margin-top: 5px;">${comp.nome_acompanhante || 'Assinatura do Profissional'}</p>
+        </div>
+      </div>
+    `
+    printPDF('RECIBO DE PRESTAÇÃO DE SERVIÇO', bodyHtml, clinic)
+  }
+
 
   const patientMedications = allMedications
     .filter(m => m.pacienteId === editingId)
@@ -774,12 +844,15 @@ export default function Cadastro() {
           </div>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
             <div className="px-6 pt-4 border-b bg-muted/20">
-              <TabsList className="grid w-full grid-cols-2 mb-4">
+              <TabsList className="grid w-full grid-cols-3 mb-4">
                 <TabsTrigger value="dados" className="gap-2">
                   <FileText className="h-4 w-4" /> {isStandard ? 'Visualizar Dados' : 'Dados do Paciente'}
                 </TabsTrigger>
                 <TabsTrigger value="medicacao" disabled={!editingId} className="gap-2">
                   <Pill className="h-4 w-4" /> Medicações {!editingId && <span className="text-[10px] ml-1">(Salvar primeiro)</span>}
+                </TabsTrigger>
+                <TabsTrigger value="acompanhantes" disabled={!editingId} className="gap-2">
+                  <ShieldAlert className="h-4 w-4" /> Acompanhantes {!editingId && <span className="text-[10px] ml-1">(Salvar primeiro)</span>}
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -1166,6 +1239,91 @@ export default function Cadastro() {
             )}
           </div>
         </TabsContent>
+
+        <TabsContent value="acompanhantes" className="m-0 border-0 p-0">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-lg font-semibold">Histórico de Acompanhantes</h3>
+              <p className="text-sm text-muted-foreground">Gerencie os serviços de cuidadores e acompanhantes de {form.nome}</p>
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={() => {
+                setCompForm({
+                  data_inicio: new Date().toISOString().slice(0, 10),
+                  data_fim: new Date().toISOString().slice(0, 10),
+                  nome_acompanhante: '',
+                  tipo: 'Cuidadora de Idosos',
+                  local: 'Santa Casa de Ourinhos',
+                  responsavel: '',
+                  valor: 0,
+                  status: 'ativo'
+                })
+                setEditingCompId(null)
+                setCompDialogOpen(true)
+              }} className="gap-2">
+                <Plus className="h-4 w-4" /> Novo Acompanhamento
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-4">
+            {allCompanionships.filter(c => c.paciente_id === editingId).length === 0 ? (
+              <EmptyState message="Nenhum acompanhamento registrado para este paciente." />
+            ) : (
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Período</TableHead>
+                      <TableHead>Tipo / Local</TableHead>
+                      <TableHead>Acompanhante / Responsável</TableHead>
+                      <TableHead>Valor</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allCompanionships.filter(c => c.paciente_id === editingId).sort((a,b) => new Date(b.data_inicio).getTime() - new Date(a.data_inicio).getTime()).map((c) => (
+                      <TableRow key={c.id}>
+                        <TableCell>
+                          <div className="font-medium">{formatDate(c.data_inicio)}</div>
+                          <div className="text-xs text-muted-foreground">até {formatDate(c.data_fim)}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">{c.tipo || 'Acompanhante'}</div>
+                          <div className="text-xs text-muted-foreground">{c.local || '-'}</div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="font-medium">{c.nome_acompanhante || 'Não informado'}</div>
+                          <div className="text-xs text-muted-foreground">Resp: {c.responsavel || '-'}</div>
+                        </TableCell>
+                        <TableCell className="font-semibold text-green-600">
+                          {formatCurrency(c.valor)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button variant="ghost" size="icon" title="Gerar Recibo" onClick={() => printCompanionReceipt(c)}>
+                              <Receipt className="h-4 w-4 text-purple-600" />
+                            </Button>
+                            <Button variant="ghost" size="icon" title="Editar" onClick={() => {
+                              setCompForm(c)
+                              setEditingCompId(c.id)
+                              setCompDialogOpen(true)
+                            }}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button variant="ghost" size="icon" title="Excluir" onClick={() => handleDeleteComp(c.id)}>
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        </TabsContent>
         </div>
       </Tabs>
         
@@ -1432,6 +1590,69 @@ export default function Cadastro() {
           </div>
           <DialogFooter>
             <Button onClick={() => setHistoryDialogOpen(false)}>Fechar</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={compDialogOpen} onOpenChange={setCompDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{editingCompId ? 'Editar Acompanhamento' : 'Novo Acompanhamento'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Tipo de Serviço</Label>
+              <Select 
+                value={compForm.tipo || 'Cuidadora de Idosos'} 
+                onChange={(e) => setCompForm({ ...compForm, tipo: e.target.value })}
+              >
+                <option value="Cuidadora de Idosos">Cuidadora de Idosos</option>
+                <option value="Acompanhante">Acompanhante</option>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <Label>Local</Label>
+              <Select 
+                value={compForm.local || 'Santa Casa de Ourinhos'} 
+                onChange={(e) => setCompForm({ ...compForm, local: e.target.value })}
+              >
+                <option value="Santa Casa de Ourinhos">Santa Casa de Ourinhos</option>
+                <option value="UPA (Unidade de Pronto Atendimento)">UPA (Unidade de Pronto Atendimento)</option>
+                <option value="Residência">Residência</option>
+                <option value="Outro">Outro</option>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Data Início</Label>
+                <Input type="date" value={compForm.data_inicio} onChange={(e) => setCompForm({ ...compForm, data_inicio: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Data Fim</Label>
+                <Input type="date" value={compForm.data_fim} onChange={(e) => setCompForm({ ...compForm, data_fim: e.target.value })} />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Nome do Profissional (Opcional)</Label>
+              <Input value={compForm.nome_acompanhante || ''} onChange={(e) => setCompForm({ ...compForm, nome_acompanhante: e.target.value })} placeholder="Ex: Maria da Silva" />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Responsável pelo Pagamento (Recibo em nome de)</Label>
+              <Input value={compForm.responsavel || ''} onChange={(e) => setCompForm({ ...compForm, responsavel: e.target.value })} placeholder="Deixe em branco para usar o Resp. do paciente" />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Valor Total (R$)</Label>
+              <Input type="number" value={compForm.valor} onChange={(e) => setCompForm({ ...compForm, valor: Number(e.target.value) })} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCompDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveComp} className="bg-green-600 hover:bg-green-700 text-white">Salvar Acompanhamento</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
