@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useDb } from '@/hooks/useDb'
-import { formatDate } from '@/lib/utils'
+import { formatDate, formatCurrency } from '@/lib/utils'
 import type { Employee, Vacation } from '@/lib/types'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SearchBar } from '@/components/shared/SearchBar'
@@ -13,9 +13,13 @@ import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFo
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Pencil, Trash2, Loader2 } from 'lucide-react'
+import { Pencil, Trash2, Calculator, Info, CheckCircle2, Printer, Loader2 } from 'lucide-react'
+import { Separator } from '@/components/ui/separator'
+import { useClinic } from '@/lib/clinicConfig'
+import { printPDF } from '@/lib/pdf'
 
 export default function Ferias() {
+  const [clinic] = useClinic()
   const { data: employees } = useDb<Employee>('employees')
   const { data: vacations, loading, insert, update, remove } = useDb<Vacation>('vacations')
   const [search, setSearch] = useState('')
@@ -27,14 +31,96 @@ export default function Ferias() {
     dataInicio: '',
     dataFim: '',
     status: 'agendada' as Vacation['status'],
+    salarioBase: 0,
+    diasFerias: 30,
+    diasAbono: 0,
+    venderFerias: false,
   })
 
   const filtered = vacations.filter(v =>
     (v.funcionarioNome || '').toLowerCase().includes(search.toLowerCase())
   )
 
+  // Calculate vacation values
+  const results = useMemo(() => {
+    const { salarioBase, diasFerias, diasAbono, venderFerias } = form
+    if (!salarioBase) return null
+
+    const vFerias = (salarioBase / 30) * diasFerias
+    const vTerco = vFerias / 3
+    
+    // Abono Pecuniário (max 10 days)
+    const abonoDays = venderFerias ? Math.min(diasAbono || 10, 10) : 0
+    const vAbono = (salarioBase / 30) * abonoDays
+    const vTercoAbono = vAbono / 3
+
+    // INSS Progressive Table 2024
+    const baseInss = vFerias + vTerco
+    let inss = 0
+    if (baseInss <= 1412.00) inss = baseInss * 0.075
+    else if (baseInss <= 2666.68) inss = (baseInss * 0.09) - 21.18
+    else if (baseInss <= 4000.03) inss = (baseInss * 0.12) - 101.18
+    else if (baseInss <= 7786.02) inss = (baseInss * 0.14) - 181.18
+    else inss = 908.85 // Ceiling
+
+    // IRRF Table 2024
+    const baseIrrf = baseInss - inss
+    let irrf = 0
+    if (baseIrrf <= 2259.20) irrf = 0
+    else if (baseIrrf <= 2826.65) irrf = (baseIrrf * 0.075) - 169.44
+    else if (baseIrrf <= 3751.05) irrf = (baseIrrf * 0.15) - 381.44
+    else if (baseIrrf <= 4664.68) irrf = (baseIrrf * 0.225) - 662.77
+    else irrf = (baseIrrf * 0.275) - 896.00
+
+    const liquid = vFerias + vTerco + vAbono + vTercoAbono - inss - (irrf > 0 ? irrf : 0)
+
+    return {
+      vFerias,
+      vTerco,
+      vAbono,
+      vTercoAbono,
+      inss,
+      irrf: irrf > 0 ? irrf : 0,
+      liquid,
+      totalProventos: vFerias + vTerco + vAbono + vTercoAbono,
+      totalDescontos: inss + (irrf > 0 ? irrf : 0)
+    }
+  }, [form])
+
+  // Auto-calculate days based on dates
+  useEffect(() => {
+    if (form.dataInicio && form.dataFim) {
+      const start = new Date(form.dataInicio)
+      const end = new Date(form.dataFim)
+      const diffTime = Math.abs(end.getTime() - start.getTime())
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1
+      if (!isNaN(diffDays)) {
+        setForm(prev => ({ ...prev, diasFerias: diffDays }))
+      }
+    }
+  }, [form.dataInicio, form.dataFim])
+
+  // Set salary when employee changes
+  useEffect(() => {
+    if (form.funcionarioId) {
+      const emp = employees.find(e => e.id === form.funcionarioId)
+      if (emp) {
+        setForm(prev => ({ ...prev, salarioBase: emp.salario || 0 }))
+      }
+    }
+  }, [form.funcionarioId, employees])
+
   function openNew() {
-    setForm({ funcionarioId: employees[0]?.id || '', dataInicio: '', dataFim: '', status: 'agendada' })
+    setForm({ 
+      funcionarioId: '', 
+      dataInicio: '', 
+      dataFim: '', 
+      status: 'agendada',
+      salarioBase: 0,
+      diasFerias: 30,
+      diasAbono: 10,
+      venderFerias: false,
+    })
     setEditingId(null)
     setDialogOpen(true)
   }
@@ -54,6 +140,16 @@ export default function Ferias() {
         dataInicio: form.dataInicio,
         dataFim: form.dataFim,
         status: form.status,
+        salarioBase: form.salarioBase,
+        diasFerias: form.diasFerias,
+        diasAbono: form.venderFerias ? form.diasAbono : 0,
+        valorFerias: results?.vFerias,
+        valorTercoConstitucional: results?.vTerco,
+        valorAbonoPecuniario: results?.vAbono,
+        valorTercoAbono: results?.vTercoAbono,
+        descontosInss: results?.inss,
+        descontosIrrf: results?.irrf,
+        valorLiquido: results?.liquid
       }
       if (editingId) {
         await update(editingId, vData as Omit<Vacation, 'id'>)
@@ -81,9 +177,64 @@ export default function Ferias() {
   }
 
   function openEdit(v: Vacation) {
-    setForm({ funcionarioId: v.funcionarioId, dataInicio: v.dataInicio, dataFim: v.dataFim, status: v.status })
+    setForm({ 
+      funcionarioId: v.funcionarioId, 
+      dataInicio: v.dataInicio, 
+      dataFim: v.dataFim, 
+      status: v.status,
+      salarioBase: v.salarioBase || 0,
+      diasFerias: v.diasFerias || 30,
+      diasAbono: v.diasAbono || 0,
+      venderFerias: (v.diasAbono || 0) > 0,
+    })
     setEditingId(v.id)
     setDialogOpen(true)
+  }
+
+  const printVacationReceipt = (v: Vacation) => {
+    const content = `
+      <div class="report-header">
+        <h2>Recibo de Férias</h2>
+        <p>Funcionário: <strong>${v.funcionarioNome}</strong></p>
+        <p>Período: ${formatDate(v.dataInicio)} até ${formatDate(v.dataFim)} (${v.diasFerias} dias)</p>
+      </div>
+      
+      <table class="w-full">
+        <thead>
+          <tr><th>Descrição</th><th class="text-right">Proventos</th><th class="text-right">Descontos</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Valor das Férias</td><td class="text-right">${formatCurrency(v.valorFerias || 0)}</td><td></td></tr>
+          <tr><td>1/3 Constitucional</td><td class="text-right">${formatCurrency(v.valorTercoConstitucional || 0)}</td><td></td></tr>
+          ${v.valorAbonoPecuniario ? `<tr><td>Abono Pecuniário (${v.diasAbono} dias)</td><td class="text-right">${formatCurrency(v.valorAbonoPecuniario)}</td><td></td></tr>` : ''}
+          ${v.valorTercoAbono ? `<tr><td>1/3 sobre Abono</td><td class="text-right">${formatCurrency(v.valorTercoAbono)}</td><td></td></tr>` : ''}
+          <tr><td>INSS sobre Férias</td><td></td><td class="text-right">${formatCurrency(v.descontosInss || 0)}</td></tr>
+          ${v.descontosIrrf ? `<tr><td>IRRF sobre Férias</td><td></td><td class="text-right">${formatCurrency(v.descontosIrrf)}</td></tr>` : ''}
+        </tbody>
+        <tfoot>
+          <tr style="font-weight:700;">
+            <td>TOTAL LÍQUIDO</td>
+            <td colspan="2" class="text-right">${formatCurrency(v.valorLiquido || 0)}</td>
+          </tr>
+        </tfoot>
+      </table>
+
+      <div style="margin-top: 40px; font-size: 14px;">
+        <p>Recebi da empresa <strong>${clinic.razao_social || (clinic as any).name}</strong> a importância líquida de <strong>${formatCurrency(v.valorLiquido || 0)}</strong>, referente ao pagamento de minhas férias no período acima mencionado.</p>
+      </div>
+
+      <div style="margin-top: 80px; display: flex; justify-content: space-around;">
+        <div style="text-align: center; border-top: 1px solid #000; width: 250px; padding-top: 5px;">
+          <p>${v.funcionarioNome}</p>
+          <p style="font-size: 10px;">Funcionário</p>
+        </div>
+        <div style="text-align: center; border-top: 1px solid #000; width: 250px; padding-top: 5px;">
+          <p>${clinic.razao_social || (clinic as any).name}</p>
+          <p style="font-size: 10px;">Empregador</p>
+        </div>
+      </div>
+    `
+    printPDF('Recibo de Férias', content, clinic)
   }
 
   const statusBadge = (status: Vacation['status']) => {
@@ -93,43 +244,52 @@ export default function Ferias() {
   }
 
   return (
-    <div>
+    <div className="space-y-6">
       <PageHeader
         title="Férias"
-        description="Controle de férias dos funcionários"
-        actionLabel="Nova Férias"
+        description="Cálculo e controle de férias dos funcionários"
+        actionLabel="Lançar Férias"
         onAction={openNew}
       />
 
       <Card className="p-6">
-        <SearchBar value={search} onChange={setSearch} placeholder="Buscar..." />
-        <div className="mt-4">
+        <SearchBar value={search} onChange={setSearch} placeholder="Buscar por funcionário..." />
+        <div className="mt-4 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Funcionário</TableHead>
-                <TableHead>Data Início</TableHead>
-                <TableHead>Data Fim</TableHead>
+                <TableHead>Período</TableHead>
+                <TableHead>Dias</TableHead>
+                <TableHead>Abono</TableHead>
+                <TableHead>Valor Líquido</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Ações</TableHead>
+                <TableHead className="text-right">Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filtered.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5}><EmptyState message="Nenhuma férias cadastrada" /></TableCell>
+                  <TableCell colSpan={7}><EmptyState message="Nenhuma férias cadastrada" /></TableCell>
                 </TableRow>
               ) : (
                 filtered.map(v => (
                   <TableRow key={v.id}>
                     <TableCell className="font-medium">{v.funcionarioNome}</TableCell>
-                    <TableCell>{formatDate(v.dataInicio)}</TableCell>
-                    <TableCell>{formatDate(v.dataFim)}</TableCell>
-                    <TableCell>{statusBadge(v.status)}</TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(v)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(v.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                      <div className="text-sm">
+                        {formatDate(v.dataInicio)} até {formatDate(v.dataFim)}
+                      </div>
+                    </TableCell>
+                    <TableCell>{v.diasFerias || '--'}d</TableCell>
+                    <TableCell>{v.diasAbono ? `${v.diasAbono}d` : '--'}</TableCell>
+                    <TableCell className="font-semibold text-primary">{v.valorLiquido ? formatCurrency(v.valorLiquido) : '--'}</TableCell>
+                    <TableCell>{statusBadge(v.status)}</TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-1">
+                        <Button variant="ghost" size="icon" onClick={() => printVacationReceipt(v)} title="Imprimir Recibo"><Printer className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(v)} title="Editar"><Pencil className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(v.id)} title="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -141,38 +301,152 @@ export default function Ferias() {
       </Card>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogHeader>
-          <DialogTitle>{editingId ? 'Editar Férias' : 'Nova Férias'}</DialogTitle>
-          <DialogClose onClose={() => setDialogOpen(false)} />
-        </DialogHeader>
-        <DialogContent>
-          <div className="grid gap-4">
-            <div>
-              <Label>Funcionário</Label>
-              <Select value={form.funcionarioId} onChange={(e) => setForm({ ...form, funcionarioId: e.target.value })} className="mt-1">
-                <option value="">Selecionar...</option>
-                {employees.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
-              </Select>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calculator className="h-5 w-5 text-primary" />
+              {editingId ? 'Editar Cálculo de Férias' : 'Novo Cálculo de Férias'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+            {/* Form Side */}
+            <div className="space-y-4">
+              <div>
+                <Label>Funcionário</Label>
+                <Select value={form.funcionarioId} onChange={(e) => setForm({ ...form, funcionarioId: e.target.value })} className="mt-1">
+                  <option value="">Selecionar...</option>
+                  {employees.filter(e => e.status === 'ativo').map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Salário Base (R$)</Label>
+                  <Input type="number" value={form.salarioBase} onChange={(e) => setForm({ ...form, salarioBase: Number(e.target.value) })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Status</Label>
+                  <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Vacation['status'] })} className="mt-1">
+                    <option value="agendada">Agendada</option>
+                    <option value="em_andamento">Em Andamento</option>
+                    <option value="concluida">Concluída</option>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Data Início</Label>
+                  <Input type="date" value={form.dataInicio} onChange={(e) => setForm({ ...form, dataInicio: e.target.value })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Data Fim</Label>
+                  <Input type="date" value={form.dataFim} onChange={(e) => setForm({ ...form, dataFim: e.target.value })} className="mt-1" />
+                </div>
+              </div>
+
+              <div className="p-4 bg-muted/50 rounded-lg space-y-4 border border-dashed border-primary/20">
+                <div className="flex items-center justify-between">
+                  <Label className="flex items-center gap-2 cursor-pointer">
+                    <input 
+                      type="checkbox" 
+                      checked={form.venderFerias} 
+                      onChange={e => setForm({...form, venderFerias: e.target.checked})}
+                      className="w-4 h-4 rounded border-gray-300 text-primary"
+                    />
+                    Abono Pecuniário (Venda)
+                  </Label>
+                  {form.venderFerias && (
+                    <div className="flex items-center gap-2">
+                       <Input 
+                        type="number" 
+                        max={10}
+                        className="w-20 h-8" 
+                        value={form.diasAbono} 
+                        onChange={e => setForm({...form, diasAbono: Number(e.target.value)})}
+                      />
+                      <span className="text-xs text-muted-foreground">dias</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-[10px] text-muted-foreground leading-tight italic">
+                  * O funcionário pode vender até 1/3 das férias (limite legal de 10 dias).
+                </p>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div><Label>Data Início</Label><Input type="date" value={form.dataInicio} onChange={(e) => setForm({ ...form, dataInicio: e.target.value })} className="mt-1" /></div>
-              <div><Label>Data Fim</Label><Input type="date" value={form.dataFim} onChange={(e) => setForm({ ...form, dataFim: e.target.value })} className="mt-1" /></div>
-            </div>
-            <div>
-              <Label>Status</Label>
-              <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Vacation['status'] })} className="mt-1">
-                <option value="agendada">Agendada</option>
-                <option value="em_andamento">Em Andamento</option>
-                <option value="concluida">Concluída</option>
-              </Select>
+
+            {/* Results Side */}
+            <div className="bg-primary/5 rounded-xl border border-primary/10 p-6 flex flex-col">
+              <h3 className="font-bold text-sm uppercase text-primary/70 mb-4 tracking-wider flex items-center gap-2">
+                <Info className="h-4 w-4" />
+                Resumo do Pagamento
+              </h3>
+              
+              {!results ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-muted-foreground opacity-50">
+                  <Calculator className="h-12 w-12 mb-2" />
+                  <p className="text-sm">Selecione o funcionário e as datas</p>
+                </div>
+              ) : (
+                <div className="space-y-3 flex-1">
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">Valor das Férias ({form.diasFerias} dias):</span>
+                    <span className="font-medium">{formatCurrency(results.vFerias)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground">1/3 Constitucional:</span>
+                    <span className="font-medium">{formatCurrency(results.vTerco)}</span>
+                  </div>
+                  
+                  {form.venderFerias && (
+                    <>
+                      <Separator className="bg-primary/10" />
+                      <div className="flex justify-between items-center text-sm text-green-700">
+                        <span className="font-medium">Abono Pecuniário ({form.diasAbono} dias):</span>
+                        <span className="font-bold">{formatCurrency(results.vAbono)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-sm text-green-700">
+                        <span className="font-medium">1/3 sobre Abono:</span>
+                        <span className="font-bold">{formatCurrency(results.vTercoAbono)}</span>
+                      </div>
+                    </>
+                  )}
+
+                  <Separator className="bg-primary/10" />
+                  
+                  <div className="flex justify-between items-center text-sm text-destructive">
+                    <span>INSS:</span>
+                    <span>-{formatCurrency(results.inss)}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm text-destructive">
+                    <span>IRRF:</span>
+                    <span>-{formatCurrency(results.irrf)}</span>
+                  </div>
+
+                  <div className="mt-auto pt-6 border-t-2 border-primary/20">
+                    <div className="bg-white p-4 rounded-lg shadow-sm border border-primary/10">
+                      <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Valor Líquido a Receber</div>
+                      <div className="text-3xl font-black text-primary flex items-baseline gap-1">
+                        {formatCurrency(results.liquid)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
+
+          <DialogFooter className="mt-6 border-t pt-4">
+            <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSave} className="gap-2" disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              {saving ? 'Salvando...' : 'Confirmar e Salvar'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-          <Button onClick={handleSave}>Salvar</Button>
-        </DialogFooter>
       </Dialog>
     </div>
   )
 }
+

@@ -276,6 +276,17 @@ export interface Vacation {
   dataInicio: string
   dataFim: string
   status: 'agendada' | 'em_andamento' | 'concluida'
+  salarioBase?: number
+  diasFerias?: number
+  diasAbono?: number // Dias vendidos (abono pecuniário)
+  valorFerias?: number
+  valorTercoConstitucional?: number
+  valorAbonoPecuniario?: number
+  valorTercoAbono?: number
+  descontosInss?: number
+  descontosIrrf?: number
+  valorLiquido?: number
+  created_at?: string
 }
 
 export interface PayrollAdicional {
