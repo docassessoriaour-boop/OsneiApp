@@ -93,7 +93,7 @@ export default function Login() {
 
             <Button
               type="submit"
-              className="w-full h-11 bg-primary hover:bg-primary/90 text-white font-semibold transition-all shadow-[0_0_20px_rgba(var(--primary),0.3)]"
+              className="w-full h-11 bg-primary hover:bg-primary/90 text-white font-semibold transition-all shadow-[0_0_20px_rgba(29,78,216,0.3)]"
               disabled={loading}
             >
               {loading ? (

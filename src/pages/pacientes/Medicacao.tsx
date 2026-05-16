@@ -15,13 +15,14 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import { Pencil, Trash2, Loader2, FileText, Plus, History, PackagePlus } from 'lucide-react'
 
 export default function Medicacao() {
   const [clinic] = useClinic()
   const { data: rawPatients } = useDb<Patient>('patients')
   const { data: rawMedications, loading, update: updateMed, reload: reloadMeds } = useDb<Medication>('medications')
-  const { data: medEntries, insert: insertMedEntry } = useDb<MedicationEntry>('medication_entries')
+  const { data: medEntries, insert: insertMedEntry, loading: entriesLoading } = useDb<MedicationEntry>('medication_entries')
 
   const patients = rawPatients.filter(p => p.status !== 'inativo').sort((a, b) => a.nome.localeCompare(b.nome))
   const activePatientIds = patients.map(p => p.id)
@@ -609,19 +610,29 @@ export default function Medicacao() {
   }
 
   function printEntriesReport() {
+    if (entriesLoading) {
+      alert('Aguarde, carregando histórico de entradas...')
+      return
+    }
+    
+    if (medEntries.length === 0) {
+      alert('Nenhuma entrada de estoque encontrada no histórico.')
+      return
+    }
+
     const sortedEntries = [...medEntries].sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime())
     
-    // Group by Patient
+    // Group by Patient - Using raw data to ensure even inactive/not filtered data shows up
     const grouped: Record<string, any[]> = {}
     sortedEntries.forEach(entry => {
-      const patient = patients.find(p => p.id === entry.paciente_id)
-      const patientName = patient?.nome || 'Desconhecido'
+      const patient = rawPatients.find(p => p.id === entry.paciente_id)
+      const patientName = patient?.nome || 'Paciente não encontrado'
       if (!grouped[patientName]) grouped[patientName] = []
       
-      const med = medications.find(m => m.id === entry.medication_id)
+      const med = rawMedications.find(m => m.id === entry.medication_id)
       grouped[patientName].push({
         ...entry,
-        medName: med?.medicamento || 'Desconhecido',
+        medName: med?.medicamento || 'Medicamento não encontrado',
         medDosage: med?.dosagem || ''
       })
     })

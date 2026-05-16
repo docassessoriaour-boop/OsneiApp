@@ -53,16 +53,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true
-    let isInitialSessionHandled = false
 
     // The single source of truth for auth state
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return
       console.log('Auth event:', event, session?.user?.id)
-      
-      if (event === 'INITIAL_SESSION') {
-        isInitialSessionHandled = true
-      }
       
       const currentUser = session?.user ?? null
       setUser(currentUser)
@@ -70,46 +65,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (currentUser) {
         // Fetch profile on initial load or sign in
         if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') {
-          setLoading(true)
           await fetchProfile(currentUser.id)
         } else {
-          // Just set loading to false for events like TOKEN_REFRESHED
           setLoading(false)
         }
       } else {
-        // No user session
         setProfile(null)
         setLoading(false)
       }
     })
 
-    // Fallback in case INITIAL_SESSION doesn't fire (can happen in some setups)
-    supabase.auth.getSession()
-      .then(async ({ data: { session } }) => {
-        if (!mounted || isInitialSessionHandled) return
-        
-        const currentUser = session?.user ?? null
-        setUser(currentUser)
-        
-        if (currentUser) {
-          setLoading(true)
-          await fetchProfile(currentUser.id)
-        } else {
-          setProfile(null)
-          setLoading(false)
-        }
-      })
-      .catch((error) => {
-        console.error('Fallback session error:', error)
-        if (mounted && !isInitialSessionHandled) {
-          setProfile(null)
-          setLoading(false)
-        }
-      })
+    // Safety timeout: force loading to false after 5 seconds if it's still true
+    const timeout = setTimeout(() => {
+      if (mounted && loading) {
+        console.warn('Auth loading timeout reached, forcing loading to false')
+        setLoading(false)
+      }
+    }, 5000)
+
+    // Initial check
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!mounted) return
+      if (session?.user) {
+        setUser(session.user)
+        fetchProfile(session.user.id)
+      } else {
+        setLoading(false)
+      }
+    })
 
     return () => {
       mounted = false
       subscription.unsubscribe()
+      clearTimeout(timeout)
     }
   }, [])
 
