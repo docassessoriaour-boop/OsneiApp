@@ -13,9 +13,9 @@ export function useDb<T>(table: string) {
       setError(null)
       console.log(`[useDb] Fetching data for table: ${table}...`)
 
-      // Add a 15-second timeout to the request
+      // Add a 30-second timeout to the request
       const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Database request timeout')), 15000)
+        timeoutId = setTimeout(() => reject(new Error('Database request timeout')), 30000)
       })
 
       const requestPromise = supabase
@@ -23,22 +23,24 @@ export function useDb<T>(table: string) {
         .select('*')
         .order('created_at', { ascending: false })
 
-      const { data: result, error } = await Promise.race([
+      const { data: result, error: fetchError } = await Promise.race([
         requestPromise,
         timeoutPromise.then(() => ({ data: null, error: { message: 'Timeout' } }))
       ]) as any
 
-      if (error) {
-        console.error(`[useDb] Error fetching ${table}:`, error)
-        throw error
+      if (fetchError) {
+        console.error(`[useDb] Error fetching ${table}:`, fetchError)
+        setError(fetchError)
+        // Set empty data on error so the app doesn't crash but shows 0
+        setData([])
+      } else {
+        console.log(`[useDb] Successfully fetched ${result?.length || 0} rows from ${table}`)
+        setData(result as T[])
       }
-      
-      console.log(`[useDb] Successfully fetched ${result?.length || 0} rows from ${table}`)
-      setData(result as T[])
     } catch (e: any) {
       console.error(`[useDb] Exception in ${table}:`, e)
       setError(e)
-      // If it's a network error or timeout, we might want to show a toast (but we don't have one here)
+      setData([])
     } finally {
       if (timeoutId) clearTimeout(timeoutId)
       setLoading(false)
