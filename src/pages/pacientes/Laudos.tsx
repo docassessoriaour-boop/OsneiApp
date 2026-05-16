@@ -16,8 +16,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { formatDate } from '@/lib/utils'
-import { Pencil, Trash2, FileText, Loader2, Plus, Search } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, Plus, Search, Wand2, Type } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { fixSpelling, normalizeCase } from '@/lib/spelling'
 
 const emptyReport: Omit<PatientReport, 'id' | 'created_at'> = {
   patient_id: '',
@@ -68,6 +69,16 @@ export default function Laudos() {
     })
     setEditingId(report.id)
     setDialogOpen(true)
+  }
+
+  const handleFixSpelling = () => {
+    const fixed = fixSpelling(form.content)
+    setForm({ ...form, content: fixed })
+  }
+
+  const handleNormalizeCase = () => {
+    const normalized = normalizeCase(form.content)
+    setForm({ ...form, content: normalized })
   }
 
   async function handleSave() {
@@ -257,13 +268,39 @@ export default function Laudos() {
               </div>
 
               <div className="md:col-span-2 flex flex-col">
-                <Label className="mb-2 text-base font-semibold">Conteúdo do Laudo</Label>
+                <div className="flex justify-between items-center mb-2">
+                  <Label className="text-base font-semibold">Conteúdo do Laudo</Label>
+                  <div className="flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      onClick={handleNormalizeCase}
+                      className="h-8 gap-2 text-xs"
+                      title="Converter de CAIXA ALTA para frase normal"
+                    >
+                      <Type className="h-3 w-3" /> Normalizar Case
+                    </Button>
+                    <Button 
+                      variant="secondary" 
+                      size="sm" 
+                      onClick={handleFixSpelling}
+                      className="h-8 gap-2 text-xs font-semibold bg-primary/10 hover:bg-primary/20 text-primary border-primary/20"
+                      title="Corrigir erros comuns e espaçamento"
+                    >
+                      <Wand2 className="h-3 w-3" /> Corrigir Texto (PT-BR)
+                    </Button>
+                  </div>
+                </div>
                 <Textarea 
                   value={form.content} 
                   onChange={(e) => setForm({ ...form, content: e.target.value })} 
                   className="w-full min-h-[500px] text-base p-4 focus-visible:ring-primary/50" 
                   placeholder="Digite o texto detalhado do laudo aqui..."
+                  spellCheck={true}
                 />
+                <p className="mt-1 text-[10px] text-muted-foreground italic">
+                  * Dica: Use o botão "Corrigir" para ajustar erros comuns e espaçamento automaticamente.
+                </p>
               </div>
 
               <div className="md:col-span-2 mt-2">
@@ -288,7 +325,6 @@ export default function Laudos() {
                       </option>
                     )
                   })}
-                  {/* Manter a opção atual caso tenha sido digitada manualmente antes e não esteja na lista */}
                   {form.professional_name && !professionals.some(p => {
                     let regLabel = p.coren_crm;
                     if (!regLabel.toUpperCase().includes('COREN') && !regLabel.toUpperCase().includes('CRM') && !regLabel.toUpperCase().includes('CRP')) {

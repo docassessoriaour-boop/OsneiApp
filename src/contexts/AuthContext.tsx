@@ -27,35 +27,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
+  const initialized = React.useRef(false)
 
-  useEffect(() => {
-    // Initial session check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
-      if (currentUser) {
-        fetchProfile(currentUser.id)
-      } else {
-        setLoading(false)
-      }
-    })
-
-    // Auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
-      if (currentUser) {
-        fetchProfile(currentUser.id)
-      } else {
-        setProfile(null)
-        setLoading(false)
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  async function fetchProfile(userId: string) {
+  const fetchProfile = async (userId: string) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -77,6 +51,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  useEffect(() => {
+    if (initialized.current) return
+    initialized.current = true
+
+    // The single source of truth for auth state
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth event:', event, session?.user?.id)
+      
+      const currentUser = session?.user ?? null
+      
+      // Update user state
+      setUser(currentUser)
+
+      if (currentUser) {
+        // If we have a user but no profile yet, or the user changed
+        if (!profile || profile.id !== currentUser.id) {
+          setLoading(true)
+          await fetchProfile(currentUser.id)
+        } else {
+          setLoading(false)
+        }
+      } else {
+        // No user session
+        setProfile(null)
+        setLoading(false)
+      }
+    })
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [profile])
+
   const isAdmin = profile?.role === 'admin'
   const isManager = profile?.role === 'manager' || isAdmin
 
@@ -87,7 +94,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAdmin,
     isManager,
     signOut: async () => {
+      setLoading(true)
       await supabase.auth.signOut()
+      setUser(null)
+      setProfile(null)
+      setLoading(false)
     }
   }
 
