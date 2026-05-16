@@ -84,20 +84,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })
 
     // Fallback in case INITIAL_SESSION doesn't fire (can happen in some setups)
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
-      if (!mounted || isInitialSessionHandled) return
-      
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
-      
-      if (currentUser) {
-        setLoading(true)
-        await fetchProfile(currentUser.id)
-      } else {
-        setProfile(null)
-        setLoading(false)
-      }
-    })
+    supabase.auth.getSession()
+      .then(async ({ data: { session } }) => {
+        if (!mounted || isInitialSessionHandled) return
+        
+        const currentUser = session?.user ?? null
+        setUser(currentUser)
+        
+        if (currentUser) {
+          setLoading(true)
+          await fetchProfile(currentUser.id)
+        } else {
+          setProfile(null)
+          setLoading(false)
+        }
+      })
+      .catch((error) => {
+        console.error('Fallback session error:', error)
+        if (mounted && !isInitialSessionHandled) {
+          setProfile(null)
+          setLoading(false)
+        }
+      })
 
     return () => {
       mounted = false
