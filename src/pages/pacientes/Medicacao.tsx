@@ -15,12 +15,14 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
-import { Pencil, Trash2, Loader2, FileText } from 'lucide-react'
+import { Pencil, Trash2, Loader2, FileText, Plus, History, PackagePlus } from 'lucide-react'
+import { MedicationEntry } from '@/lib/types'
 
 export default function Medicacao() {
   const [clinic] = useClinic()
   const { data: rawPatients } = useDb<Patient>('patients')
-  const { data: rawMedications, loading } = useDb<Medication>('medications')
+  const { data: rawMedications, loading, update: updateMed, reload: reloadMeds } = useDb<Medication>('medications')
+  const { data: medEntries, insert: insertMedEntry } = useDb<MedicationEntry>('medication_entries')
 
   const patients = rawPatients.filter(p => p.status !== 'inativo').sort((a, b) => a.nome.localeCompare(b.nome))
   const activePatientIds = patients.map(p => p.id)
@@ -30,6 +32,15 @@ export default function Medicacao() {
   const [exporting, setExporting] = useState(false)
   const [search, setSearch] = useState('')
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list')
+  
+  // Stock Entry Dialog State
+  const [stockEntryOpen, setStockEntryOpen] = useState(false)
+  const [selectedMedKey, setSelectedMedKey] = useState('')
+  const [totalQuantity, setTotalQuantity] = useState<number>(0)
+  const [distribution, setDistribution] = useState<Record<string, number>>({})
+  const [entryResponsavel, setEntryResponsavel] = useState('')
+  const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10))
+  const [isProcessingEntry, setIsProcessingEntry] = useState(false)
 
   const [selectedPatientId, setSelectedPatientId] = useState('all')
   const [selectedUnit, setSelectedUnit] = useState('all')
@@ -514,6 +525,150 @@ export default function Medicacao() {
     }
   }
 
+  // Group medications for selection in global entry
+  const groupedMedKeys = Array.from(new Set(medications.map(m => `${m.medicamento}__${(m.dosagem || '').trim()}`))).sort()
+
+  const handleOpenStockEntry = (medKey: string) => {
+    setSelectedMedKey(medKey)
+    const [name, dosage] = medKey.split('__')
+    const users = medications.filter(m => m.medicamento === name && (m.dosagem || '').trim() === dosage)
+    
+    const initialDist: Record<string, number> = {}
+    users.forEach(u => {
+      initialDist[u.id] = 0
+    })
+    
+    setDistribution(initialDist)
+    setTotalQuantity(0)
+    setStockEntryOpen(true)
+  }
+
+  const handleApplyProportional = () => {
+    const [name, dosage] = selectedMedKey.split('__')
+    const users = medications.filter(m => m.medicamento === name && (m.dosagem || '').trim() === dosage)
+    const totalDaily = users.reduce((acc, m) => acc + calculateDailyConsumption(m), 0)
+    
+    if (totalDaily === 0) return
+
+    const newDist: Record<string, number> = {}
+    let remaining = totalQuantity
+    
+    users.forEach((u, idx) => {
+      if (idx === users.length - 1) {
+        newDist[u.id] = remaining
+      } else {
+        const share = Math.floor((calculateDailyConsumption(u) / totalDaily) * totalQuantity)
+        newDist[u.id] = share
+        remaining -= share
+      }
+    })
+    
+    setDistribution(newDist)
+  }
+
+  async function handleSaveGlobalEntry() {
+    if (!selectedMedKey || totalQuantity <= 0) return
+    
+    const sumDist = Object.values(distribution).reduce((a, b) => a + b, 0)
+    if (sumDist !== totalQuantity) {
+      if (!confirm(`A soma das quantidades (${sumDist}) é diferente do total recebido (${totalQuantity}). Deseja prosseguir assim mesmo?`)) return
+    }
+
+    setIsProcessingEntry(true)
+    try {
+      for (const [medId, qty] of Object.entries(distribution)) {
+        if (qty <= 0) continue
+        
+        const med = medications.find(m => m.id === medId)
+        if (!med) continue
+
+        // 1. Create Entry
+        await insertMedEntry({
+          medication_id: med.id,
+          paciente_id: med.pacienteId,
+          data: entryDate,
+          quantidade: qty,
+          responsavel: entryResponsavel
+        } as any)
+
+        // 2. Update Stock
+        const currentStock = med.estoque_atual || 0
+        await updateMed(med.id, {
+          estoque_atual: currentStock + qty
+        } as any)
+      }
+
+      alert('Estoque atualizado com sucesso para todos os pacientes selecionados!')
+      setStockEntryOpen(false)
+      reloadMeds()
+    } catch (error: any) {
+      console.error(error)
+      alert('Erro ao salvar entrada global: ' + error.message)
+    } finally {
+      setIsProcessingEntry(false)
+    }
+  }
+
+  function printEntriesReport() {
+    const sortedEntries = [...medEntries].sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime())
+    
+    // Group by Patient
+    const grouped: Record<string, any[]> = {}
+    sortedEntries.forEach(entry => {
+      const patient = patients.find(p => p.id === entry.paciente_id)
+      const patientName = patient?.nome || 'Desconhecido'
+      if (!grouped[patientName]) grouped[patientName] = []
+      
+      const med = medications.find(m => m.id === entry.medication_id)
+      grouped[patientName].push({
+        ...entry,
+        medName: med?.medicamento || 'Desconhecido',
+        medDosage: med?.dosagem || ''
+      })
+    })
+
+    const patientRows = Object.entries(grouped).sort((a, b) => a[0].localeCompare(b[0])).map(([name, entries]) => {
+      const entryRows = entries.map(e => `
+        <tr>
+          <td>${formatDate(e.data)}</td>
+          <td><strong>${e.medName}</strong> ${e.medDosage}</td>
+          <td style="text-align:center; font-weight:bold; color:green;">+${e.quantidade}</td>
+          <td>${e.responsavel || '-'}</td>
+        </tr>
+      `).join('')
+
+      return `
+        <div style="margin-top: 20px; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; page-break-inside: avoid;">
+          <div style="background: #f8fafc; padding: 10px; font-weight: bold; border-bottom: 1px solid #e2e8f0; color: #1e293b;">
+            Paciente: ${name}
+          </div>
+          <table style="width: 100%; border-collapse: collapse;">
+            <thead>
+              <tr style="background: #fff; border-bottom: 1px solid #e2e8f0;">
+                <th style="padding: 8px; text-align: left; font-size: 10px; width: 20%;">Data</th>
+                <th style="padding: 8px; text-align: left; font-size: 10px; width: 40%;">Medicamento</th>
+                <th style="padding: 8px; text-align: center; font-size: 10px; width: 15%;">Quantidade</th>
+                <th style="padding: 8px; text-align: left; font-size: 10px; width: 25%;">Responsável</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${entryRows}
+            </tbody>
+          </table>
+        </div>
+      `
+    }).join('')
+
+    printPDF('Histórico de Entradas de Medicamentos (Por Paciente)', `
+      <style>
+        table { width: 100%; border-collapse: collapse; }
+        td { padding: 8px; font-size: 11px; border-bottom: 1px solid #f1f5f9; }
+      </style>
+      <p style="font-size: 12px; color: #666; margin-bottom: 10px;">Relatório detalhado de todas as entradas de estoque registradas no sistema.</p>
+      ${patientRows || '<p>Nenhuma entrada registrada.</p>'}
+    `, clinic)
+  }
+
   return (
     <div>
       <PageHeader title="Medicação" description="Relatórios e escalas de medicação (Gerenciamento individual no cadastro do paciente)" />
@@ -569,6 +724,12 @@ export default function Medicacao() {
             </Button>
             <Button variant="outline" size="sm" onClick={exportToCatalog} disabled={exporting} className="gap-2 h-8 text-xs text-green-600 border-green-200 hover:bg-green-50">
               {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />} Catálogo
+            </Button>
+            <Button variant="outline" size="sm" onClick={printEntriesReport} className="gap-2 h-8 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50">
+                <History className="h-4 w-4" /> Histórico de Entradas
+            </Button>
+            <Button variant="default" size="sm" onClick={() => setStockEntryOpen(true)} className="gap-2 h-8 text-xs bg-green-600 hover:bg-green-700 shadow-sm">
+                <PackagePlus className="h-4 w-4" /> Lançar Estoque (Global)
             </Button>
             <Button variant="outline" size="sm" onClick={printReport} className="gap-2 h-8 text-xs">
                 <FileText className="h-4 w-4" /> PDF Escala
@@ -728,6 +889,126 @@ export default function Medicacao() {
           </div>
         )}
       </Card>
+
+      <Dialog open={stockEntryOpen} onOpenChange={setStockEntryOpen}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <PackagePlus className="h-5 w-5 text-green-600" />
+            Lançar Entrada de Estoque (Global)
+          </DialogTitle>
+          <DialogClose onClick={() => setStockEntryOpen(false)} />
+        </DialogHeader>
+        <DialogContent className="max-w-2xl">
+          <div className="grid gap-6 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Medicamento</Label>
+                <Select 
+                  value={selectedMedKey} 
+                  onChange={(e) => {
+                    const val = e.target.value
+                    setSelectedMedKey(val)
+                    const [name, dosage] = val.split('__')
+                    const users = medications.filter(m => m.medicamento === name && (m.dosagem || '').trim() === dosage)
+                    const newDist: Record<string, number> = {}
+                    users.forEach(u => newDist[u.id] = 0)
+                    setDistribution(newDist)
+                  }}
+                >
+                  <option value="">Selecione o medicamento...</option>
+                  {groupedMedKeys.map(key => (
+                    <option key={key} value={key}>{key.replace('__', ' - ')}</option>
+                  ))}
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Data de Entrada</Label>
+                <Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Quantidade Total Recebida</Label>
+                <div className="flex gap-2">
+                  <Input 
+                    type="number" 
+                    value={totalQuantity} 
+                    onChange={(e) => setTotalQuantity(Number(e.target.value))} 
+                    placeholder="Ex: 100"
+                  />
+                  <Button variant="outline" size="sm" onClick={handleApplyProportional} disabled={!selectedMedKey || totalQuantity <= 0}>
+                    Distribuir Proporcional
+                  </Button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Responsável</Label>
+                <Input 
+                  value={entryResponsavel} 
+                  onChange={(e) => setEntryResponsavel(e.target.value)} 
+                  placeholder="Nome de quem recebeu"
+                />
+              </div>
+            </div>
+
+            {selectedMedKey && (
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-muted/50">
+                    <TableRow>
+                      <TableHead>Paciente</TableHead>
+                      <TableHead className="text-center">Estoque Atual</TableHead>
+                      <TableHead className="text-center">Consumo Diário</TableHead>
+                      <TableHead className="w-[120px] text-right">Lançar Qtd</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {medications
+                      .filter(m => {
+                        const [name, dosage] = selectedMedKey.split('__')
+                        return m.medicamento === name && (m.dosagem || '').trim() === dosage
+                      })
+                      .map(m => (
+                        <TableRow key={m.id}>
+                          <TableCell className="font-medium text-xs">{m.pacienteNome}</TableCell>
+                          <TableCell className="text-center text-xs">{m.estoque_atual} {m.unidade_medida}</TableCell>
+                          <TableCell className="text-center text-xs">{calculateDailyConsumption(m)} /dia</TableCell>
+                          <TableCell className="text-right">
+                            <Input 
+                              type="number" 
+                              className="h-8 text-right text-xs" 
+                              value={distribution[m.id] || 0} 
+                              onChange={(e) => setDistribution({ ...distribution, [m.id]: Number(e.target.value) })}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+            
+            <div className="flex justify-between items-center text-sm p-3 bg-muted/30 rounded-lg">
+              <span className="text-muted-foreground">Soma da Distribuição:</span>
+              <span className={`font-bold ${Object.values(distribution).reduce((a,b) => a+b, 0) === totalQuantity ? 'text-green-600' : 'text-amber-600'}`}>
+                {Object.values(distribution).reduce((a,b) => a+b, 0)} / {totalQuantity}
+              </span>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStockEntryOpen(false)}>Cancelar</Button>
+            <Button 
+              onClick={handleSaveGlobalEntry} 
+              disabled={isProcessingEntry || !selectedMedKey || totalQuantity <= 0}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isProcessingEntry ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <PackagePlus className="h-4 w-4 mr-2" />}
+              Salvar Entrada Global
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
