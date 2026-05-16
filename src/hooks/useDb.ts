@@ -8,38 +8,41 @@ export function useDb<T>(table: string) {
 
   const fetchData = useCallback(async () => {
     let timeoutId: any
+    let isTimeout = false
     try {
       setLoading(true)
       setError(null)
       console.log(`[useDb] Fetching data for table: ${table}...`)
 
-      // Add a 30-second timeout to the request
-      const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error('Database request timeout')), 30000)
-      })
+      // We'll use an AbortController for timeout if fetch supports it, or just a flag
+      const controller = new AbortController()
+      timeoutId = setTimeout(() => {
+        isTimeout = true
+        controller.abort()
+      }, 10000) // 10 second timeout
 
-      const requestPromise = supabase
+      const { data: result, error: fetchError } = await supabase
         .from(table)
         .select('*')
         .order('created_at', { ascending: false })
-
-      const { data: result, error: fetchError } = await Promise.race([
-        requestPromise,
-        timeoutPromise.then(() => ({ data: null, error: { message: 'Timeout' } }))
-      ]) as any
+        .abortSignal(controller.signal)
 
       if (fetchError) {
         console.error(`[useDb] Error fetching ${table}:`, fetchError)
         setError(fetchError)
-        // Set empty data on error so the app doesn't crash but shows 0
         setData([])
       } else {
         console.log(`[useDb] Successfully fetched ${result?.length || 0} rows from ${table}`)
         setData(result as T[])
       }
     } catch (e: any) {
-      console.error(`[useDb] Exception in ${table}:`, e)
-      setError(e)
+      if (isTimeout || e.name === 'AbortError') {
+        console.error(`[useDb] Timeout fetching ${table}`)
+        setError({ message: 'Timeout na requisição' })
+      } else {
+        console.error(`[useDb] Exception in ${table}:`, e)
+        setError(e)
+      }
       setData([])
     } finally {
       if (timeoutId) clearTimeout(timeoutId)

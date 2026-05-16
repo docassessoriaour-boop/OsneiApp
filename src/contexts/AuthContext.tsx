@@ -29,31 +29,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const initialized = React.useRef(false)
 
-  const fetchProfile = async (userId: string) => {
+  const fetchProfile = async (userId: string, retries = 2) => {
     try {
-      console.log('[Auth] Fetching profile for:', userId)
+      console.log('[Auth] Fetching profile for:', userId, 'retries left:', retries)
+      
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000)
+      
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
+        .abortSignal(controller.signal)
         .single()
+        
+      clearTimeout(timeoutId)
 
       if (error) {
         if (error.code === 'PGRST116') {
           console.warn('[Auth] No profile found for user')
+          setProfile(null)
         } else {
           console.error('[Auth] Error fetching profile:', error)
+          if (retries > 0) {
+            console.log('[Auth] Retrying profile fetch...')
+            return fetchProfile(userId, retries - 1)
+          }
+          setProfile(null)
         }
-        setProfile(null)
       } else {
-        console.log('[Auth] Profile loaded successfully')
+        console.log('[Auth] Profile loaded successfully', data)
         setProfile(data as Profile)
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('[Auth] Unexpected error in fetchProfile:', error)
+      if (error.name === 'AbortError' && retries > 0) {
+        console.log('[Auth] Timeout, retrying profile fetch...')
+        return fetchProfile(userId, retries - 1)
+      }
       setProfile(null)
     } finally {
-      setLoading(false)
+      if (retries === 0 || profile !== undefined) {
+        setLoading(false)
+      }
     }
   }
 
