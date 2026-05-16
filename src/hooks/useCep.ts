@@ -32,7 +32,6 @@ export function useCep() {
       console.error('Erro ao buscar CEP:', error)
       return null
     } finally {
-      setLoading(true)
       // Small delay to prevent flickering
       setTimeout(() => setLoading(false), 300)
     }
