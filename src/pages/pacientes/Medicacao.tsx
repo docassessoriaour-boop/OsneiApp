@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useDb } from '@/hooks/useDb'
-import type { Patient, Medication, BaseMedication } from '@/lib/types'
+import type { Patient, Medication, BaseMedication, MedicationEntry } from '@/lib/types'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SearchBar } from '@/components/shared/SearchBar'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -16,7 +16,6 @@ import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFo
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
 import { Pencil, Trash2, Loader2, FileText, Plus, History, PackagePlus } from 'lucide-react'
-import { MedicationEntry } from '@/lib/types'
 
 export default function Medicacao() {
   const [clinic] = useClinic()
