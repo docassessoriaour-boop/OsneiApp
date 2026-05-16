@@ -154,10 +154,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isManager,
     signOut: async () => {
       setLoading(true)
-      await supabase.auth.signOut()
-      setUser(null)
-      setProfile(null)
-      setLoading(false)
+      try {
+        await supabase.auth.signOut()
+      } catch (error) {
+        console.error('[Auth] Error signing out:', error)
+      } finally {
+        setUser(null)
+        setProfile(null)
+        setLoading(false)
+      }
     }
   }
 
