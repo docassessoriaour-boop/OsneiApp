@@ -21,10 +21,10 @@ export function useDb<T>(table: string) {
         .order('created_at', { ascending: false })
         .abortSignal(controller.signal)
 
-      const timeoutPromise = new Promise<{data: null, error: any}>((_, reject) => {
+      const timeoutPromise = new Promise<{data: null, error: any}>((resolve, reject) => {
         timeoutId = setTimeout(() => {
           controller.abort()
-          reject(new Error('Timeout na requisição'))
+          resolve({ data: null, error: new Error('Timeout na requisição') })
         }, 10000)
       })
 
@@ -79,8 +79,12 @@ export function useDb<T>(table: string) {
       .insert(item as any)
       .select()
     if (error) throw error
-    setData(prev => [result[0] as T, ...prev])
-    return result[0]
+    if (result && result.length > 0) {
+      setData(prev => [result[0] as T, ...prev])
+      return result[0]
+    }
+    // Caso o RLS não retorne a linha inserida
+    return item as T
   }
 
   const update = async (id: string | number, item: Partial<T>) => {
