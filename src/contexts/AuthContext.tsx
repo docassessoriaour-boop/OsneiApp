@@ -34,16 +34,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log('[Auth] Fetching profile for:', userId, 'retries left:', retries)
       
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 8000)
       
-      const { data, error } = await supabase
+      const fetchPromise = supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
         .abortSignal(controller.signal)
         .single()
         
-      clearTimeout(timeoutId)
+      const timeoutPromise = new Promise<{data: null, error: any}>((_, reject) => {
+        const timeoutId = setTimeout(() => {
+          controller.abort()
+          reject(new Error('Timeout na requisição de perfil'))
+        }, 8000)
+        // Guardar o ID de timeout no controller para poder limpá-old depois se precisar (não é estritamente necessário pq reject resolve a race)
+        ;(controller as any).timeoutId = timeoutId
+      })
+
+      const { data, error } = await Promise.race([
+        fetchPromise,
+        timeoutPromise
+      ])
+      
+      if ((controller as any).timeoutId) {
+        clearTimeout((controller as any).timeoutId)
+      }
 
       if (error) {
         if (error.code === 'PGRST116') {

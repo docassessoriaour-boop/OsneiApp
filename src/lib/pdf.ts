@@ -22,18 +22,16 @@ export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettin
     `
     : ''
 
-  const bodyPadding = options?.compactLayout ? '1.0cm' : '3.5cm 2.0cm 2.5cm 2.0cm';
-
   win.document.write(`<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
   <title>${title}</title>
   <style>
-    @page { margin: 0 !important; }
+    @page { margin: 1.5cm !important; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-      padding: ${bodyPadding};
+      padding: 0;
 
       font-family: Arial, Helvetica, sans-serif;
       color: #000;
