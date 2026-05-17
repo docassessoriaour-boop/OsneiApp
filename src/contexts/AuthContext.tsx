@@ -28,6 +28,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [loading, setLoading] = useState(true)
   const initialized = React.useRef(false)
+  const profileFetched = React.useRef(false)
 
   const fetchProfile = async (userId: string, retries = 2) => {
     try {
@@ -47,7 +48,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           controller.abort()
           reject(new Error('Timeout na requisição de perfil'))
         }, 8000)
-        // Guardar o ID de timeout no controller para poder limpá-old depois se precisar (não é estritamente necessário pq reject resolve a race)
         ;(controller as any).timeoutId = timeoutId
       })
 
@@ -64,25 +64,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (error.code === 'PGRST116') {
           console.warn('[Auth] No profile found for user')
           setProfile(null)
+          profileFetched.current = false
         } else {
           console.error('[Auth] Error fetching profile:', error)
           if (retries > 0) {
             console.log('[Auth] Retrying profile fetch...')
             return fetchProfile(userId, retries - 1)
           }
-          setProfile(null)
         }
       } else {
         console.log('[Auth] Profile loaded successfully', data)
         setProfile(data as Profile)
+        profileFetched.current = true
       }
     } catch (error: any) {
       console.error('[Auth] Unexpected error in fetchProfile:', error)
-      if (error.name === 'AbortError' && retries > 0) {
+      if ((error.name === 'AbortError' || error.message === 'Timeout na requisição de perfil') && retries > 0) {
         console.log('[Auth] Timeout, retrying profile fetch...')
         return fetchProfile(userId, retries - 1)
       }
-      setProfile(null)
     } finally {
       if (retries === 0 || profile !== undefined) {
         setLoading(false)
@@ -97,7 +97,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (initialized.current) return
       
       try {
-        // Initial session check
         const { data: { session } } = await supabase.auth.getSession()
         
         if (!mounted) return
@@ -118,7 +117,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth()
 
-    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return
       console.log('[Auth] Event:', event, 'User:', session?.user?.id)
@@ -127,18 +125,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(currentUser)
 
       if (currentUser) {
-        // Only fetch profile if not already initialized or if it's a fresh sign in
         if (event === 'SIGNED_IN') {
           await fetchProfile(currentUser.id)
         } else if (event === 'SIGNED_OUT') {
           setProfile(null)
+          profileFetched.current = false
           setLoading(false)
-        } else if (!profile && initialized.current) {
-          // Fallback if profile is missing for some reason
+        } else if (!profileFetched.current && initialized.current) {
           await fetchProfile(currentUser.id)
         }
       } else {
         setProfile(null)
+        profileFetched.current = false
         setLoading(false)
       }
     })
