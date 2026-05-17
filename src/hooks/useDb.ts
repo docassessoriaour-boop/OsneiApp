@@ -7,7 +7,7 @@ export function useDb<T>(table: string) {
   const [error, setError] = useState<any>(null)
 
   const fetchData = useCallback(async () => {
-    let timeoutId: any
+    let isMounted = true
     try {
       setLoading(true)
       setError(null)
@@ -15,34 +15,29 @@ export function useDb<T>(table: string) {
 
       const controller = new AbortController()
       
-      const fetchPromise = supabase
+      const timeoutId = setTimeout(() => {
+        controller.abort()
+      }, 10000)
+
+      const { data: result, error: fetchError } = await supabase
         .from(table)
         .select('*')
         .order('created_at', { ascending: false })
         .abortSignal(controller.signal)
 
-      const timeoutPromise = new Promise<{data: null, error: any}>((resolve, reject) => {
-        timeoutId = setTimeout(() => {
-          controller.abort()
-          resolve({ data: null, error: new Error('Timeout na requisição') })
-        }, 10000)
-      })
+      clearTimeout(timeoutId)
 
-      const { data: result, error: fetchError } = await Promise.race([
-        fetchPromise,
-        timeoutPromise
-      ])
+      if (!isMounted) return
 
       if (fetchError) {
         console.error(`[useDb] Error fetching ${table}:`, fetchError)
         setError(fetchError)
         setData([])
         
-        // Se houver erro de JWT expirado ou token inválido, podemos forçar o refresh ou logout
         if (fetchError?.message?.toLowerCase().includes('jwt') || fetchError?.code === 'PGRST301') {
           supabase.auth.getSession().then(({ data }) => {
             if (!data.session) {
-              window.location.href = '/' // Force redirect se a sessão realmente morreu
+              window.location.href = '/'
             }
           })
         }
@@ -51,12 +46,12 @@ export function useDb<T>(table: string) {
         setData(result as T[])
       }
     } catch (e: any) {
+      if (!isMounted) return
       console.error(`[useDb] Exception in ${table}:`, e)
       setError(e)
       setData([])
       
-      // Se for timeout, podemos tentar verificar a sessão
-      if (e.message === 'Timeout na requisição') {
+      if (e.name === 'AbortError' || e.message?.includes('Timeout')) {
          supabase.auth.getSession().then(({ data }) => {
             if (!data.session) {
               window.location.href = '/' 
@@ -64,14 +59,22 @@ export function useDb<T>(table: string) {
          }).catch(() => {})
       }
     } finally {
-      if (timeoutId) clearTimeout(timeoutId)
-      setLoading(false)
+      if (isMounted) {
+        setLoading(false)
+      }
     }
+    
+    return () => { isMounted = false }
   }, [table])
 
   useEffect(() => {
-    fetchData()
+    const cleanup = fetchData()
+    return () => {
+      cleanup.then(fn => fn?.())
+    }
   }, [fetchData])
+
+
 
   const insert = async (item: Partial<T>) => {
     const { data: result, error } = await supabase
