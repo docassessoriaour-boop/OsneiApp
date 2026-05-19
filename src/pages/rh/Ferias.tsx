@@ -54,14 +54,9 @@ export default function Ferias() {
     const vAbono = (salarioBase / 30) * abonoDays
     const vTercoAbono = vAbono / 3
 
-    // INSS Progressive Table 2024
+    // INSS (Removido a pedido)
     const baseInss = vFerias + vTerco
-    let inss = 0
-    if (baseInss <= 1412.00) inss = baseInss * 0.075
-    else if (baseInss <= 2666.68) inss = (baseInss * 0.09) - 21.18
-    else if (baseInss <= 4000.03) inss = (baseInss * 0.12) - 101.18
-    else if (baseInss <= 7786.02) inss = (baseInss * 0.14) - 181.18
-    else inss = 908.85 // Ceiling
+    const inss = 0
 
     // IRRF Table 2024
     const baseIrrf = baseInss - inss
@@ -208,7 +203,7 @@ export default function Ferias() {
           <tr><td>1/3 Constitucional</td><td class="text-right">${formatCurrency(v.valorTercoConstitucional || 0)}</td><td></td></tr>
           ${v.valorAbonoPecuniario ? `<tr><td>Abono Pecuniário (${v.diasAbono} dias)</td><td class="text-right">${formatCurrency(v.valorAbonoPecuniario)}</td><td></td></tr>` : ''}
           ${v.valorTercoAbono ? `<tr><td>1/3 sobre Abono</td><td class="text-right">${formatCurrency(v.valorTercoAbono)}</td><td></td></tr>` : ''}
-          <tr><td>INSS sobre Férias</td><td></td><td class="text-right">${formatCurrency(v.descontosInss || 0)}</td></tr>
+          ${v.descontosInss ? `<tr><td>INSS sobre Férias</td><td></td><td class="text-right">${formatCurrency(v.descontosInss)}</td></tr>` : ''}
           ${v.descontosIrrf ? `<tr><td>IRRF sobre Férias</td><td></td><td class="text-right">${formatCurrency(v.descontosIrrf)}</td></tr>` : ''}
         </tbody>
         <tfoot>
@@ -413,16 +408,22 @@ export default function Ferias() {
                     </>
                   )}
 
-                  <Separator className="bg-primary/10" />
+                  {(results.inss > 0 || results.irrf > 0) && (
+                    <Separator className="bg-primary/10" />
+                  )}
                   
-                  <div className="flex justify-between items-center text-sm text-destructive">
-                    <span>INSS:</span>
-                    <span>-{formatCurrency(results.inss)}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm text-destructive">
-                    <span>IRRF:</span>
-                    <span>-{formatCurrency(results.irrf)}</span>
-                  </div>
+                  {results.inss > 0 && (
+                    <div className="flex justify-between items-center text-sm text-destructive">
+                      <span>INSS:</span>
+                      <span>-{formatCurrency(results.inss)}</span>
+                    </div>
+                  )}
+                  {results.irrf > 0 && (
+                    <div className="flex justify-between items-center text-sm text-destructive">
+                      <span>IRRF:</span>
+                      <span>-{formatCurrency(results.irrf)}</span>
+                    </div>
+                  )}
 
                   <div className="mt-auto pt-6 border-t-2 border-primary/20">
                     <div className="bg-white p-4 rounded-lg shadow-sm border border-primary/10">
