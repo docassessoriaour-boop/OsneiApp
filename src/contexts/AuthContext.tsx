@@ -62,9 +62,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         if (error.code === 'PGRST116') {
-          console.warn('[Auth] No profile found for user')
-          setProfile(null)
-          profileFetched.current = false
+          // PGRST116 = 0 linhas. Pode ser race condition do RLS durante
+          // refresh do token (JWT antigo já invalidado, novo ainda não
+          // propagado). Não nula o profile se já tínhamos um carregado —
+          // isso era o que causava o sidebar colapsar ao trocar de aba.
+          console.warn('[Auth] PGRST116 (no rows). Mantendo perfil anterior se houver.')
+          if (!profileFetched.current && retries === 0) {
+            setProfile(null)
+          }
         } else {
           console.error('[Auth] Error fetching profile:', error)
           if (retries > 0) {
@@ -84,7 +89,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return fetchProfile(userId, retries - 1)
       }
     } finally {
-      if (retries === 0 || profile !== undefined) {
+      // Só libera o loading quando esgotamos retries OU temos perfil válido.
+      // A condição antiga (profile !== undefined) era SEMPRE verdadeira
+      // (o state inicia como null, nunca undefined), fazendo o spinner
+      // sumir durante retries em curso.
+      if (retries === 0 || profileFetched.current) {
         setLoading(false)
       }
     }
@@ -127,6 +136,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (currentUser) {
         if (event === 'SIGNED_IN') {
           await fetchProfile(currentUser.id)
+        } else if (event === 'TOKEN_REFRESHED') {
+          // Sessão renovada em background (volta de aba/inatividade).
+          // Profile não muda — não refetch, evita race com RLS que
+          // causava perda dos itens de menu.
+          setLoading(false)
         } else if (event === 'SIGNED_OUT') {
           setProfile(null)
           profileFetched.current = false
