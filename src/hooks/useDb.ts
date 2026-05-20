@@ -1,15 +1,20 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 
 export function useDb<T>(table: string) {
   const [data, setData] = useState<T[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<any>(null)
+  const hasFetchedOnce = useRef(false)
 
   const fetchData = useCallback(async () => {
     let isMounted = true
     try {
-      setLoading(true)
+      // Stale-while-revalidate: só mostra spinner na primeira busca.
+      // Em refetches mantém os dados antigos visíveis até a nova resposta.
+      if (!hasFetchedOnce.current) {
+        setLoading(true)
+      }
       setError(null)
       console.log(`[useDb] Fetching data for table: ${table}...`)
 
@@ -32,8 +37,12 @@ export function useDb<T>(table: string) {
       if (fetchError) {
         console.error(`[useDb] Error fetching ${table}:`, fetchError)
         setError(fetchError)
-        setData([])
-        
+        // Só zera os dados se nunca tivemos sucesso. Se já tínhamos dados,
+        // mantém na tela em vez de mostrar vazio durante uma falha transitória.
+        if (!hasFetchedOnce.current) {
+          setData([])
+        }
+
         if (fetchError?.message?.toLowerCase().includes('jwt') || fetchError?.code === 'PGRST301') {
           supabase.auth.getSession().then(({ data }) => {
             if (!data.session) {
@@ -44,13 +53,16 @@ export function useDb<T>(table: string) {
       } else {
         console.log(`[useDb] Successfully fetched ${result?.length || 0} rows from ${table}`)
         setData(result as T[])
+        hasFetchedOnce.current = true
       }
     } catch (e: any) {
       if (!isMounted) return
       console.error(`[useDb] Exception in ${table}:`, e)
       setError(e)
-      setData([])
-      
+      if (!hasFetchedOnce.current) {
+        setData([])
+      }
+
       if (e.name === 'AbortError' || e.message?.includes('Timeout')) {
          supabase.auth.getSession().then(({ data }) => {
             if (!data.session) {

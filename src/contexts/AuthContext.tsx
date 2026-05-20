@@ -29,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
   const initialized = React.useRef(false)
   const profileFetched = React.useRef(false)
+  const lastUserId = React.useRef<string | null>(null)
 
   const fetchProfile = async (userId: string, retries = 2) => {
     try {
@@ -112,6 +113,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (session?.user) {
           setUser(session.user)
+          lastUserId.current = session.user.id
           await fetchProfile(session.user.id)
         } else {
           setLoading(false)
@@ -135,7 +137,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (currentUser) {
         if (event === 'SIGNED_IN') {
-          await fetchProfile(currentUser.id)
+          // Supabase re-emite SIGNED_IN ao voltar de aba/inatividade mesmo
+          // sem novo login. Se já temos perfil deste mesmo usuário, não
+          // refaz o fetch — evita saturar a conexão e timeout em cascata
+          // nas demais queries da página.
+          const sameUserAlreadyLoaded =
+            profileFetched.current && lastUserId.current === currentUser.id
+          if (!sameUserAlreadyLoaded) {
+            lastUserId.current = currentUser.id
+            await fetchProfile(currentUser.id)
+          } else {
+            setLoading(false)
+          }
         } else if (event === 'TOKEN_REFRESHED') {
           // Sessão renovada em background (volta de aba/inatividade).
           // Profile não muda — não refetch, evita race com RLS que
@@ -144,6 +157,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else if (event === 'SIGNED_OUT') {
           setProfile(null)
           profileFetched.current = false
+          lastUserId.current = null
           setLoading(false)
         } else if (!profileFetched.current && initialized.current) {
           await fetchProfile(currentUser.id)
