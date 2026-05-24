@@ -315,11 +315,7 @@ export default function CalculadoraAcerto() {
         </tfoot>
       </table>
       
-      <div style="margin-top: 20px; padding: 15px; background: #f9fafb; border-radius: 8px;">
-        <h3>Resumo FGTS</h3>
-        <p>Multa do FGTS (${form.terminationType === 'dispensa_sem_justa' ? '40%' : '20%'}): <strong>${formatCurrency(results.fgtsPenalty)}</strong></p>
-        <p>FGTS sobre Rescisão (8%): <strong>${formatCurrency(results.fgtsOnTermination)}</strong></p>
-      </div>
+
 
       <div style="margin-top: 20px; text-align: right; font-size: 1.2rem; font-weight: 700;">
         <p>VALOR LÍQUIDO A RECEBER: ${formatCurrency(results.netTotal)}</p>
@@ -387,10 +383,7 @@ export default function CalculadoraAcerto() {
         </tfoot>
       </table>
       
-      <div style="margin-top: 20px; padding: 15px; background: #f9fafb; border-radius: 8px;">
-        <h3>Resumo FGTS</h3>
-        <p>Multa do FGTS: <strong>${formatCurrency(t.valorFgts)}</strong></p>
-      </div>
+
 
       <div style="margin-top: 40px; text-align: right; font-size: 1.2rem; font-weight: 700; border-top: 2px solid #000; pt: 10px;">
         <p>VALOR TOTAL A RECEBER: ${formatCurrency(t.valorTotal)}</p>
