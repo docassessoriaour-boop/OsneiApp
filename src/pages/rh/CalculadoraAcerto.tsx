@@ -476,7 +476,20 @@ export default function CalculadoraAcerto() {
                           <Button variant="ghost" size="icon" onClick={() => printSavedTermination(t)} title="Imprimir Recibo">
                             <Printer className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => removeTermination(t.id)} className="text-destructive" title="Excluir">
+                          <Button variant="ghost" size="icon" onClick={async () => {
+                            if (!window.confirm('Tem certeza que deseja excluir esta rescisão?')) return
+                            try {
+                              // Primeiro, tenta excluir qualquer lançamento no contas a pagar atrelado a esta rescisão
+                              const { supabase } = await import('@/lib/supabase')
+                              await supabase.from('bills').delete().eq('termination_id', t.id)
+                              
+                              // Depois exclui a rescisão
+                              await removeTermination(t.id)
+                            } catch (err: any) {
+                              console.error(err)
+                              alert('Erro ao excluir rescisão: ' + (err.message || 'Erro desconhecido'))
+                            }
+                          }} className="text-destructive" title="Excluir">
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
