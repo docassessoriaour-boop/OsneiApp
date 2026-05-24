@@ -113,6 +113,7 @@ export interface BaseMedication {
   nome: string
   dosagem_padrao?: string
   unidade_medida_padrao?: string
+  para_que_serve?: string
   created_at?: string
 }
 

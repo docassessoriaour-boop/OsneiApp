@@ -21,7 +21,8 @@ export default function MedicamentosBase() {
   const [form, setForm] = useState<Partial<BaseMedication>>({
     nome: '',
     dosagem_padrao: '',
-    unidade_medida_padrao: 'comprimido'
+    unidade_medida_padrao: 'comprimido',
+    para_que_serve: ''
   })
   const [importing, setImporting] = useState(false)
 
@@ -30,7 +31,7 @@ export default function MedicamentosBase() {
   ).sort((a, b) => a.nome.localeCompare(b.nome))
 
   function openNew() {
-    setForm({ nome: '', dosagem_padrao: '', unidade_medida_padrao: 'comprimido' })
+    setForm({ nome: '', dosagem_padrao: '', unidade_medida_padrao: 'comprimido', para_que_serve: '' })
     setEditingId(null)
     setDialogOpen(true)
   }
@@ -47,7 +48,8 @@ export default function MedicamentosBase() {
       const payload = {
         nome: form.dosagem_padrao ? `${form.nome.split(' - ')[0]} - ${form.dosagem_padrao}` : form.nome,
         tipo: 'medicamento',
-        unidade: form.unidade_medida_padrao
+        unidade: form.unidade_medida_padrao,
+        para_que_serve: form.para_que_serve
       }
       
       if (editingId) {
@@ -110,7 +112,8 @@ export default function MedicamentosBase() {
           await insert({
             nome: finalName,
             tipo: 'medicamento',
-            unidade: sampleUnidade
+            unidade: sampleUnidade,
+            para_que_serve: ''
           })
           importedCount++
         }
@@ -155,6 +158,7 @@ export default function MedicamentosBase() {
               <TableHead>Nome do Medicamento</TableHead>
               <TableHead>Dosagem Padrão</TableHead>
               <TableHead>Unidade Padrão</TableHead>
+              <TableHead>Para que serve</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
@@ -169,9 +173,10 @@ export default function MedicamentosBase() {
                   <TableCell className="font-bold">{m.nome.split(' - ')[0]}</TableCell>
                   <TableCell>{m.nome.includes(' - ') ? m.nome.split(' - ')[1] : '-'}</TableCell>
                   <TableCell>{m.unidade || '-'}</TableCell>
+                  <TableCell>{m.para_que_serve || '-'}</TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
-                      <Button variant="ghost" size="icon" onClick={() => openEdit({ id: m.id, nome: m.nome.split(' - ')[0], dosagem_padrao: m.nome.includes(' - ') ? m.nome.split(' - ')[1] : '', unidade_medida_padrao: m.unidade } as BaseMedication)}><Pencil className="h-4 w-4" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => openEdit({ id: m.id, nome: m.nome.split(' - ')[0], dosagem_padrao: m.nome.includes(' - ') ? m.nome.split(' - ')[1] : '', unidade_medida_padrao: m.unidade, para_que_serve: m.para_que_serve } as BaseMedication)}><Pencil className="h-4 w-4" /></Button>
                       <Button variant="ghost" size="icon" onClick={() => handleDelete(m.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </TableCell>
@@ -208,6 +213,10 @@ export default function MedicamentosBase() {
                   <option value="ampola">Ampola</option>
                 </select>
               </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>Para que serve (Indicação)</Label>
+              <Input value={form.para_que_serve || ''} onChange={e => setForm({...form, para_que_serve: e.target.value})} placeholder="Ex: Pressão Alta, Diabetes, Analgésico..." />
             </div>
           </div>
           <DialogFooter>
