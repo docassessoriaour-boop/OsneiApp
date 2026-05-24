@@ -188,7 +188,7 @@ export default function CalculadoraAcerto() {
 
     const deductionsTotal = irrf + extraDeductions + avisoPrevioDiscount
     const liquidOnly = grossTotal - deductionsTotal
-    const netTotal = liquidOnly + (terminationType === 'dispensa_com_justa' ? 0 : fgtsPenalty) + fgtsOnTermination
+    const netTotal = liquidOnly // O FGTS é depositado via GRRF na conta do funcionário, não é pago em dinheiro no recibo
 
     return {
       baseCalculo: Number(baseCalculo.toFixed(2)),
@@ -283,10 +283,10 @@ export default function CalculadoraAcerto() {
   const printReport = (isOfficial = false) => {
     if (!results) return
     const title = isOfficial ? 'Recibo de Rescisão' : 'Simulação de Rescisão'
+    const pdfTitle = `${title} - ${form.name || (isOfficial ? '---' : 'Cálculo Simulado')}`
     
     const content = `
-      <div class="report-header">
-        <h2>${title} - ${form.name || (isOfficial ? '---' : 'Cálculo Simulado')}</h2>
+      <div class="report-header mb-4">
         <p>CPF: ${form.cpf || '---'} | Cargo: ${form.role || '---'}</p>
         ${isOfficial ? `<p>Data Admissão: ${form.admissionDate ? new Date(form.admissionDate).toLocaleDateString() : '---'} | Data Desligamento: ${form.terminationDate ? new Date(form.terminationDate).toLocaleDateString() : '---'}</p>` : ''}
       </div>
@@ -338,7 +338,7 @@ export default function CalculadoraAcerto() {
       </div>
       ` : ''}
     `
-    printPDF(title, content, clinic)
+    printPDF(pdfTitle, content, clinic)
   }
 
   const printSavedTermination = (t: Termination) => {
@@ -361,8 +361,7 @@ export default function CalculadoraAcerto() {
     const detailsExtras = t.details?.extras || []
 
     const content = `
-      <div class="report-header">
-        <h2>Recibo de Rescisão - ${t.funcionarioNome}</h2>
+      <div class="report-header mb-4">
         <p>CPF: ${t.cpf || '---'} | Cargo: ${t.cargo || '---'}</p>
         <p>Data Admissão: ${new Date(t.dataAdmissao).toLocaleDateString()} | Data Desligamento: ${new Date(t.dataDemissao).toLocaleDateString()}</p>
       </div>
@@ -408,7 +407,7 @@ export default function CalculadoraAcerto() {
         </div>
       </div>
     `
-    printPDF('Recibo de Rescisão', content, clinic)
+    printPDF(`Recibo de Rescisão - ${t.funcionarioNome}`, content, clinic)
   }
 
   return (
