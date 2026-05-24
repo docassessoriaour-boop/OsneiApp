@@ -7,7 +7,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Separator } from '@/components/ui/separator'
-import { Calculator, Plus, Trash2, Printer, FileText, Search, User, Save, History, ExternalLink } from 'lucide-react'
+import { Calculator, Plus, Trash2, Printer, FileText, Search, User, Save, History, ExternalLink, Edit } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
@@ -27,13 +27,14 @@ interface ExtraItem {
 export default function CalculadoraAcerto() {
   const [clinic] = useClinic()
   const { data: employees } = useDb<Employee>('employees')
-  const { data: terminations, insert: insertTermination, remove: removeTermination } = useDb<Termination>('terminations')
+  const { data: terminations, insert: insertTermination, remove: removeTermination, update: updateTermination } = useDb<Termination>('terminations')
   const { insert: insertBill } = useDb<Bill>('bills')
   
   const [searchTerm, setSearchTerm] = useState('')
   const [showResults, setShowResults] = useState(false)
   const [isHistoryOpen, setIsHistoryOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '',
     cpf: '',
@@ -224,9 +225,8 @@ export default function CalculadoraAcerto() {
     if (!results) return
     setSaving(true)
     try {
-      const terminationId = crypto.randomUUID()
-      const newTermination: Termination = {
-        id: terminationId,
+      const terminationId = editingId || crypto.randomUUID()
+      const newTermination: Partial<Termination> = {
         funcionarioNome: form.name,
         cpf: form.cpf,
         cargo: form.role,
@@ -246,25 +246,66 @@ export default function CalculadoraAcerto() {
         }
       }
 
-      await insertTermination(newTermination)
+      if (editingId) {
+        await updateTermination(editingId, newTermination)
+        alert('Rescisão atualizada com sucesso!')
+        setEditingId(null)
+      } else {
+        await insertTermination({ ...newTermination, id: terminationId } as Termination)
 
-      // Gerar lançamento no Contas a Pagar
-      await insertBill({
-        id: crypto.randomUUID(),
-        descricao: `RESCISÃO: ${form.name}`,
-        valor: Number(results.netTotal.toFixed(2)),
-        vencimento: form.terminationDate, // Vencimento na data de desligamento (ou pode ser +10 dias)
-        status: 'pendente',
-        termination_id: terminationId
-      } as any)
+        // Gerar lançamento no Contas a Pagar
+        await insertBill({
+          id: crypto.randomUUID(),
+          descricao: `RESCISÃO: ${form.name}`,
+          valor: Number(results.netTotal.toFixed(2)),
+          vencimento: form.terminationDate, // Vencimento na data de desligamento (ou pode ser +10 dias)
+          status: 'pendente',
+          termination_id: terminationId
+        } as any)
 
-      alert('Rescisão salva com sucesso e lançada no Contas a Pagar!')
+        alert('Rescisão salva com sucesso e lançada no Contas a Pagar!')
+      }
     } catch (error: any) {
       console.error(error)
       alert(`Erro ao salvar rescisão: ${error.message || 'Erro desconhecido'}`)
     } finally {
       setSaving(false)
     }
+  }
+
+  const handleEditTermination = (t: Termination) => {
+    if (t.details?.form) {
+      setForm(t.details.form)
+    } else {
+      // Fallback in case old data doesn't have form details
+      setForm(prev => ({
+        ...prev,
+        name: t.funcionarioNome,
+        cpf: t.cpf,
+        role: t.cargo,
+        salary: t.salarioBase,
+        admissionDate: t.dataAdmissao || '',
+        terminationDate: t.dataDemissao || '',
+        terminationType: t.tipoRescisao,
+        employeeId: t.funcionarioId || ''
+      }))
+    }
+    
+    if (t.details?.extras) {
+      setExtras(t.details.extras)
+    } else {
+      setExtras([])
+    }
+    
+    setEditingId(t.id)
+    setIsHistoryOpen(false)
+  }
+
+  const handleClear = () => {
+    if (editingId) {
+      setEditingId(null)
+    }
+    window.location.reload()
   }
 
   const handleSendToContasAPagar = async (t: Termination) => {
@@ -421,8 +462,8 @@ export default function CalculadoraAcerto() {
           <Button variant="outline" onClick={() => setIsHistoryOpen(true)} className="gap-2">
             <History className="h-4 w-4" /> Histórico
           </Button>
-          <Button variant="outline" onClick={() => window.location.reload()} className="gap-2">
-            Limpar Tudo
+          <Button variant="outline" onClick={handleClear} className="gap-2">
+            {editingId ? 'Cancelar Edição' : 'Limpar Tudo'}
           </Button>
         </div>
       </div>
@@ -472,6 +513,9 @@ export default function CalculadoraAcerto() {
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="icon" onClick={() => handleSendToContasAPagar(t)} title="Enviar para Contas a Pagar">
                             <ExternalLink className="h-4 w-4 text-blue-500" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleEditTermination(t)} title="Editar Rescisão">
+                            <Edit className="h-4 w-4 text-amber-500" />
                           </Button>
                           <Button variant="ghost" size="icon" onClick={() => printSavedTermination(t)} title="Imprimir Recibo">
                             <Printer className="h-4 w-4" />
@@ -808,8 +852,13 @@ export default function CalculadoraAcerto() {
                 </div>
 
                 <div className="pt-6 flex flex-col gap-2">
-                  <Button className="w-full gap-2 border-primary bg-primary/90 hover:bg-primary shadow-lg" onClick={handleSave} disabled={saving}>
-                    {saving ? 'Salvando...' : <Save className="h-4 w-4" />} {saving ? 'Processando...' : 'Salvar e Gerar Contas a Pagar'}
+                  <Button 
+                    className={`w-full gap-2 shadow-lg ${editingId ? 'bg-amber-600 hover:bg-amber-700 text-white' : 'border-primary bg-primary/90 hover:bg-primary'}`} 
+                    onClick={handleSave} 
+                    disabled={saving}
+                  >
+                    {saving ? 'Processando...' : <Save className="h-4 w-4" />} 
+                    {saving ? 'Aguarde...' : (editingId ? 'Atualizar Rescisão' : 'Salvar e Gerar Contas a Pagar')}
                   </Button>
                   <div className="grid grid-cols-2 gap-2">
                     <Button variant="outline" className="w-full gap-2 text-xs" onClick={() => printReport(false)}>
