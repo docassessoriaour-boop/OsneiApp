@@ -54,7 +54,7 @@ export default function Funcionarios() {
   const { fetchCep } = useCep()
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'inativo' | 'ferias' | 'contrato_cancelado'>('todos')
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'inativo' | 'ferias' | 'contrato_cancelado'>('ativo')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyEmployee)

@@ -28,6 +28,7 @@ export default function Contratos() {
   const [view, setView] = useState<'table' | 'timeline'>('table')
   const [filterStart, setFilterStart] = useState('')
   const [filterEnd, setFilterEnd] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'vencido' | 'cancelado'>('ativo')
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
     pacienteId: '', valor: 0, valorExtra: 0, descricaoExtra: '', dataInicio: '', dataFim: '', status: 'ativo' as Contract['status'], observacoes: '',
@@ -37,10 +38,11 @@ export default function Contratos() {
 
   const filtered = useMemo(() => {
     let list = contracts.filter(c => (c.pacienteNome || '').toLowerCase().includes(search.toLowerCase()))
+    if (statusFilter !== 'todos') list = list.filter(c => c.status === statusFilter)
     if (filterStart) list = list.filter(c => c.dataFim >= filterStart)
     if (filterEnd) list = list.filter(c => c.dataFim <= filterEnd)
     return list.sort((a, b) => new Date(a.dataFim).getTime() - new Date(b.dataFim).getTime())
-  }, [contracts, search, filterStart, filterEnd])
+  }, [contracts, search, filterStart, filterEnd, statusFilter])
 
   function openNew() {
     setForm({ pacienteId: patients[0]?.id || '', valor: 0, valorExtra: 0, descricaoExtra: '', dataInicio: '', dataFim: '', status: 'ativo', observacoes: '' })
@@ -299,6 +301,15 @@ export default function Contratos() {
       <div className="flex flex-wrap items-end gap-3 mb-4">
         <div className="flex-1 min-w-[200px]">
           <SearchBar value={search} onChange={setSearch} placeholder="Buscar por paciente..." />
+        </div>
+        <div>
+          <Label className="text-xs text-muted-foreground">Status</Label>
+          <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value as any)} className="mt-0.5 w-32">
+            <option value="todos">Todos</option>
+            <option value="ativo">Ativos</option>
+            <option value="vencido">Vencidos</option>
+            <option value="cancelado">Cancelados</option>
+          </Select>
         </div>
         <div>
           <Label className="text-xs text-muted-foreground">Vencimento De</Label>

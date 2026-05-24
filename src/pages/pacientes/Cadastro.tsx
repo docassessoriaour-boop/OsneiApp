@@ -43,7 +43,7 @@ export default function Cadastro() {
   const { fetchCep } = useCep()
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'inativo'>('todos')
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'inativo'>('ativo')
   const [unidadeFilter, setUnidadeFilter] = useState<'todos' | 'Vila Moraes' | 'Jardim Matilde'>('todos')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
