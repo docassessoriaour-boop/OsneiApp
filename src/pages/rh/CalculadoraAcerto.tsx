@@ -48,7 +48,8 @@ export default function CalculadoraAcerto() {
     hasInsalubridade: false,
     insalubridadePercent: 20,
     fgtsBalance: 0,
-    employeeId: ''
+    employeeId: '',
+    avisoPrevioType: 'indenizado' as 'indenizado' | 'trabalhado' | 'descontado' | 'nao_aplicavel'
   })
 
   const [extras, setExtras] = useState<ExtraItem[]>([])
@@ -85,16 +86,26 @@ export default function CalculadoraAcerto() {
     const completeYears = Math.floor(totalMonthsSinceStart / 12)
     const avisoPrevioDays = Math.min(30 + (completeYears * 3), 90)
     let avisoPrevioValue = 0
-    if (terminationType === 'dispensa_sem_justa') {
-      avisoPrevioValue = (baseCalculo / 30) * avisoPrevioDays
-    } else if (terminationType === 'acordo_mutuo') {
-      avisoPrevioValue = ((baseCalculo / 30) * avisoPrevioDays) * 0.5
+    let avisoPrevioDiscount = 0
+
+    if (form.avisoPrevioType === 'indenizado') {
+      if (terminationType === 'dispensa_sem_justa') {
+        avisoPrevioValue = (baseCalculo / 30) * avisoPrevioDays
+      } else if (terminationType === 'acordo_mutuo') {
+        avisoPrevioValue = ((baseCalculo / 30) * avisoPrevioDays) * 0.5
+      }
+    } else if (form.avisoPrevioType === 'descontado') {
+      if (terminationType === 'pedido_demissao') {
+        avisoPrevioDiscount = baseCalculo
+      }
     }
 
     // Projeção do Aviso Prévio para cálculos de avos (13º e Férias)
     const projectedEnd = new Date(end)
-    if (terminationType === 'dispensa_sem_justa' || terminationType === 'acordo_mutuo') {
-      projectedEnd.setDate(projectedEnd.getDate() + avisoPrevioDays)
+    if (form.avisoPrevioType === 'indenizado') {
+      if (terminationType === 'dispensa_sem_justa' || terminationType === 'acordo_mutuo') {
+        projectedEnd.setDate(projectedEnd.getDate() + avisoPrevioDays)
+      }
     }
 
     // Helper para calcular avos do 13º (meses com 15+ dias no ano civil)
@@ -175,7 +186,7 @@ export default function CalculadoraAcerto() {
     const fgtsPenalty = form.fgtsBalance * fgtsPenaltyPercent
     const fgtsOnTermination = (saldoSalario + decimoTerceiro + avisoPrevioValue) * 0.08
 
-    const deductionsTotal = irrf + extraDeductions
+    const deductionsTotal = irrf + extraDeductions + avisoPrevioDiscount
     const liquidOnly = grossTotal - deductionsTotal
     const netTotal = liquidOnly + (terminationType === 'dispensa_com_justa' ? 0 : fgtsPenalty) + fgtsOnTermination
 
@@ -191,6 +202,7 @@ export default function CalculadoraAcerto() {
       feriasVencidas: Number(feriasVencidas.toFixed(2)),
       umTercoConstitucional: Number(umTercoConstitucional.toFixed(2)),
       avisoPrevioValue: Number(avisoPrevioValue.toFixed(2)),
+      avisoPrevioDiscount: Number(avisoPrevioDiscount.toFixed(2)),
       avisoPrevioDays,
       irrf: Number(irrf.toFixed(2)),
       extraAdditions: Number(extraAdditions.toFixed(2)),
@@ -290,6 +302,7 @@ export default function CalculadoraAcerto() {
           ${results.feriasVencidas > 0 ? `<tr><td>Férias Vencidas</td><td class="text-right">${formatCurrency(results.feriasVencidas)}</td><td></td></tr>` : ''}
           <tr><td>1/3 Constitucional sobre Férias</td><td class="text-right">${formatCurrency(results.umTercoConstitucional)}</td><td></td></tr>
           ${results.avisoPrevioValue > 0 ? `<tr><td>Aviso Prévio Indenizado (${results.avisoPrevioDays} dias)</td><td class="text-right">${formatCurrency(results.avisoPrevioValue)}</td><td></td></tr>` : ''}
+          ${results.avisoPrevioDiscount > 0 ? `<tr><td>Aviso Prévio Descontado (Não Cumprido)</td><td></td><td class="text-right">${formatCurrency(results.avisoPrevioDiscount)}</td></tr>` : ''}
           ${extras.map(e => `<tr><td>${e.name}</td><td class="text-right">${e.type === 'addition' ? formatCurrency(e.value) : ''}</td><td class="text-right">${e.type === 'deduction' ? formatCurrency(e.value) : ''}</td></tr>`).join('')}
           ${results.irrf > 0 ? `<tr><td>IRRF sobre Verbas Rescisórias</td><td></td><td class="text-right">${formatCurrency(results.irrf)}</td></tr>` : ''}
         </tbody>
@@ -336,6 +349,7 @@ export default function CalculadoraAcerto() {
       feriasProporcionais: 0,
       umTercoConstitucional: 0,
       avisoPrevioValue: 0,
+      avisoPrevioDiscount: 0,
       grossTotal: t.valorLiquido,
       deductionsTotal: 0,
       fgtsPenalty: t.valorFgts,
@@ -361,7 +375,8 @@ export default function CalculadoraAcerto() {
           ${res.saldoInsalubridade > 0 ? `<tr><td>Adicional Insalubridade s/ Saldo</td><td class="text-right">${formatCurrency(res.saldoInsalubridade)}</td><td></td></tr>` : ''}
           ${res.decimoTerceiro > 0 ? `<tr><td>13º Salário</td><td class="text-right">${formatCurrency(res.decimoTerceiro)}</td><td></td></tr>` : ''}
           ${res.feriasProporcionais > 0 ? `<tr><td>Férias + 1/3</td><td class="text-right">${formatCurrency(res.feriasProporcionais + (res.umTercoConstitucional || 0))}</td><td></td></tr>` : ''}
-          ${res.avisoPrevioValue > 0 ? `<tr><td>Aviso Prévio</td><td class="text-right">${formatCurrency(res.avisoPrevioValue)}</td><td></td></tr>` : ''}
+          ${res.avisoPrevioValue > 0 ? `<tr><td>Aviso Prévio (Indenizado)</td><td class="text-right">${formatCurrency(res.avisoPrevioValue)}</td><td></td></tr>` : ''}
+          ${res.avisoPrevioDiscount > 0 ? `<tr><td>Aviso Prévio (Descontado)</td><td></td><td class="text-right">${formatCurrency(res.avisoPrevioDiscount)}</td></tr>` : ''}
           ${detailsExtras.map((e: any) => `<tr><td>${e.name}</td><td class="text-right">${e.type === 'addition' ? formatCurrency(e.value) : ''}</td><td class="text-right">${e.type === 'deduction' ? formatCurrency(e.value) : ''}</td></tr>`).join('')}
         </tbody>
         <tfoot>
@@ -610,6 +625,15 @@ export default function CalculadoraAcerto() {
                 </Select>
               </div>
               <div>
+                <Label>Aviso Prévio</Label>
+                <Select value={form.avisoPrevioType} onChange={e => setForm({...form, avisoPrevioType: e.target.value as any})} className="mt-1">
+                  <option value="indenizado">Indenizado pelo Empregador</option>
+                  <option value="trabalhado">Trabalhado</option>
+                  <option value="descontado">Descontado do Empregado (Não Cumprido)</option>
+                  <option value="nao_aplicavel">Não Aplicável / Dispensado</option>
+                </Select>
+              </div>
+              <div>
                 <Label>Dias Trabalhados no Mês</Label>
                 <Input type="number" max="31" value={form.workedDays} onChange={e => setForm({...form, workedDays: Number(e.target.value)})} className="mt-1" />
               </div>
@@ -713,10 +737,18 @@ export default function CalculadoraAcerto() {
                     <span className="font-medium">{formatCurrency(results.saldoInsalubridade)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Aviso Prévio:</span>
-                  <span className="font-medium text-green-600">+{formatCurrency(results.avisoPrevioValue)}</span>
-                </div>
+                {results.avisoPrevioValue > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Aviso Prévio Indenizado:</span>
+                    <span className="font-medium text-green-600">+{formatCurrency(results.avisoPrevioValue)}</span>
+                  </div>
+                )}
+                {results.avisoPrevioDiscount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Aviso Prévio Descontado:</span>
+                    <span className="font-medium text-destructive">-{formatCurrency(results.avisoPrevioDiscount)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Férias + 1/3:</span>
                   <span className="font-medium">{formatCurrency(results.feriasProporcionais + results.feriasVencidas + results.umTercoConstitucional)} <span className="text-[10px] text-muted-foreground">({results.feriasPropMeses}/12)</span></span>
