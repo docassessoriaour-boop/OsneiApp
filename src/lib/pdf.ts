@@ -46,8 +46,8 @@ export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettin
       margin-top: 6pt;
       margin-bottom: 6pt;
     }
-    h2 { font-size: 16pt; margin-bottom: 12pt; color: #1a1f2e; text-align: center; text-transform: uppercase; }
-    h3 { font-size: 14pt; margin: 20pt 0 10pt; color: #333; border-bottom: 1px solid #ddd; padding-bottom: 4pt; }
+    h2 { font-size: 14pt; font-weight: bold; margin-bottom: 12pt; color: #1a1f2e; text-align: center; text-transform: uppercase; }
+    h3 { font-size: 14pt; font-weight: bold; margin: 20pt 0 10pt; color: #333; border-bottom: 1px solid #ddd; padding-bottom: 4pt; }
     table {
       width: 100%;
       border-collapse: collapse;
@@ -55,13 +55,17 @@ export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettin
     }
     th, td {
       text-align: left;
-      padding: 10pt 12pt;
+      padding: 4pt 8pt;
       border: 1px solid #e0e0e0;
-      font-size: 11pt;
+    }
+    td {
+      font-size: 10pt;
+      font-family: "Courier New", Courier, monospace;
     }
     th {
       background: #f8f9fa;
       font-weight: bold;
+      font-size: 14pt;
       text-transform: uppercase;
       color: #333;
     }
