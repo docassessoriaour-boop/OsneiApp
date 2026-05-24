@@ -49,7 +49,8 @@ export default function CalculadoraAcerto() {
     insalubridadePercent: 20,
     fgtsBalance: 0,
     employeeId: '',
-    avisoPrevioType: 'indenizado' as 'indenizado' | 'trabalhado' | 'descontado' | 'nao_aplicavel'
+    avisoPrevioType: 'indenizado' as 'indenizado' | 'trabalhado' | 'descontado' | 'nao_aplicavel',
+    hasValeTransporte: false
   })
 
   const [extras, setExtras] = useState<ExtraItem[]>([])
@@ -186,7 +187,9 @@ export default function CalculadoraAcerto() {
     const fgtsPenalty = form.fgtsBalance * fgtsPenaltyPercent
     const fgtsOnTermination = (saldoSalario + decimoTerceiro + avisoPrevioValue) * 0.08
 
-    const deductionsTotal = irrf + extraDeductions + avisoPrevioDiscount
+    const valeTransporteDiscount = form.hasValeTransporte ? (baseCalculo / 30) * workedDays * 0.06 : 0
+
+    const deductionsTotal = irrf + extraDeductions + avisoPrevioDiscount + valeTransporteDiscount
     const liquidOnly = grossTotal - deductionsTotal
     const netTotal = liquidOnly // O FGTS é depositado via GRRF na conta do funcionário, não é pago em dinheiro no recibo
 
@@ -211,6 +214,7 @@ export default function CalculadoraAcerto() {
       deductionsTotal: Number(deductionsTotal.toFixed(2)),
       fgtsPenalty: Number(fgtsPenalty.toFixed(2)),
       fgtsOnTermination: Number(fgtsOnTermination.toFixed(2)),
+      valeTransporteDiscount: Number(valeTransporteDiscount.toFixed(2)),
       liquidOnly: Number(liquidOnly.toFixed(2)),
       netTotal: Number(netTotal.toFixed(2))
     }
@@ -303,6 +307,7 @@ export default function CalculadoraAcerto() {
           <tr><td>1/3 Constitucional sobre Férias</td><td class="text-right">${formatCurrency(results.umTercoConstitucional)}</td><td></td></tr>
           ${results.avisoPrevioValue > 0 ? `<tr><td>Aviso Prévio Indenizado (${results.avisoPrevioDays} dias)</td><td class="text-right">${formatCurrency(results.avisoPrevioValue)}</td><td></td></tr>` : ''}
           ${results.avisoPrevioDiscount > 0 ? `<tr><td>Aviso Prévio Descontado (Não Cumprido)</td><td></td><td class="text-right">${formatCurrency(results.avisoPrevioDiscount)}</td></tr>` : ''}
+          ${results.valeTransporteDiscount > 0 ? `<tr><td>Desconto Vale Transporte (6%)</td><td></td><td class="text-right">${formatCurrency(results.valeTransporteDiscount)}</td></tr>` : ''}
           ${extras.map(e => `<tr><td>${e.name}</td><td class="text-right">${e.type === 'addition' ? formatCurrency(e.value) : ''}</td><td class="text-right">${e.type === 'deduction' ? formatCurrency(e.value) : ''}</td></tr>`).join('')}
           ${results.irrf > 0 ? `<tr><td>IRRF sobre Verbas Rescisórias</td><td></td><td class="text-right">${formatCurrency(results.irrf)}</td></tr>` : ''}
         </tbody>
@@ -346,6 +351,7 @@ export default function CalculadoraAcerto() {
       umTercoConstitucional: 0,
       avisoPrevioValue: 0,
       avisoPrevioDiscount: 0,
+      valeTransporteDiscount: 0,
       grossTotal: t.valorLiquido,
       deductionsTotal: 0,
       fgtsPenalty: t.valorFgts,
@@ -372,6 +378,7 @@ export default function CalculadoraAcerto() {
           ${res.feriasProporcionais > 0 ? `<tr><td>Férias + 1/3</td><td class="text-right">${formatCurrency(res.feriasProporcionais + (res.umTercoConstitucional || 0))}</td><td></td></tr>` : ''}
           ${res.avisoPrevioValue > 0 ? `<tr><td>Aviso Prévio (Indenizado)</td><td class="text-right">${formatCurrency(res.avisoPrevioValue)}</td><td></td></tr>` : ''}
           ${res.avisoPrevioDiscount > 0 ? `<tr><td>Aviso Prévio (Descontado)</td><td></td><td class="text-right">${formatCurrency(res.avisoPrevioDiscount)}</td></tr>` : ''}
+          ${(res.valeTransporteDiscount || 0) > 0 ? `<tr><td>Desconto Vale Transporte (6%)</td><td></td><td class="text-right">${formatCurrency(res.valeTransporteDiscount)}</td></tr>` : ''}
           ${detailsExtras.map((e: any) => `<tr><td>${e.name}</td><td class="text-right">${e.type === 'addition' ? formatCurrency(e.value) : ''}</td><td class="text-right">${e.type === 'deduction' ? formatCurrency(e.value) : ''}</td></tr>`).join('')}
         </tbody>
         <tfoot>
@@ -676,6 +683,17 @@ export default function CalculadoraAcerto() {
                   />
                   <Label htmlFor="expiredVacation" className="cursor-pointer">Possui Férias Vencidas?</Label>
                 </div>
+
+                <div className="flex items-center gap-3">
+                  <input 
+                    type="checkbox" 
+                    id="valeTransporte"
+                    checked={form.hasValeTransporte} 
+                    onChange={e => setForm({...form, hasValeTransporte: e.target.checked})}
+                    className="w-4 h-4 text-primary rounded border-gray-300"
+                  />
+                  <Label htmlFor="valeTransporte" className="cursor-pointer">Descontar Vale Transporte (6%)</Label>
+                </div>
               </div>
             </div>
           </Card>
@@ -768,22 +786,18 @@ export default function CalculadoraAcerto() {
                     <span className="font-medium text-destructive">-{formatCurrency(results.irrf)}</span>
                   </div>
                 )}
+                {results.valeTransporteDiscount > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Vale Transporte (6%):</span>
+                    <span className="font-medium text-destructive">-{formatCurrency(results.valeTransporteDiscount)}</span>
+                  </div>
+                )}
                 
                 <Separator />
                 
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground text-blue-700 font-semibold">Líquido de Verbas:</span>
                   <span className="font-bold text-blue-700">{formatCurrency(results.liquidOnly)}</span>
-                </div>
-
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground text-green-700 font-semibold">Multa do FGTS:</span>
-                  <span className="font-bold text-green-700">+{formatCurrency(results.fgtsPenalty)}</span>
-                </div>
-
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground text-green-700 font-semibold">FGTS s/ Rescisão (8%):</span>
-                  <span className="font-bold text-green-700">+{formatCurrency(results.fgtsOnTermination)}</span>
                 </div>
 
                 <div className="pt-4 mt-4 border-t-2 border-primary/10">
