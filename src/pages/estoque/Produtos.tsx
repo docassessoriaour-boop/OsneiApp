@@ -106,11 +106,12 @@ export default function Produtos() {
   }
 
   function printReport() {
-    const rows = filtered.map(p => {
+    const inStock = filtered.filter(p => p.estoque > 0)
+    const rows = inStock.map(p => {
       const cat = categories.find(c => c.id === p.category_id)?.nome || p.tipo || 'Outro'
       return `<tr><td>${p.nome}</td><td>${cat}</td><td class="text-right">${p.estoque}</td><td class="text-right">${formatCurrency(p.custo_medio || 0)}</td><td class="text-right">${formatCurrency(p.ultimo_valor_comprado || 0)}</td><td>${p.unidade}</td><td>${p.fornecedor}</td><td class="text-right">${p.estoqueMinimo}</td></tr>`
     }).join('')
-    const lowStock = filtered.filter(p => p.estoque <= p.estoqueMinimo)
+    const lowStock = inStock.filter(p => p.estoque <= p.estoqueMinimo)
     printPDF('Relatório de Estoque e Custos', `
       <table><thead><tr><th>Produto</th><th>Tipo</th><th class="text-right">Estoque</th><th class="text-right">Custo Méd.</th><th class="text-right">Últ. Valor</th><th>Unidade</th><th>Fornecedor</th><th class="text-right">Mínimo</th></tr></thead>
       <tbody>${rows}</tbody></table>
