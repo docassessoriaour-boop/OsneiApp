@@ -208,7 +208,7 @@ export default function FolhaPagamento() {
   }
 
   function openNew() {
-    const firstEmp = employees[0]
+    const firstEmp = employees.filter(e => e.status === 'ativo')[0]
     setForm({
       funcionarioId: firstEmp?.id || '',
       salarioBruto: firstEmp?.salario || 0,
@@ -500,7 +500,7 @@ export default function FolhaPagamento() {
                 className="mt-1"
               >
                 <option value="">Selecionar...</option>
-                {employees.map(e => (
+                {employees.filter(e => e.status === 'ativo' || e.id === form.funcionarioId).map(e => (
                   <option key={e.id} value={e.id}>{e.nome}</option>
                 ))}
               </Select>
