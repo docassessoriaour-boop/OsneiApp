@@ -472,7 +472,7 @@ export default function Contratos() {
               <Label>Paciente</Label>
               <Select value={form.pacienteId} onChange={(e) => setForm({ ...form, pacienteId: e.target.value })} className="mt-1">
                 <option value="">Selecionar...</option>
-                {patients.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                {patients.filter(p => p.status === 'ativo').map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
