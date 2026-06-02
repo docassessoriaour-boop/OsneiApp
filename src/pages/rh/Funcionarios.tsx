@@ -50,9 +50,16 @@ const emptyEmployee: Omit<Employee, 'id'> = {
 }
 
 export default function Funcionarios() {
-  const { data: employees, loading, insert, update, remove } = useDb<Employee>('employees')
+  const { data: rawEmployees, loading, insert, update, remove } = useDb<Employee>('employees')
   const { fetchCep } = useCep()
   const [clinic] = useClinic()
+
+  // Normaliza: DB retorna data_admissao (snake_case), código usa dataAdmissao (camelCase)
+  const employees = rawEmployees.map((e: any) => ({
+    ...e,
+    dataAdmissao: e.dataAdmissao || e.data_admissao || ''
+  })) as Employee[]
+
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'inativo' | 'ferias' | 'contrato_cancelado'>('ativo')
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -102,7 +109,9 @@ export default function Funcionarios() {
   }
 
   function openEdit(employee: Employee) {
-    setForm(employee)
+    // DB returns data_admissao (snake_case), form uses dataAdmissao (camelCase)
+    const { data_admissao, ...rest } = employee as any
+    setForm({ ...rest, dataAdmissao: data_admissao || employee.dataAdmissao || '' })
     setEditingId(employee.id)
     setDialogOpen(true)
   }
@@ -111,10 +120,12 @@ export default function Funcionarios() {
     if (!form.nome || !form.cpf || !form.cargo) return
 
     // Sanitize data: empty strings in date fields should be null for Postgres
+    // dataAdmissao in TS = data_admissao in DB (snake_case)
+    const { dataAdmissao, ...rest } = form
     const payload = {
-      ...form,
+      ...rest,
       data_nascimento: form.data_nascimento || null,
-      dataAdmissao: form.dataAdmissao || null
+      data_admissao: dataAdmissao || null
     }
 
     try {

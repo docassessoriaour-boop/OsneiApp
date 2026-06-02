@@ -587,7 +587,7 @@ export default function CalculadoraAcerto() {
                                 salary: emp.salario,
                                 hasInsalubridade: emp.tem_insalubridade,
                                 insalubridadePercent: emp.insalubridade_percentual || 0,
-                                admissionDate: emp.dataAdmissao || '',
+                                admissionDate: (emp as any).data_admissao || emp.dataAdmissao || '',
                                 employeeId: emp.id,
                                 workedDays: form.terminationDate 
                                   ? new Date(form.terminationDate).getDate() 

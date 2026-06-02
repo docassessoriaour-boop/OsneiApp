@@ -23,7 +23,9 @@ const emptyAdicional: PayrollAdicional = { descricao: '', tipo: 'provento', valo
 
 export default function FolhaPagamento() {
   const { data: rawEmployees } = useDb<Employee>('employees')
-  const employees = [...rawEmployees].sort((a, b) => a.nome.localeCompare(b.nome))
+  // Normaliza: DB retorna data_admissao (snake_case), código usa dataAdmissao (camelCase)
+  const employees = [...rawEmployees].map((e: any) => ({ ...e, dataAdmissao: e.dataAdmissao || e.data_admissao || '' })) as Employee[]
+  employees.sort((a, b) => a.nome.localeCompare(b.nome))
   const { data: payrolls, loading, insert, update, remove } = useDb<Payroll>('payrolls')
   const { data: exceptions } = useDb<ScheduleException>('schedule_exceptions')
   const { insert: insertBill } = useDb<Bill>('bills')

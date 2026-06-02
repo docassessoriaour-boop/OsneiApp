@@ -195,7 +195,7 @@ export default function Configuracoes() {
         if (tableData && table === 'patients') {
           tableData = tableData.map((p: any) => ({
             ...p,
-            dataEntrada: p.data_entrada || p.dataEntrada
+            data_entrada: p.data_entrada || p.dataEntrada
           }))
         }
 

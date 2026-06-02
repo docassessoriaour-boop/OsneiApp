@@ -22,11 +22,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useAuth } from '@/contexts/AuthContext'
 
 const emptyPatient: Omit<Patient, 'id'> = {
-  nome: '', cpf: '', rg: '', idade: 0, data_nascimento: '', responsavel: '', telefoneResponsavel: '',
+  nome: '', cpf: '', rg: '', idade: 0, data_nascimento: '', responsavel: '', telefone_responsavel: '',
   resp_rg: '', resp_cpf: '', resp_endereco: '', resp_cidade: '', resp_uf: '', resp_cep: '', resp_email: '',
   resp_is_whatsapp: false,
   resp_nacionalidade: 'Brasileira', resp_estado_civil: 'Casado(a)', resp_profissao: '',
-  status: 'ativo', unidade: 'Vila Moraes', dataEntrada: new Date().toISOString().slice(0, 10), observacoes: '',
+  status: 'ativo', unidade: 'Vila Moraes', data_entrada: new Date().toISOString().slice(0, 10), observacoes: '',
   outros_responsaveis: []
 }
 
@@ -280,7 +280,7 @@ export default function Cadastro() {
       const payload = {
         ...formData,
         data_nascimento: formData.data_nascimento || null,
-        dataEntrada: formData.dataEntrada || null
+        data_entrada: formData.data_entrada || null
       }
 
       if (editingId) {
@@ -334,7 +334,7 @@ export default function Cadastro() {
           <div><strong>Unidade:</strong> ${p.unidade || 'Vila Moraes'}</div>
           <div><strong>RG:</strong> ${p.rg || '---'}</div>
           <div><strong>Data Nasc.:</strong> ${formatDate(p.data_nascimento)} (${p.idade} anos)</div>
-          <div><strong>Data de Entrada:</strong> ${formatDate(p.dataEntrada)}</div>
+          <div><strong>Data de Entrada:</strong> ${formatDate(p.data_entrada)}</div>
           <div><strong>Status:</strong> ${p.status === 'ativo' ? 'Ativo' : 'Inativo'}</div>
         </div>
       </div>
@@ -343,7 +343,7 @@ export default function Cadastro() {
         <h3 style="background: #f3f4f6; padding: 0.5rem; font-size: 1rem; text-transform: uppercase; margin-bottom: 1rem; border-left: 4px solid #3b82f6;">Dados do Responsável</h3>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
           <div style="grid-column: span 2;"><strong>Responsável Principal:</strong> ${p.responsavel}</div>
-          <div><strong>Telefone:</strong> ${p.telefoneResponsavel} ${p.resp_is_whatsapp ? '(WhatsApp)' : ''}</div>
+          <div><strong>Telefone:</strong> ${p.telefone_responsavel} ${p.resp_is_whatsapp ? '(WhatsApp)' : ''}</div>
           <div><strong>Email:</strong> ${p.resp_email || '---'}</div>
           <div><strong>CPF:</strong> ${p.resp_cpf || '---'}</div>
           <div><strong>RG:</strong> ${p.resp_rg || '---'}</div>
@@ -636,7 +636,7 @@ export default function Cadastro() {
           <div><strong>Unidade:</strong> ${p.unidade || 'Vila Moraes'}</div>
           <div><strong>RG:</strong> ${p.rg || '---'}</div>
           <div><strong>Data Nasc.:</strong> ${formatDate(p.data_nascimento)} (${p.idade} anos)</div>
-          <div><strong>Data de Entrada:</strong> ${formatDate(p.dataEntrada)}</div>
+          <div><strong>Data de Entrada:</strong> ${formatDate(p.data_entrada)}</div>
           <div><strong>Status:</strong> ${p.status === 'ativo' ? 'Ativo' : 'Inativo'}</div>
         </div>
       </div>
@@ -645,7 +645,7 @@ export default function Cadastro() {
         <h3 style="background: #f3f4f6; padding: 0.5rem; font-size: 1rem; text-transform: uppercase; margin-bottom: 1rem; border-left: 4px solid #3b82f6;">Dados do Responsável</h3>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
           <div style="grid-column: span 2;"><strong>Responsável Principal:</strong> ${p.responsavel}</div>
-          <div><strong>Telefone:</strong> ${p.telefoneResponsavel} ${p.resp_is_whatsapp ? '(WhatsApp)' : ''}</div>
+          <div><strong>Telefone:</strong> ${p.telefone_responsavel} ${p.resp_is_whatsapp ? '(WhatsApp)' : ''}</div>
           <div><strong>Email:</strong> ${p.resp_email || '---'}</div>
           <div><strong>CPF:</strong> ${p.resp_cpf || '---'}</div>
           <div><strong>RG:</strong> ${p.resp_rg || '---'}</div>
@@ -869,7 +869,7 @@ export default function Cadastro() {
                 <div><Label>RG</Label><Input value={form.rg} onChange={(e) => setForm({ ...form, rg: e.target.value })} className="mt-1" /></div>
                 <div><Label>Data de Nascimento</Label><Input type="date" value={form.data_nascimento} onChange={(e) => handleDobChange(e.target.value)} className="mt-1" /></div>
                 <div><Label>Idade</Label><Input type="number" value={form.idade} readOnly className="mt-1 bg-muted" /></div>
-                <div><Label>Data de Entrada</Label><Input type="date" value={form.dataEntrada} onChange={(e) => setForm({ ...form, dataEntrada: e.target.value })} className="mt-1" /></div>
+                <div><Label>Data de Entrada</Label><Input type="date" value={form.data_entrada} onChange={(e) => setForm({ ...form, data_entrada: e.target.value })} className="mt-1" /></div>
                 <div><Label>Status</Label><Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Patient['status'] })} className="mt-1"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></Select></div>
                 <div>
                   <Label>Unidade de Internação</Label>
@@ -888,7 +888,7 @@ export default function Cadastro() {
                 <div>
                   <Label>Telefone</Label>
                   <div className="flex gap-2 items-center mt-1">
-                    <Input value={form.telefoneResponsavel} onChange={(e) => setForm({ ...form, telefoneResponsavel: e.target.value })} className="flex-1" />
+                    <Input value={form.telefone_responsavel} onChange={(e) => setForm({ ...form, telefone_responsavel: e.target.value })} className="flex-1" />
                     <label className="flex items-center gap-1 text-xs cursor-pointer select-none">
                       <input 
                         type="checkbox" 

@@ -71,7 +71,7 @@ export interface Patient {
   idade: number
   data_nascimento: string
   responsavel: string
-  telefoneResponsavel: string
+  telefone_responsavel: string
   resp_is_whatsapp?: boolean
   resp_rg: string
   resp_cpf: string
@@ -85,7 +85,7 @@ export interface Patient {
   resp_profissao?: string
   status: 'ativo' | 'inativo'
   unidade: 'Vila Moraes' | 'Jardim Matilde'
-  dataEntrada: string
+  data_entrada: string
   observacoes: string
   outros_responsaveis?: Responsible[]
 }

@@ -15,7 +15,9 @@ import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterv
 import { ptBR } from 'date-fns/locale'
 
 export default function Escalas() {
-  const { data: employees, loading: loadingEmployees } = useDb<Employee>('employees')
+  const { data: rawEmployees, loading: loadingEmployees } = useDb<Employee>('employees')
+  // Normaliza: DB retorna data_admissao (snake_case), código usa dataAdmissao (camelCase)
+  const employees = rawEmployees.map((e: any) => ({ ...e, dataAdmissao: e.dataAdmissao || e.data_admissao || '' })) as Employee[]
   const { data: exceptions, insert, update, remove, loading: loadingExceptions } = useDb<ScheduleException>('schedule_exceptions')
   const { data: histories, insert: insertHistory, remove: removeHistory, loading: loadingHistories } = useDb<ScheduleHistory>('schedule_histories')
   

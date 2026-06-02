@@ -73,8 +73,8 @@ export default function ContasReceber() {
     const p = findPatientForIncome(income)
     if (!p) return []
     const options = [
-      { name: p.nome, phone: p.telefoneResponsavel || '', document: p.cpf || '', type: 'Paciente' },
-      { name: p.responsavel, phone: p.telefoneResponsavel || '', document: p.resp_cpf || '', type: 'Responsável (Principal)' }
+      { name: p.nome, phone: p.telefone_responsavel || '', document: p.cpf || '', type: 'Paciente' },
+      { name: p.responsavel, phone: p.telefone_responsavel || '', document: p.resp_cpf || '', type: 'Responsável (Principal)' }
     ]
     if (p.outros_responsaveis) {
       p.outros_responsaveis.forEach(r => {
@@ -91,7 +91,7 @@ export default function ContasReceber() {
     if (!finalPhone) {
       const p = findPatientForIncome(income)
       if (p) {
-        finalPhone = p.telefoneResponsavel || '';
+        finalPhone = p.telefone_responsavel || '';
         finalPayer = finalPayer || p.responsavel || p.nome;
       }
     }

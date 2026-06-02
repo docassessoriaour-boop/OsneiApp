@@ -30,8 +30,8 @@ export default function Faturamento() {
     const p = patients.find(px => px.id === inv.patient_id)
     if (!p) return []
     const options = [
-      { name: p.nome, phone: p.telefoneResponsavel || '', document: p.cpf || '', type: 'Paciente' },
-      { name: p.responsavel, phone: p.telefoneResponsavel || '', document: p.resp_cpf || '', type: 'Responsável (Principal)' }
+      { name: p.nome, phone: p.telefone_responsavel || '', document: p.cpf || '', type: 'Paciente' },
+      { name: p.responsavel, phone: p.telefone_responsavel || '', document: p.resp_cpf || '', type: 'Responsável (Principal)' }
     ]
     if (p.outros_responsaveis) {
       p.outros_responsaveis.forEach(r => {
@@ -48,7 +48,7 @@ export default function Faturamento() {
     if (!finalPhone) {
       const p = patients.find(px => px.id === inv.patient_id)
       if (p) {
-        finalPhone = p.telefoneResponsavel || '';
+        finalPhone = p.telefone_responsavel || '';
         finalPayer = finalPayer || p.responsavel || p.nome;
       }
     }
