@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Pencil, Trash2, FileText, Plus, X, CalendarClock, Loader2, Banknote } from 'lucide-react'
+import { Pencil, Trash2, FileText, Plus, X, CalendarClock, Loader2, Banknote, Printer } from 'lucide-react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInCalendarDays } from 'date-fns'
 
 const emptyAdicional: PayrollAdicional = { descricao: '', tipo: 'provento', valor: 0 }
@@ -361,6 +361,55 @@ export default function FolhaPagamento() {
     printPDF(`Recibo de Pagamento — ${p.funcionarioNome}`, html, clinic)
   }
 
+  function printRelatorio() {
+    const rows = filtered.map(p => {
+      const periodo = p.periodoInicio && p.periodoFim
+        ? `${formatDatePDF(p.periodoInicio)} a ${formatDatePDF(p.periodoFim)}`
+        : p.mesReferencia
+      return `
+        <tr>
+          <td>${p.funcionarioNome}</td>
+          <td>${p.cargo}</td>
+          <td>${periodo}</td>
+          <td class="text-right">${formatCurrencyPDF(p.salarioBruto)}</td>
+          <td class="text-right text-red">${formatCurrencyPDF(p.descontos)}</td>
+          <td class="text-right font-bold">${formatCurrencyPDF(p.salarioLiquido)}</td>
+          <td class="text-center">${p.status === 'pago' ? 'Pago' : 'Pendente'}</td>
+        </tr>
+      `
+    }).join('')
+
+    const totalBruto = filtered.reduce((acc, p) => acc + p.salarioBruto, 0)
+    const totalDescontos = filtered.reduce((acc, p) => acc + p.descontos, 0)
+    const totalLiquido = filtered.reduce((acc, p) => acc + p.salarioLiquido, 0)
+
+    const html = `
+      <table style="font-size: 9pt;">
+        <thead>
+          <tr>
+            <th>Funcionário</th>
+            <th>Cargo</th>
+            <th>Período</th>
+            <th class="text-right">Sal. Bruto</th>
+            <th class="text-right">Descontos</th>
+            <th class="text-right">Sal. Líquido</th>
+            <th class="text-center">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.length > 0 ? rows : '<tr><td colspan="7" class="text-center">Nenhum registro encontrado</td></tr>'}
+        </tbody>
+      </table>
+      <div class="divider"></div>
+      <div style="display:flex; justify-content:flex-end; gap: 40px; font-size:12pt; font-weight:700; margin-top: 10px;">
+        <span>Bruto: ${formatCurrencyPDF(totalBruto)}</span>
+        <span class="text-red">Descontos: ${formatCurrencyPDF(totalDescontos)}</span>
+        <span class="text-green">Total Líquido: ${formatCurrencyPDF(totalLiquido)}</span>
+      </div>
+    `
+    printPDF('Relatório de Folha de Pagamento', html, clinic)
+  }
+
   async function gerarContaPagar(p: Payroll) {
     if (confirm(`Deseja gerar uma Conta a Pagar no valor de ${formatCurrency(p.salarioLiquido)} para ${p.funcionarioNome}?`)) {
       try {
@@ -385,6 +434,9 @@ export default function FolhaPagamento() {
         description="Gerenciamento da folha de pagamento"
       >
         <div className="flex gap-2">
+          <Button variant="outline" onClick={printRelatorio} className="gap-2 text-primary border-primary/20 bg-primary/5">
+            <Printer className="h-4 w-4" /> Imprimir Relatório
+          </Button>
           <Button variant="outline" onClick={() => setMassDialogOpen(true)} className="gap-2 text-primary border-primary/20 bg-primary/5">
             <CalendarClock className="h-4 w-4" /> Gerar via Escala
           </Button>
