@@ -137,9 +137,15 @@ export default function Faturamento() {
   }
 
   async function handleGenerateBatch() {
-    const activeContracts = contracts.filter(c => c.status === 'ativo' && c.valor > 0)
+    // Melhorando a checagem de status e valor para garantir que contratos sejam encontrados
+    const activeContracts = contracts.filter(c => {
+      const status = (c.status || '').toLowerCase();
+      const val = Number(c.valor || 0);
+      return status === 'ativo' && val > 0;
+    });
+
     if (activeContracts.length === 0) {
-      alert('Nenhum contrato ativo encontrado para gerar faturas.')
+      alert('Nenhum contrato ativo com valor maior que 0 encontrado para gerar faturas.');
       return
     }
 
@@ -152,15 +158,24 @@ export default function Faturamento() {
 
     try {
       let count = 0
+      let errors = 0
       for (const contract of activeContracts) {
-        const patient = patients.find(p => p.id === contract.pacienteId)
-        if (!patient) continue
+        const patientId = contract.pacienteId || (contract as any).paciente_id
+        const patient = patients.find(p => p.id === patientId)
+        
+        if (!patient) {
+          console.warn('Paciente não encontrado para o contrato:', contract);
+          errors++;
+          continue;
+        }
+
+        const valor = Number(contract.valor) || 0;
 
         // 1. Criar a Income (Conta a Receber)
         const income = await insertIncome({
           descricao: `${batchForm.description}: ${patient.nome}`,
           categoria: 'Mensalidade/Serviços',
-          valor: contract.valor,
+          valor: valor,
           vencimento: batchForm.due_date,
           status: 'pendente'
         })
@@ -172,8 +187,8 @@ export default function Faturamento() {
           client_document: patient.cpf || patient.resp_cpf || '',
           date_issued: batchForm.date_issued,
           due_date: batchForm.due_date,
-          total_amount: contract.valor,
-          items: [{ description: batchForm.description, quantity: 1, price: contract.valor }],
+          total_amount: valor,
+          items: [{ description: batchForm.description, quantity: 1, price: valor }],
           income_id: income.id,
           status: 'pendente'
         } as any)
@@ -182,7 +197,13 @@ export default function Faturamento() {
       }
 
       setBatchDialogOpen(false)
-      alert(`${count} faturas foram geradas e lançadas no financeiro com sucesso!`)
+      if (errors > 0 && count === 0) {
+         alert(`Nenhuma fatura foi gerada, pois os ${errors} contratos encontrados não possuem pacientes válidos vinculados.`);
+      } else if (errors > 0) {
+         alert(`${count} faturas foram geradas. Houve erro em ${errors} contratos (paciente não encontrado).`);
+      } else {
+         alert(`${count} faturas foram geradas e lançadas no financeiro com sucesso!`)
+      }
     } catch (error) {
       console.error(error)
       alert('Erro ao gerar faturas em lote.')
