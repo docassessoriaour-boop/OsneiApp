@@ -26,7 +26,18 @@ export default function FolhaPagamento() {
   // Normaliza: DB retorna data_admissao (snake_case), código usa dataAdmissao (camelCase)
   const employees = [...rawEmployees].map((e: any) => ({ ...e, dataAdmissao: e.dataAdmissao || e.data_admissao || '' })) as Employee[]
   employees.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
-  const { data: payrolls, loading, insert, update, remove } = useDb<Payroll>('payrolls')
+  const { data: rawPayrolls, loading, insert, update, remove } = useDb<Payroll>('payrolls')
+  
+  const payrolls = rawPayrolls.map((p: any) => ({
+    ...p,
+    funcionarioId: p.funcionarioId || p.funcionario_id,
+    funcionarioNome: p.funcionarioNome || p.funcionario_nome,
+    salarioBruto: p.salarioBruto ?? p.salario_bruto ?? 0,
+    salarioLiquido: p.salarioLiquido ?? p.salario_liquido ?? 0,
+    mesReferencia: p.mesReferencia || p.mes_referencia,
+    periodoInicio: p.periodoInicio || p.periodo_inicio,
+    periodoFim: p.periodoFim || p.periodo_fim,
+  })) as Payroll[]
   const { data: exceptions } = useDb<ScheduleException>('schedule_exceptions')
   const { insert: insertBill } = useDb<Bill>('bills')
   
@@ -64,26 +75,26 @@ export default function FolhaPagamento() {
     const emp = employees.find(e => e.id === form.funcionarioId)
     if (!emp) return
     
-    const payrollData: Omit<Payroll, 'id' | 'created_at'> = {
-      funcionarioId: form.funcionarioId,
-      funcionarioNome: emp.nome,
+    const payrollData = {
+      funcionario_id: form.funcionarioId,
+      funcionario_nome: emp.nome,
       cargo: emp.cargo,
-      salarioBruto: form.salarioBruto,
+      salario_bruto: form.salarioBruto,
       descontos: form.descontos + totalDescontos,
-      salarioLiquido: salarioLiquidoCalc,
-      mesReferencia: form.mesReferencia,
+      salario_liquido: salarioLiquidoCalc,
+      mes_referencia: form.mesReferencia,
       status: form.status,
-      periodoInicio: form.periodoInicio || null,
-      periodoFim: form.periodoFim || null,
+      periodo_inicio: form.periodoInicio || null,
+      periodo_fim: form.periodoFim || null,
       adicionais: adicionais.length > 0 ? adicionais : [],
       observacoes: form.observacoes || '',
     }
 
     try {
       if (editingId) {
-        await update(editingId, payrollData)
+        await update(editingId, payrollData as any)
       } else {
-        const result = await insert(payrollData)
+        const result = await insert(payrollData as any)
         
         // If pro-labore, generate a bill in Contas a Pagar
         if (emp.is_pro_labore) {
@@ -171,19 +182,19 @@ export default function FolhaPagamento() {
           }
 
           const payrollResult = await insert({
-            funcionarioId: emp.id,
-            funcionarioNome: emp.nome,
+            funcionario_id: emp.id,
+            funcionario_nome: emp.nome,
             cargo: emp.cargo,
-            salarioBruto: baseSalary,
+            salario_bruto: baseSalary,
             descontos: fixedDiscounts,
-            salarioLiquido: baseSalary - fixedDiscounts,
-            mesReferencia: massMonth,
+            salario_liquido: baseSalary - fixedDiscounts,
+            mes_referencia: massMonth,
             status: 'pendente',
-            periodoInicio: format(monthStart, 'yyyy-MM-dd'),
-            periodoFim: format(monthEnd, 'yyyy-MM-dd'),
+            periodo_inicio: format(monthStart, 'yyyy-MM-dd'),
+            periodo_fim: format(monthEnd, 'yyyy-MM-dd'),
             observacoes: emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${dobrasCount > 0 ? `, incluindo ${dobrasCount} dobra(s)` : ''}.`,
             adicionais: payloadAdicionais
-          } as Omit<Payroll, 'id' | 'created_at'>)
+          } as any)
 
           // If pro-labore, generate a bill
           if (emp.is_pro_labore) {
