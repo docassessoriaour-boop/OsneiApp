@@ -1,0 +1,1 @@
+INSERT INTO appointments (id,created_at) VALUES ('c06c4ddc-f7e2-429d-82b3-0f0a28b088a9','2026-05-22T10:39:33.284147+00:00') ON CONFLICT (id) DO NOTHING;

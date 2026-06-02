@@ -25,7 +25,7 @@ export default function FolhaPagamento() {
   const { data: rawEmployees } = useDb<Employee>('employees')
   // Normaliza: DB retorna data_admissao (snake_case), código usa dataAdmissao (camelCase)
   const employees = [...rawEmployees].map((e: any) => ({ ...e, dataAdmissao: e.dataAdmissao || e.data_admissao || '' })) as Employee[]
-  employees.sort((a, b) => a.nome.localeCompare(b.nome))
+  employees.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
   const { data: payrolls, loading, insert, update, remove } = useDb<Payroll>('payrolls')
   const { data: exceptions } = useDb<ScheduleException>('schedule_exceptions')
   const { insert: insertBill } = useDb<Bill>('bills')
@@ -52,8 +52,8 @@ export default function FolhaPagamento() {
   const [adicionais, setAdicionais] = useState<PayrollAdicional[]>([])
 
   const filtered = payrolls.filter(
-    (p) => p.funcionarioNome.toLowerCase().includes(search.toLowerCase())
-  ).sort((a, b) => a.funcionarioNome.localeCompare(b.funcionarioNome))
+    (p) => (p.funcionarioNome || '').toLowerCase().includes((search || '').toLowerCase())
+  ).sort((a, b) => (a.funcionarioNome || '').localeCompare(b.funcionarioNome || ''))
 
   // Computed totals
   const totalProventos = adicionais.filter(a => a.tipo === 'provento').reduce((s, a) => s + a.valor, 0)

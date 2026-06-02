@@ -52,7 +52,7 @@ export function useDb<T>(table: string) {
         }
       } else {
         console.log(`[useDb] Successfully fetched ${result?.length || 0} rows from ${table}`)
-        setData(result as T[])
+        setData((result || []) as T[])
         hasFetchedOnce.current = true
       }
     } catch (e: any) {
