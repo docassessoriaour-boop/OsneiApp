@@ -37,12 +37,30 @@ export default function Contratos() {
   const today = new Date()
 
   const filtered = useMemo(() => {
-    let list = contracts.filter(c => (c.pacienteNome || '').toLowerCase().includes(search.toLowerCase()))
+    let list = contracts.map(c => {
+      const mapped = {
+        ...c,
+        pacienteId: (c as any).paciente_id || c.pacienteId,
+        pacienteNome: (c as any).paciente_nome || c.pacienteNome,
+        dataInicio: (c as any).data_inicio || c.dataInicio,
+        dataFim: (c as any).data_fim || c.dataFim,
+        valorExtra: (c as any).valor_extra || c.valorExtra,
+        descricaoExtra: (c as any).descricao_extra || c.descricaoExtra,
+      } as Contract
+      // Fallback para buscar o nome no cadastro caso esteja vazio no contrato
+      if (!mapped.pacienteNome && mapped.pacienteId) {
+        const p = patients.find(px => px.id === mapped.pacienteId)
+        if (p) mapped.pacienteNome = p.nome
+      }
+      mapped.pacienteNome = mapped.pacienteNome || 'Desconhecido'
+      return mapped
+    }).filter(c => (c.pacienteNome).toLowerCase().includes(search.toLowerCase()))
+    
     if (statusFilter !== 'todos') list = list.filter(c => c.status === statusFilter)
     if (filterStart) list = list.filter(c => c.dataFim >= filterStart)
     if (filterEnd) list = list.filter(c => c.dataFim <= filterEnd)
     return list.sort((a, b) => new Date(a.dataFim).getTime() - new Date(b.dataFim).getTime())
-  }, [contracts, search, filterStart, filterEnd, statusFilter])
+  }, [contracts, patients, search, filterStart, filterEnd, statusFilter])
 
   function openNew() {
     setForm({ pacienteId: patients[0]?.id || '', valor: 0, valorExtra: 0, descricaoExtra: '', dataInicio: '', dataFim: '', status: 'ativo', observacoes: '' })
@@ -59,15 +77,20 @@ export default function Contratos() {
     
     setSaving(true)
     try {
-      const { pacienteId, ...restForm } = form
-      const contractData = { 
-        pacienteId, 
-        pacienteNome: patient.nome, 
-        ...restForm 
+      const dbPayload = { 
+        paciente_id: form.pacienteId, 
+        paciente_nome: patient.nome,
+        valor: form.valor,
+        valor_extra: form.valorExtra,
+        descricao_extra: form.descricaoExtra,
+        data_inicio: form.dataInicio,
+        data_fim: form.dataFim,
+        status: form.status,
+        observacoes: form.observacoes
       }
 
       if (editingId) {
-        await update(editingId, contractData as any)
+        await update(editingId, dbPayload as any)
       } else {
         const now = new Date()
         const dd = String(now.getDate()).padStart(2, '0')
@@ -77,7 +100,7 @@ export default function Contratos() {
         const min = String(now.getMinutes()).padStart(2, '0')
         const num = `CPS-${dd}${mm}${yyyy}${hh}${min}`
         
-        await insert({ ...contractData, numero_contrato: num } as any)
+        await insert({ ...dbPayload, numero_contrato: num } as any)
       }
       setDialogOpen(false)
     } catch (error) {
@@ -100,15 +123,24 @@ export default function Contratos() {
   }
 
   function openEdit(c: Contract) {
+    const mappedC = {
+      ...c,
+      pacienteId: (c as any).paciente_id || c.pacienteId,
+      valorExtra: (c as any).valor_extra || c.valorExtra,
+      descricaoExtra: (c as any).descricao_extra || c.descricaoExtra,
+      dataInicio: (c as any).data_inicio || c.dataInicio,
+      dataFim: (c as any).data_fim || c.dataFim
+    }
+    
     setForm({ 
-      pacienteId: c.pacienteId, 
-      valor: c.valor, 
-      valorExtra: c.valorExtra || 0,
-      descricaoExtra: c.descricaoExtra || '',
-      dataInicio: c.dataInicio, 
-      dataFim: c.dataFim, 
-      status: c.status, 
-      observacoes: c.observacoes 
+      pacienteId: mappedC.pacienteId, 
+      valor: mappedC.valor, 
+      valorExtra: mappedC.valorExtra || 0,
+      descricaoExtra: mappedC.descricaoExtra || '',
+      dataInicio: mappedC.dataInicio, 
+      dataFim: mappedC.dataFim, 
+      status: mappedC.status, 
+      observacoes: mappedC.observacoes 
     })
     setEditingId(c.id)
     setDialogOpen(true)
