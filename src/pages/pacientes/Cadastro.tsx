@@ -38,7 +38,7 @@ export default function Cadastro() {
   const { data: allMedications, insert: insertMed, update: updateMed, remove: removeMed, reload: reloadMeds } = useDb<Medication>('medications')
   const { data: allMedEntries, insert: insertMedEntry, update: updateMedEntry, remove: removeMedEntry } = useDb<MedicationEntry>('medication_entries')
   const { data: allCompanionships, insert: insertComp, update: updateComp, remove: removeComp } = useDb<CompanionEntry>('patient_companionships')
-  const { data: rawProducts } = useDb<any>('products')
+  const { data: rawProducts, insert: insertProduct, reload: reloadProducts } = useDb<any>('products')
   const baseMeds = rawProducts.filter((p: any) => p.tipo === 'medicamento')
   const { fetchCep } = useCep()
   const [clinic] = useClinic()
@@ -515,6 +515,21 @@ export default function Cadastro() {
       } else {
         await insertMed(payload as any)
       }
+      
+      // Adicionar automaticamente ao catálogo (products) se for um novo medicamento
+      const finalName = medForm.dosagem ? `${medForm.medicamento} - ${medForm.dosagem}` : medForm.medicamento
+      const existsInCatalog = rawProducts.some((p: any) => p.tipo === 'medicamento' && p.nome.toLowerCase() === finalName.toLowerCase())
+      
+      if (!existsInCatalog && medForm.medicamento.trim()) {
+        await insertProduct({
+          nome: finalName,
+          tipo: 'medicamento',
+          unidade: medForm.unidade_medida || 'comprimido',
+          para_que_serve: ''
+        })
+        reloadProducts()
+      }
+
       setMedDialogOpen(false)
       reloadMeds()
     } catch (error) {
@@ -1374,28 +1389,39 @@ export default function Cadastro() {
                 />
                 {medForm.medicamento && medForm.medicamento.length >= 2 && !baseMeds.some((bm: any) => bm.nome.split(' - ')[0] === medForm.medicamento) && (
                   <div className="absolute z-[100] w-full mt-1 bg-white border rounded-md shadow-xl max-h-48 overflow-y-auto">
-                    {baseMeds.filter((bm: any) => bm.nome.toLowerCase().includes(medForm.medicamento.toLowerCase())).map((bm: any) => {
-                      const mName = bm.nome.split(' - ')[0];
-                      const mDosage = bm.nome.includes(' - ') ? bm.nome.split(' - ')[1] : '';
-                      return (
-                        <button
-                          key={bm.id}
-                          type="button"
-                          className="w-full text-left px-4 py-2 text-sm hover:bg-primary/10 transition-colors border-b last:border-0"
-                          onClick={() => {
-                            setMedForm({
-                              ...medForm,
-                              medicamento: mName,
-                              dosagem: mDosage || medForm.dosagem,
-                              unidade_medida: bm.unidade || medForm.unidade_medida
-                            })
-                          }}
-                        >
-                          <div className="font-bold">{mName}</div>
-                          {mDosage && <div className="text-[10px] text-muted-foreground">Sugestão: {mDosage} • {bm.unidade || 'comprimido'}</div>}
-                        </button>
-                      )
-                    })}
+                    {(() => {
+                      const suggestions = baseMeds.filter((bm: any) => bm.nome.toLowerCase().includes(medForm.medicamento.toLowerCase()))
+                      if (suggestions.length === 0) {
+                        return (
+                          <div className="px-4 py-3 text-sm text-muted-foreground flex items-center gap-2 bg-amber-50/50">
+                            <Plus className="h-4 w-4 text-amber-600" />
+                            <span><strong>"{medForm.medicamento}"</strong> será salvo automaticamente no catálogo ao registrar.</span>
+                          </div>
+                        )
+                      }
+                      return suggestions.map((bm: any) => {
+                        const mName = bm.nome.split(' - ')[0];
+                        const mDosage = bm.nome.includes(' - ') ? bm.nome.split(' - ')[1] : '';
+                        return (
+                          <button
+                            key={bm.id}
+                            type="button"
+                            className="w-full text-left px-4 py-2 text-sm hover:bg-primary/10 transition-colors border-b last:border-0"
+                            onClick={() => {
+                              setMedForm({
+                                ...medForm,
+                                medicamento: mName,
+                                dosagem: mDosage || medForm.dosagem,
+                                unidade_medida: bm.unidade || medForm.unidade_medida
+                              })
+                            }}
+                          >
+                            <div className="font-bold">{mName}</div>
+                            {mDosage && <div className="text-[10px] text-muted-foreground">Sugestão: {mDosage} • {bm.unidade || 'comprimido'}</div>}
+                          </button>
+                        )
+                      })
+                    })()}
                   </div>
                 )}
               </div>
