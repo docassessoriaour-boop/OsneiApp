@@ -31,7 +31,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const profileFetched = React.useRef(false)
   const lastUserId = React.useRef<string | null>(null)
 
-  const fetchProfile = async (userId: string, retries = 5) => {
+  const forceLogout = () => {
+    console.log('[Auth] Forcing logout due to invalid state')
+    localStorage.removeItem('gom-estoque-auth-v1') // Synchronously clear token to prevent loop
+    supabase.auth.signOut().catch(() => {})
+    setUser(null)
+    setProfile(null)
+    profileFetched.current = false
+    lastUserId.current = null
+    setLoading(false)
+  }
+
+  const fetchProfile = async (userId: string, retries = 3) => {
     try {
       console.log('[Auth] Fetching profile for:', userId, 'retries left:', retries)
       
@@ -48,7 +59,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const timeoutId = setTimeout(() => {
           controller.abort()
           reject(new Error('Timeout na requisição de perfil'))
-        }, 8000)
+        }, 5000)
         ;(controller as any).timeoutId = timeoutId
       })
 
@@ -63,22 +74,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         if (error.code === 'PGRST116' || error.code === 'PGRST301') {
-          console.warn(`[Auth] Error ${error.code}. Mantendo perfil anterior se houver.`)
+          console.warn(`[Auth] Error ${error.code}.`)
           if (retries > 0) {
             console.log('[Auth] Retrying profile fetch...')
-            await new Promise(r => setTimeout(r, 1500)) // Wait 1.5s for token refresh
+            await new Promise(r => setTimeout(r, 1000))
             return fetchProfile(userId, retries - 1)
           } else if (!profileFetched.current) {
-            setProfile(null)
-            // Se falhou repetidas vezes por JWT/RLS, força logout para evitar estado inconsistente
-            supabase.auth.signOut()
-            window.location.href = '/'
+            forceLogout()
+            return
           }
         } else {
           console.error('[Auth] Error fetching profile:', error)
           if (retries > 0) {
             console.log('[Auth] Retrying profile fetch...')
-            await new Promise(r => setTimeout(r, 1500))
+            await new Promise(r => setTimeout(r, 1000))
             return fetchProfile(userId, retries - 1)
           }
         }
@@ -91,11 +100,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('[Auth] Unexpected error in fetchProfile:', error)
       if ((error.name === 'AbortError' || error.message === 'Timeout na requisição de perfil') && retries > 0) {
         console.log('[Auth] Timeout, retrying profile fetch...')
-        await new Promise(r => setTimeout(r, 1500))
+        await new Promise(r => setTimeout(r, 1000))
         return fetchProfile(userId, retries - 1)
-      } else if (retries === 0) {
-        supabase.auth.signOut()
-        window.location.href = '/'
+      } else if (retries === 0 && !profileFetched.current) {
+        forceLogout()
+        return
       }
     } finally {
       if (retries === 0 || profileFetched.current) {
@@ -203,13 +212,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut: async () => {
       setLoading(true)
       try {
-        await supabase.auth.signOut()
+        // Race the network request against a timeout to ensure it never hangs
+        await Promise.race([
+          supabase.auth.signOut(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout logging out')), 3000))
+        ])
       } catch (error) {
         console.error('[Auth] Error signing out:', error)
       } finally {
-        setUser(null)
-        setProfile(null)
-        setLoading(false)
+        forceLogout()
       }
     }
   }
