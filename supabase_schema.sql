@@ -55,9 +55,10 @@ CREATE TABLE IF NOT EXISTS medications (
 -- Tabela Base de Medicamentos (Catálogo)
 CREATE TABLE IF NOT EXISTS base_medications (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  nome TEXT NOT NULL UNIQUE,
+  nome TEXT NOT NULL,
   dosagem_padrao TEXT,
   unidade_medida_padrao TEXT DEFAULT 'comprimido',
+  indicacao TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
