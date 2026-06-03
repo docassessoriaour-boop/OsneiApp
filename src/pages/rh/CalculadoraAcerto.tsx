@@ -10,7 +10,7 @@ import { Separator } from '@/components/ui/separator'
 import { Calculator, Plus, Trash2, Printer, FileText, Search, User, Save, History, ExternalLink, Edit } from 'lucide-react'
 import { formatCurrency } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
-import { printPDF } from '@/lib/pdf'
+import { printPDF, formatDatePDF } from '@/lib/pdf'
 import { useDb } from '@/hooks/useDb'
 import type { Employee, Termination, Bill } from '@/lib/types'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog'
@@ -333,7 +333,7 @@ export default function CalculadoraAcerto() {
     const content = `
       <div class="report-header mb-4">
         <p>CPF: ${form.cpf || '---'} | Cargo: ${form.role || '---'}</p>
-        ${isOfficial ? `<p>Data Admissão: ${form.admissionDate ? new Date(form.admissionDate).toLocaleDateString() : '---'} | Data Desligamento: ${form.terminationDate ? new Date(form.terminationDate).toLocaleDateString() : '---'}</p>` : ''}
+        ${isOfficial ? `<p>Data Admissão: ${formatDatePDF(form.admissionDate)} | Data Desligamento: ${formatDatePDF(form.terminationDate)}</p>` : ''}
       </div>
       <table class="w-full">
         <thead>
@@ -406,7 +406,7 @@ export default function CalculadoraAcerto() {
     const content = `
       <div class="report-header mb-4">
         <p>CPF: ${t.cpf || '---'} | Cargo: ${t.cargo || '---'}</p>
-        <p>Data Admissão: ${t.data_admissao ? new Date(t.data_admissao).toLocaleDateString() : '---'} | Data Desligamento: ${t.data_demissao ? new Date(t.data_demissao).toLocaleDateString() : '---'}</p>
+        <p>Data Admissão: ${formatDatePDF(t.data_admissao)} | Data Desligamento: ${formatDatePDF(t.data_demissao)}</p>
       </div>
       <table class="w-full">
         <thead>
@@ -502,7 +502,7 @@ export default function CalculadoraAcerto() {
                         {t.funcionario_nome}
                         <div className="text-[10px] text-muted-foreground">{(t.tipo_rescisao || '').replace(/_/g, ' ')}</div>
                       </TableCell>
-                      <TableCell>{t.data_demissao ? new Date(t.data_demissao).toLocaleDateString() : '---'}</TableCell>
+                      <TableCell>{formatDatePDF(t.data_demissao)}</TableCell>
                       <TableCell className="font-bold">{formatCurrency(t.valor_total)}</TableCell>
                       <TableCell>
                         <Badge variant={t.status === 'pago' ? 'success' : 'warning'}>
