@@ -71,6 +71,7 @@ export default function Faturamento() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [batchDialogOpen, setBatchDialogOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [monthFilter, setMonthFilter] = useState<'all' | 'current' | 'previous'>('all')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [batchForm, setBatchForm] = useState({
     date_issued: new Date().toISOString().slice(0, 10),
@@ -95,10 +96,25 @@ export default function Faturamento() {
     items: [{ ...emptyItem }]
   })
 
-  const filtered = invoices.filter(inv =>
-    (inv.client_name || '').toLowerCase().includes(search.toLowerCase()) ||
-    inv.id.includes(search)
-  ).sort((a, b) => {
+  const filtered = invoices.filter(inv => {
+    const matchesSearch = (inv.client_name || '').toLowerCase().includes(search.toLowerCase()) ||
+                          inv.id.includes(search);
+    
+    let matchesMonth = true;
+    if (monthFilter !== 'all') {
+      const invDate = new Date(inv.due_date);
+      // Forçamos o fuso horário local, pois new Date('YYYY-MM-DD') cai em UTC, o que pode dar dia anterior
+      const localInvDate = new Date(invDate.getTime() + invDate.getTimezoneOffset() * 60000);
+      const now = new Date();
+      if (monthFilter === 'current') {
+        matchesMonth = localInvDate.getMonth() === now.getMonth() && localInvDate.getFullYear() === now.getFullYear();
+      } else if (monthFilter === 'previous') {
+        const prevMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        matchesMonth = localInvDate.getMonth() === prevMonth.getMonth() && localInvDate.getFullYear() === prevMonth.getFullYear();
+      }
+    }
+    return matchesSearch && matchesMonth;
+  }).sort((a, b) => {
     return sortDir === 'asc' 
       ? a.due_date.localeCompare(b.due_date)
       : b.due_date.localeCompare(a.due_date)
@@ -456,14 +472,25 @@ export default function Faturamento() {
       </div>
 
       <Card className="p-6">
-        <div className="flex items-center gap-2 mb-4">
-          <Search className="h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Buscar por cliente ou ID da fatura..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="max-w-md"
-          />
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-4">
+          <div className="flex items-center gap-2 flex-1 w-full max-w-md">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por cliente ou ID da fatura..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full"
+            />
+          </div>
+          <Select 
+            value={monthFilter} 
+            onChange={e => setMonthFilter(e.target.value as 'all' | 'current' | 'previous')}
+            className="w-full sm:w-48"
+          >
+            <option value="all">Todos os meses</option>
+            <option value="current">Mês atual</option>
+            <option value="previous">Mês anterior</option>
+          </Select>
         </div>
 
         <Table>

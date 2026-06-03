@@ -302,20 +302,34 @@ export default function FolhaPagamento() {
         }
       } else if (val === '13_salario') {
         const year = parseInt(month.split('-')[0], 10) || new Date().getFullYear();
+        const endCalculated = end ? parseISO(end) : parseISO(`${year}-12-31`);
         if (emp?.dataAdmissao) {
           const admissao = parseISO(emp.dataAdmissao);
           const anoAdmissao = admissao.getFullYear();
           if (anoAdmissao < year) {
-            multiplier = 1;
+            let meses = 0;
+            for (let m = 0; m <= endCalculated.getMonth(); m++) {
+               if (m === endCalculated.getMonth()) {
+                 if (endCalculated.getDate() >= 15) meses++;
+               } else {
+                 meses++;
+               }
+            }
+            multiplier = meses / 12;
           } else if (anoAdmissao > year) {
             multiplier = 0;
           } else {
             let meses = 0;
-            for (let m = admissao.getMonth(); m <= 11; m++) {
-              if (m === admissao.getMonth()) {
+            for (let m = admissao.getMonth(); m <= endCalculated.getMonth(); m++) {
+              if (m === admissao.getMonth() && m === endCalculated.getMonth()) {
+                 const diasTrabalhados = endCalculated.getDate() - admissao.getDate() + 1;
+                 if (diasTrabalhados >= 15) meses++;
+              } else if (m === admissao.getMonth()) {
                 const daysInMonth = getDaysInMonth(admissao);
                 const diasTrabalhados = daysInMonth - admissao.getDate() + 1;
                 if (diasTrabalhados >= 15) meses++;
+              } else if (m === endCalculated.getMonth()) {
+                if (endCalculated.getDate() >= 15) meses++;
               } else {
                 meses++;
               }
@@ -327,7 +341,7 @@ export default function FolhaPagamento() {
       }
 
       setAdicionais(prevAdics => {
-        return prevAdics.map(a => {
+        let updated = prevAdics.map(a => {
           if (a.descricao === 'Vale Transporte' && emp?.tem_vt) {
             return { ...a, valor: Number(((emp.vt_valor || 0) * multiplier).toFixed(2)) }
           }
@@ -337,6 +351,10 @@ export default function FolhaPagamento() {
           }
           return a
         })
+        if (val === '13_salario') {
+          updated = updated.filter(a => a.descricao !== 'Vale Transporte');
+        }
+        return updated;
       })
 
       return { ...prev, tipo_periodo: val, periodoInicio: start, periodoFim: end, mesReferencia: month, salarioBruto: novoSalario }
@@ -351,7 +369,7 @@ export default function FolhaPagamento() {
       : p.mesReferencia
 
     let rows = `
-      <tr><td>Salário Base</td><td class="text-right">${formatCurrencyPDF(p.salarioBruto)}</td></tr>
+      <tr><td>${p.tipo_periodo === '13_salario' ? '13º Salário' : 'Salário Base'}</td><td class="text-right">${formatCurrencyPDF(p.salarioBruto)}</td></tr>
     `
     if (p.adicionais) {
       for (const a of p.adicionais) {
@@ -565,20 +583,34 @@ export default function FolhaPagamento() {
                     if (dias > 0) multiplier = dias / 30
                   } else if (form.tipo_periodo === '13_salario') {
                     const year = parseInt(form.mesReferencia.split('-')[0], 10) || new Date().getFullYear();
+                    const endCalculated = form.periodoFim ? parseISO(form.periodoFim) : parseISO(`${year}-12-31`);
                     if (emp?.dataAdmissao) {
                       const admissao = parseISO(emp.dataAdmissao);
                       const anoAdmissao = admissao.getFullYear();
                       if (anoAdmissao < year) {
-                        multiplier = 1;
+                        let meses = 0;
+                        for (let m = 0; m <= endCalculated.getMonth(); m++) {
+                           if (m === endCalculated.getMonth()) {
+                             if (endCalculated.getDate() >= 15) meses++;
+                           } else {
+                             meses++;
+                           }
+                        }
+                        multiplier = meses / 12;
                       } else if (anoAdmissao > year) {
                         multiplier = 0;
                       } else {
                         let meses = 0;
-                        for (let m = admissao.getMonth(); m <= 11; m++) {
-                          if (m === admissao.getMonth()) {
+                        for (let m = admissao.getMonth(); m <= endCalculated.getMonth(); m++) {
+                          if (m === admissao.getMonth() && m === endCalculated.getMonth()) {
+                             const diasTrabalhados = endCalculated.getDate() - admissao.getDate() + 1;
+                             if (diasTrabalhados >= 15) meses++;
+                          } else if (m === admissao.getMonth()) {
                             const daysInMonth = getDaysInMonth(admissao);
                             const diasTrabalhados = daysInMonth - admissao.getDate() + 1;
                             if (diasTrabalhados >= 15) meses++;
+                          } else if (m === endCalculated.getMonth()) {
+                            if (endCalculated.getDate() >= 15) meses++;
                           } else {
                             meses++;
                           }
@@ -591,7 +623,7 @@ export default function FolhaPagamento() {
                   setForm({ ...form, funcionarioId: e.target.value, salarioBruto: Number(((emp?.salario || 0) * multiplier).toFixed(2)), descontos: emp?.descontos_fixos || 0 })
                   
                   const newAdicionais: PayrollAdicional[] = []
-                  if (emp?.tem_vt) {
+                  if (emp?.tem_vt && form.tipo_periodo !== '13_salario') {
                     newAdicionais.push({
                       descricao: 'Vale Transporte',
                       tipo: 'provento',
@@ -666,7 +698,7 @@ export default function FolhaPagamento() {
               </div>
             </div>
 
-            {form.tipo_periodo === 'periodo' && (
+            {(form.tipo_periodo === 'periodo' || form.tipo_periodo === '13_salario') && (
               <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-1">
                 <div>
                   <Label>Início do Período</Label>
