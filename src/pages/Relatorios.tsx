@@ -192,7 +192,7 @@ export default function Relatorios() {
 
   const sortedPatients = useMemo(() => {
     const list = filteredData.patients.map(p => {
-      const contract = contracts.find(c => c.pacienteId === p.id && c.status === 'ativo')
+      const contract = contracts.find(c => (c.pacienteId || (c as any).paciente_id) === p.id && c.status === 'ativo')
       const mensalidade = contract?.valor || 0
       const pct = mensalidade > 0 ? (totals.avgCostPerPatient / mensalidade) * 100 : 0
       return { ...p, pct, mensalidade }
@@ -285,9 +285,9 @@ export default function Relatorios() {
             <tbody>
               ${filteredData.contratos.map(c => `
                 <tr>
-                  <td>${c.pacienteNome}</td>
-                  <td>${formatDatePDF(c.dataInicio)}</td>
-                  <td>${formatDatePDF(c.dataFim)}</td>
+                  <td>${c.pacienteNome || (c as any).paciente_nome || '---'}</td>
+                  <td>${formatDatePDF(c.dataInicio || (c as any).data_inicio)}</td>
+                  <td>${formatDatePDF(c.dataFim || (c as any).data_fim)}</td>
                   <td class="text-right">${formatCurrency(c.valor)}</td>
                   <td class="text-center">${c.status.toUpperCase()}</td>
                 </tr>
@@ -350,7 +350,7 @@ export default function Relatorios() {
             <tfoot>
               <tr style="font-weight:bold; background:#f1f5f9;">
                 <td>MÉDIA POR PACIENTE</td>
-                <td class="text-right">${formatCurrency(filteredData.patients.reduce((s,p) => s + (contracts.find(c => c.pacienteId === p.id && c.status === 'ativo')?.valor || 0), 0) / (totals.patientCount || 1))}</td>
+                <td class="text-right">${formatCurrency(filteredData.patients.reduce((s,p) => s + (contracts.find(c => (c.pacienteId || (c as any).paciente_id) === p.id && c.status === 'ativo')?.valor || 0), 0) / (totals.patientCount || 1))}</td>
                 <td class="text-right">${formatCurrency(totals.avgCostPerPatient)}</td>
                 <td colspan="2"></td>
               </tr>
@@ -852,7 +852,7 @@ export default function Relatorios() {
                 <tr>
                   <td className="p-3">TOTAL (Média)</td>
                   <td className="p-3 text-right text-green-700">
-                    {formatCurrency(filteredData.patients.reduce((s,p) => s + (contracts.find(c => c.pacienteId === p.id && c.status === 'ativo')?.valor || 0), 0))}
+                    {formatCurrency(filteredData.patients.reduce((s,p) => s + (contracts.find(c => (c.pacienteId || (c as any).paciente_id) === p.id && c.status === 'ativo')?.valor || 0), 0))}
                   </td>
                   <td className="p-3 text-right text-red-700">{formatCurrency(totals.totalExpenses)}</td>
                   <td className="p-3" colSpan={2}></td>
@@ -902,9 +902,9 @@ export default function Relatorios() {
                 ) : (
                   filteredData.contratos.map(c => (
                     <tr key={c.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="p-3 font-medium">{c.pacienteNome}</td>
-                      <td className="p-3">{formatDate(c.dataInicio)}</td>
-                      <td className="p-3">{formatDate(c.dataFim)}</td>
+                      <td className="p-3 font-medium">{c.pacienteNome || (c as any).paciente_nome || '---'}</td>
+                      <td className="p-3">{formatDate(c.dataInicio || (c as any).data_inicio)}</td>
+                      <td className="p-3">{formatDate(c.dataFim || (c as any).data_fim)}</td>
                       <td className="p-3 text-right font-semibold text-primary">{formatCurrency(c.valor)}</td>
                       <td className="p-3 text-center whitespace-nowrap">
                         <Badge variant={c.status === 'ativo' ? 'success' : c.status === 'cancelado' ? 'destructive' : 'warning'}>
