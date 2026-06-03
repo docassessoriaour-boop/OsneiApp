@@ -13,7 +13,7 @@ import { Select } from '@/components/ui/select'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Trash2, Printer, CheckCircle2, Loader2, FileText, Search, Receipt, Layers, Calendar, Pencil, ArrowUp, ArrowDown } from 'lucide-react'
+import { Plus, Trash2, Printer, CheckCircle2, Loader2, FileText, Search, Receipt, Layers, Calendar, Pencil, ArrowUp, ArrowDown, Ban } from 'lucide-react'
 
 const emptyItem: InvoiceItem = { description: '', quantity: 1, price: 0 }
 
@@ -23,7 +23,7 @@ export default function Faturamento() {
   const { data: contracts, loading: loadingContracts } = useDb<Contract>('contracts')
   const { data: incomes, insert: insertIncome, update: updateIncome } = useDb<Income>('incomes')
   const { data: bankAccounts } = useDb<BankAccount>('bank_accounts')
-  const { insert: insertBankTransaction, update: updateBankTransaction } = useDb<BankTransaction>('bank_transactions')
+  const { insert: insertBankTransaction, update: updateBankTransaction, remove: removeBankTransaction } = useDb<BankTransaction>('bank_transactions')
   const [clinic] = useClinic()
 
   const getPayerOptions = (inv: Invoice) => {
@@ -325,6 +325,47 @@ export default function Faturamento() {
     }
   }
 
+  async function handleCancelPayment(inv: Invoice) {
+    if (!confirm('Tem certeza que deseja cancelar o pagamento desta fatura? O status voltará para pendente e a transação bancária vinculada será excluída.')) return
+
+    try {
+      if (inv.bank_transaction_id) {
+        await removeBankTransaction(inv.bank_transaction_id)
+      }
+
+      const updatedInv = {
+        ...inv,
+        status: 'pendente' as const,
+        payment_date: null,
+        bank_account_id: null,
+        bank_transaction_id: null,
+        paid_by: null,
+        paid_by_phone: null,
+        paid_by_document: null,
+        valor_pago: 0
+      }
+      await updateInvoice(inv.id, updatedInv)
+
+      if (inv.income_id) {
+        await updateIncome(inv.income_id, {
+          status: 'pendente',
+          payment_date: null,
+          bank_account_id: null,
+          bank_transaction_id: null,
+          paid_by: null,
+          paid_by_phone: null,
+          paid_by_document: null,
+          valor_pago: 0
+        })
+      }
+
+      alert('Pagamento cancelado com sucesso!')
+    } catch (error) {
+      console.error(error)
+      alert('Erro ao cancelar o pagamento.')
+    }
+  }
+
   async function handleGenerate() {
     if (!form.client_name || !form.total_amount || (form.items?.length === 0)) {
       alert('Preencha os dados básicos e ao menos um item.')
@@ -565,6 +606,9 @@ export default function Faturamento() {
                               <CheckCircle2 className="h-4 w-4" />
                             </Button>
                           )}
+                          <Button variant="ghost" size="icon" onClick={() => handleCancelPayment(inv)} title="Cancelar Pagamento" className="text-red-500 hover:text-red-700">
+                            <Ban className="h-4 w-4" />
+                          </Button>
                         </>
                       ) : (
                         <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv)} title="Dar Baixa (Marcar como Pago)" className="text-green-600">
