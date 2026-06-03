@@ -63,18 +63,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       if (error) {
         if (error.code === 'PGRST116') {
-          // PGRST116 = 0 linhas. Pode ser race condition do RLS durante
-          // refresh do token (JWT antigo já invalidado, novo ainda não
-          // propagado). Não nula o profile se já tínhamos um carregado —
-          // isso era o que causava o sidebar colapsar ao trocar de aba.
           console.warn('[Auth] PGRST116 (no rows). Mantendo perfil anterior se houver.')
-          if (!profileFetched.current && retries === 0) {
+          if (retries > 0) {
+            console.log('[Auth] Retrying profile fetch due to PGRST116...')
+            await new Promise(r => setTimeout(r, 1000)) // Wait 1s for token refresh
+            return fetchProfile(userId, retries - 1)
+          } else if (!profileFetched.current) {
             setProfile(null)
           }
         } else {
           console.error('[Auth] Error fetching profile:', error)
           if (retries > 0) {
             console.log('[Auth] Retrying profile fetch...')
+            await new Promise(r => setTimeout(r, 500))
             return fetchProfile(userId, retries - 1)
           }
         }
@@ -150,10 +151,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setLoading(false)
           }
         } else if (event === 'TOKEN_REFRESHED') {
-          // Sessão renovada em background (volta de aba/inatividade).
-          // Profile não muda — não refetch, evita race com RLS que
-          // causava perda dos itens de menu.
-          setLoading(false)
+          // Sessão renovada. Se ainda não temos o profile (falhou no initial load), tenta buscar agora.
+          if (!profileFetched.current) {
+             lastUserId.current = currentUser.id
+             await fetchProfile(currentUser.id)
+          } else {
+             setLoading(false)
+          }
         } else if (event === 'SIGNED_OUT') {
           setProfile(null)
           profileFetched.current = false
