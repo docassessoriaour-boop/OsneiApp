@@ -520,17 +520,24 @@ export default function Faturamento() {
                       <Button variant="ghost" size="icon" onClick={() => printInvoice(inv)} title="Imprimir Fatura">
                         <Printer className="h-4 w-4" />
                       </Button>
-                       {inv.status === 'pago' ? (
+                       {inv.status === 'pago' || inv.status === 'parcial' ? (
                         <>
                           <Button variant="ghost" size="icon" onClick={() => handlePrintReceipt(inv)} title="Imprimir Recibo" className="text-blue-600">
                             <Receipt className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => sendWhatsAppReceipt(inv, inv.total_amount, inv.paid_by || '', inv.paid_by_phone || '')} title="WhatsApp Recibo" className="text-green-600">
+                          <Button variant="ghost" size="icon" onClick={() => sendWhatsAppReceipt(inv, inv.valor_pago || inv.total_amount, inv.paid_by || '', inv.paid_by_phone || '')} title="WhatsApp Recibo" className="text-green-600">
                             <FileText className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => openEditPayDialog(inv)} title="Editar Data do Pagamento" className="text-orange-500">
-                            <Calendar className="h-4 w-4" />
-                          </Button>
+                          {inv.status === 'pago' && (
+                            <Button variant="ghost" size="icon" onClick={() => openEditPayDialog(inv)} title="Editar Data do Pagamento" className="text-orange-500">
+                              <Calendar className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {inv.status === 'parcial' && (
+                            <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv)} title="Dar Baixa (Pagar Restante)" className="text-green-600">
+                              <CheckCircle2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </>
                       ) : (
                         <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv)} title="Dar Baixa (Marcar como Pago)" className="text-green-600">

@@ -141,7 +141,7 @@ export function formatCurrencyPDF(value: number): string {
 }
 
 export function printReceipt(invoice: Invoice, patient: Patient | undefined, clinic: CompanySettings) {
-  const amountStr = formatCurrencyPDF(invoice.total_amount)
+  const amountStr = formatCurrencyPDF(invoice.valor_pago || invoice.total_amount)
   const paymentDateStr = invoice.payment_date ? formatDatePDF(invoice.payment_date) : new Date().toLocaleDateString('pt-BR')
   
   const bodyHtml = `
