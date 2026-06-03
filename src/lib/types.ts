@@ -192,7 +192,7 @@ export interface Bill {
   category_id?: string
   valor: number
   vencimento: string
-  status: 'pendente' | 'pago' | 'vencido'
+  status: 'pendente' | 'pago' | 'vencido' | 'parcial'
   payment_date?: string
   bank_account_id?: string
   bank_transaction_id?: string
@@ -205,7 +205,7 @@ export interface Income {
   category_id?: string
   valor: number
   vencimento: string
-  status: 'pendente' | 'recebido' | 'vencido'
+  status: 'pendente' | 'recebido' | 'vencido' | 'parcial'
   invoiceId?: string
   payment_date?: string
   bank_account_id?: string
@@ -213,6 +213,7 @@ export interface Income {
   paid_by?: string
   paid_by_phone?: string
   paid_by_document?: string
+  valor_pago?: number
 }
 
 export interface InvoiceItem {
@@ -229,7 +230,7 @@ export interface Invoice {
   date_issued: string
   due_date: string
   total_amount: number
-  status: 'pendente' | 'pago' | 'cancelado'
+  status: 'pendente' | 'pago' | 'cancelado' | 'parcial'
   items: InvoiceItem[]
   income_id?: string
   payment_date?: string
@@ -238,6 +239,7 @@ export interface Invoice {
   paid_by?: string
   paid_by_phone?: string
   paid_by_document?: string
+  valor_pago?: number
 }
 
 export interface Product {

@@ -215,6 +215,7 @@ export default function Faturamento() {
   const [selectedBankId, setSelectedBankId] = useState('')
   const [paidBy, setPaidBy] = useState({ name: '', phone: '', document: '' })
   const [invoiceToPay, setInvoiceToPay] = useState<Invoice | null>(null)
+  const [payAmount, setPayAmount] = useState<number | string>('')
 
   function openPayDialog(inv: Invoice) {
     setInvoiceToPay(inv)
@@ -222,6 +223,8 @@ export default function Faturamento() {
     setSelectedBankId(inv.bank_account_id || '')
     const payer = getPayerOptions(inv)[0] || { name: '', phone: '', document: '' }
     setPaidBy({ name: inv.paid_by || payer.name, phone: inv.paid_by_phone || payer.phone, document: inv.paid_by_document || (payer as any).document })
+    const remaining = inv.total_amount - (inv.valor_pago || 0)
+    setPayAmount(remaining > 0 ? remaining : inv.total_amount)
     setPayDialogOpen(true)
   }
 
@@ -237,13 +240,15 @@ export default function Faturamento() {
     try {
       let btId = invoiceToPay.bank_transaction_id
 
+      const amountToPay = Number(payAmount) || invoiceToPay.total_amount
+      
       // 3. Criar ou Atualizar Transação Bancária
       if (selectedBankId) {
         const linkedIncome = incomes.find(inc => inc.id === invoiceToPay.income_id)
         const btData = {
           data: payDate,
           descricao: `Recebimento Fatura: ${invoiceToPay.client_name}`,
-          valor: invoiceToPay.total_amount,
+          valor: amountToPay,
           tipo: 'credito' as const,
           origem: 'manual' as const,
           bank_account_id: selectedBankId,
@@ -251,7 +256,8 @@ export default function Faturamento() {
           category_id: linkedIncome?.category_id || null
         }
 
-        if (btId) {
+        // Se for pagamento parcial, não sobrescrevemos a transação antiga, criamos uma nova
+        if (btId && invoiceToPay.status !== 'parcial') {
           await updateBankTransaction(btId, btData)
         } else {
           const bt = await insertBankTransaction(btData as any)
@@ -259,16 +265,21 @@ export default function Faturamento() {
         }
       }
 
+      let accumulated = (invoiceToPay.valor_pago || 0) + amountToPay
+      let isFullyPaid = accumulated >= invoiceToPay.total_amount
+      let newStatus = isFullyPaid ? 'pago' : 'parcial'
+
       // 1. Atualizar Invoice com todos os dados do pagamento
       const updatedInv = {
         ...invoiceToPay,
-        status: 'pago' as const,
+        status: newStatus as const,
         payment_date: payDate,
         bank_account_id: selectedBankId || null,
         bank_transaction_id: btId || null,
         paid_by: paidBy.name,
         paid_by_phone: paidBy.phone,
-        paid_by_document: paidBy.document
+        paid_by_document: paidBy.document,
+        valor_pago: accumulated
       }
 
       await updateInvoice(invoiceToPay.id, updatedInv)
@@ -276,20 +287,21 @@ export default function Faturamento() {
       // 2. Se houver income_id, atualizar Income
       if (invoiceToPay.income_id) {
         await updateIncome(invoiceToPay.income_id, { 
-          status: 'recebido',
+          status: newStatus === 'pago' ? 'recebido' : 'parcial',
           payment_date: payDate,
           bank_account_id: selectedBankId || null,
           bank_transaction_id: btId || null,
           paid_by: paidBy.name,
           paid_by_phone: paidBy.phone,
-          paid_by_document: paidBy.document
+          paid_by_document: paidBy.document,
+          valor_pago: accumulated
         })
       }
 
       setPayDialogOpen(false)
       
-      if (confirm('Fatura marcada como paga! Deseja enviar o recibo via WhatsApp?')) {
-        sendWhatsAppReceipt(updatedInv, updatedInv.total_amount, updatedInv.paid_by || '', updatedInv.paid_by_phone || '')
+      if (confirm('Pagamento registrado! Deseja enviar o recibo via WhatsApp?')) {
+        sendWhatsAppReceipt(updatedInv, amountToPay, updatedInv.paid_by || '', updatedInv.paid_by_phone || '')
       }
     } catch (error) {
        console.error(error)
@@ -499,7 +511,7 @@ export default function Faturamento() {
                   <TableCell>{inv.payment_date ? formatDate(inv.payment_date) : '—'}</TableCell>
                   <TableCell className="font-semibold">{formatCurrency(inv.total_amount)}</TableCell>
                   <TableCell>
-                    <Badge variant={inv.status === 'pago' ? 'success' : inv.status === 'pendente' ? 'warning' : 'destructive'}>
+                    <Badge variant={inv.status === 'pago' ? 'success' : inv.status === 'pendente' ? 'warning' : inv.status === 'parcial' ? 'default' : 'destructive'}>
                       {inv.status}
                     </Badge>
                   </TableCell>
@@ -676,8 +688,19 @@ export default function Faturamento() {
               )}
             </div>
 
+            <div className="space-y-2">
+              <Label>Valor Pago (R$)</Label>
+              <Input 
+                type="number" 
+                step="0.01"
+                value={payAmount} 
+                onChange={e => setPayAmount(e.target.value)} 
+              />
+            </div>
+
             <div className="p-3 bg-muted rounded-md text-sm">
-               <strong>Valor:</strong> {formatCurrency(invoiceToPay?.total_amount || 0)}
+               <strong>Falta Pagar:</strong> {formatCurrency((invoiceToPay?.total_amount || 0) - (invoiceToPay?.valor_pago || 0))} <br/>
+               <span className="text-muted-foreground text-xs">Total da Fatura: {formatCurrency(invoiceToPay?.total_amount || 0)}</span>
             </div>
           </div>
           <DialogFooter>
