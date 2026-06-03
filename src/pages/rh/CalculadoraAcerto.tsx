@@ -406,7 +406,7 @@ export default function CalculadoraAcerto() {
     const content = `
       <div class="report-header mb-4">
         <p>CPF: ${t.cpf || '---'} | Cargo: ${t.cargo || '---'}</p>
-        <p>Data Admissão: ${new Date(t.dataAdmissao).toLocaleDateString()} | Data Desligamento: ${new Date(t.dataDemissao).toLocaleDateString()}</p>
+        <p>Data Admissão: ${t.dataAdmissao ? new Date(t.dataAdmissao).toLocaleDateString() : '---'} | Data Desligamento: ${t.dataDemissao ? new Date(t.dataDemissao).toLocaleDateString() : '---'}</p>
       </div>
       <table class="w-full">
         <thead>
@@ -500,9 +500,9 @@ export default function CalculadoraAcerto() {
                     <TableRow key={t.id}>
                       <TableCell className="font-medium">
                         {t.funcionarioNome}
-                        <div className="text-[10px] text-muted-foreground">{t.tipoRescisao.replace(/_/g, ' ')}</div>
+                        <div className="text-[10px] text-muted-foreground">{(t.tipoRescisao || '').replace(/_/g, ' ')}</div>
                       </TableCell>
-                      <TableCell>{new Date(t.dataDemissao).toLocaleDateString()}</TableCell>
+                      <TableCell>{t.dataDemissao ? new Date(t.dataDemissao).toLocaleDateString() : '---'}</TableCell>
                       <TableCell className="font-bold">{formatCurrency(t.valorTotal)}</TableCell>
                       <TableCell>
                         <Badge variant={t.status === 'pago' ? 'success' : 'warning'}>
@@ -573,7 +573,7 @@ export default function CalculadoraAcerto() {
                   <Card className="absolute z-10 w-full mt-1 max-h-60 overflow-y-auto shadow-xl border-primary/20">
                     <div className="p-1">
                       {employees
-                        .filter(e => e.status === 'ativo' && (searchTerm ? e.nome.toLowerCase().includes(searchTerm.toLowerCase()) : true))
+                        .filter(e => e.status === 'ativo' && (searchTerm ? (e.nome || '').toLowerCase().includes(searchTerm.toLowerCase()) : true))
                         .map(emp => (
                           <button
                             key={emp.id}
@@ -610,7 +610,7 @@ export default function CalculadoraAcerto() {
                             </div>
                           </button>
                         ))}
-                      {employees.filter(e => e.status === 'ativo' && (searchTerm ? e.nome.toLowerCase().includes(searchTerm.toLowerCase()) : true)).length === 0 && (
+                      {employees.filter(e => e.status === 'ativo' && (searchTerm ? (e.nome || '').toLowerCase().includes(searchTerm.toLowerCase()) : true)).length === 0 && (
                         <div className="px-3 py-4 text-center text-sm text-muted-foreground">
                           Nenhum funcionário encontrado.
                         </div>
