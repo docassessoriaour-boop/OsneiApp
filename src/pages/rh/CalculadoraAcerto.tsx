@@ -227,18 +227,18 @@ export default function CalculadoraAcerto() {
     try {
       const terminationId = editingId || crypto.randomUUID()
       const newTermination: Partial<Termination> = {
-        funcionarioNome: form.name,
+        funcionario_nome: form.name,
         cpf: form.cpf,
         cargo: form.role,
-        salarioBase: form.salary,
-        dataAdmissao: form.admissionDate || null,
-        dataDemissao: form.terminationDate || null,
-        tipoRescisao: form.terminationType,
-        valorLiquido: results.liquidOnly,
-        valorFgts: results.fgtsPenalty,
-        valorTotal: results.netTotal,
+        salario_base: form.salary,
+        data_admissao: form.admissionDate || null,
+        data_demissao: form.terminationDate || null,
+        tipo_rescisao: form.terminationType,
+        valor_liquido: results.liquidOnly,
+        valor_fgts: results.fgtsPenalty,
+        valor_total: results.netTotal,
         status: 'pendente',
-        funcionarioId: form.employeeId || null,
+        funcionario_id: form.employeeId || null,
         details: {
           results,
           form,
@@ -280,14 +280,14 @@ export default function CalculadoraAcerto() {
       // Fallback in case old data doesn't have form details
       setForm(prev => ({
         ...prev,
-        name: t.funcionarioNome,
+        name: t.funcionario_nome,
         cpf: t.cpf,
         role: t.cargo,
-        salary: t.salarioBase,
-        admissionDate: t.dataAdmissao || '',
-        terminationDate: t.dataDemissao || '',
-        terminationType: t.tipoRescisao,
-        employeeId: t.funcionarioId || ''
+        salary: t.salario_base,
+        admissionDate: t.data_admissao || '',
+        terminationDate: t.data_demissao || '',
+        terminationType: t.tipo_rescisao as any,
+        employeeId: t.funcionario_id || ''
       }))
     }
     
@@ -312,9 +312,9 @@ export default function CalculadoraAcerto() {
     try {
       await insertBill({
         id: crypto.randomUUID(),
-        descricao: `RESCISÃO: ${t.funcionarioNome}`,
-        valor: Number(t.valorTotal.toFixed(2)),
-        vencimento: t.dataDemissao,
+        descricao: `RESCISÃO: ${t.funcionario_nome}`,
+        valor: Number(t.valor_total.toFixed(2)),
+        vencimento: t.data_demissao,
         status: 'pendente',
         termination_id: t.id
       } as any)
@@ -386,18 +386,18 @@ export default function CalculadoraAcerto() {
   const printSavedTermination = (t: Termination) => {
     // If we have saved details, use them. Otherwise, show a simplified report.
     const res = t.details?.results || {
-      saldoSalario: t.valorLiquido,
+      saldoSalario: t.valor_liquido,
       decimoTerceiro: 0,
       feriasProporcionais: 0,
       umTercoConstitucional: 0,
       avisoPrevioValue: 0,
       avisoPrevioDiscount: 0,
       valeTransporteDiscount: 0,
-      grossTotal: t.valorLiquido,
+      grossTotal: t.valor_liquido,
       deductionsTotal: 0,
-      fgtsPenalty: t.valorFgts,
+      fgtsPenalty: t.valor_fgts,
       fgtsOnTermination: 0,
-      netTotal: t.valorTotal
+      netTotal: t.valor_total
     }
     
     const detailsForm = t.details?.form || { workedDays: '---' }
@@ -406,7 +406,7 @@ export default function CalculadoraAcerto() {
     const content = `
       <div class="report-header mb-4">
         <p>CPF: ${t.cpf || '---'} | Cargo: ${t.cargo || '---'}</p>
-        <p>Data Admissão: ${t.dataAdmissao ? new Date(t.dataAdmissao).toLocaleDateString() : '---'} | Data Desligamento: ${t.dataDemissao ? new Date(t.dataDemissao).toLocaleDateString() : '---'}</p>
+        <p>Data Admissão: ${t.data_admissao ? new Date(t.data_admissao).toLocaleDateString() : '---'} | Data Desligamento: ${t.data_demissao ? new Date(t.data_demissao).toLocaleDateString() : '---'}</p>
       </div>
       <table class="w-full">
         <thead>
@@ -425,7 +425,7 @@ export default function CalculadoraAcerto() {
         <tfoot>
           <tr style="font-weight:700;">
             <td>TOTAL LÍQUIDO</td>
-            <td class="text-right">${formatCurrency(t.valorLiquido)}</td>
+            <td class="text-right">${formatCurrency(t.valor_liquido)}</td>
             <td></td>
           </tr>
         </tfoot>
@@ -434,12 +434,12 @@ export default function CalculadoraAcerto() {
 
 
       <div style="margin-top: 40px; text-align: right; font-size: 1.2rem; font-weight: 700; border-top: 2px solid #000; pt: 10px;">
-        <p>VALOR TOTAL A RECEBER: ${formatCurrency(t.valorTotal)}</p>
+        <p>VALOR TOTAL A RECEBER: ${formatCurrency(t.valor_total)}</p>
       </div>
 
       <div style="margin-top: 80px; display: flex; justify-content: space-around;">
         <div style="text-align: center; border-top: 1px solid #000; width: 250px; padding-top: 5px;">
-          <p>${t.funcionarioNome}</p>
+          <p>${t.funcionario_nome}</p>
           <p style="font-size: 10px;">Funcionário</p>
         </div>
         <div style="text-align: center; border-top: 1px solid #000; width: 250px; padding-top: 5px;">
@@ -448,7 +448,7 @@ export default function CalculadoraAcerto() {
         </div>
       </div>
     `
-    printPDF(`Recibo de Rescisão - ${t.funcionarioNome}`, content, clinic)
+    printPDF(`Recibo de Rescisão - ${t.funcionario_nome}`, content, clinic)
   }
 
   return (
@@ -499,11 +499,11 @@ export default function CalculadoraAcerto() {
                   terminations.map((t) => (
                     <TableRow key={t.id}>
                       <TableCell className="font-medium">
-                        {t.funcionarioNome}
-                        <div className="text-[10px] text-muted-foreground">{(t.tipoRescisao || '').replace(/_/g, ' ')}</div>
+                        {t.funcionario_nome}
+                        <div className="text-[10px] text-muted-foreground">{(t.tipo_rescisao || '').replace(/_/g, ' ')}</div>
                       </TableCell>
-                      <TableCell>{t.dataDemissao ? new Date(t.dataDemissao).toLocaleDateString() : '---'}</TableCell>
-                      <TableCell className="font-bold">{formatCurrency(t.valorTotal)}</TableCell>
+                      <TableCell>{t.data_demissao ? new Date(t.data_demissao).toLocaleDateString() : '---'}</TableCell>
+                      <TableCell className="font-bold">{formatCurrency(t.valor_total)}</TableCell>
                       <TableCell>
                         <Badge variant={t.status === 'pago' ? 'success' : 'warning'}>
                           {t.status === 'pago' ? 'Pago' : 'Pendente'}

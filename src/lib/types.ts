@@ -391,17 +391,17 @@ export interface CompanySettings {
 
 export interface Termination {
   id: string
-  funcionarioId?: string
-  funcionarioNome: string
+  funcionario_id?: string
+  funcionario_nome: string
   cpf: string
   cargo: string
-  salarioBase: number
-  dataAdmissao: string
-  dataDemissao: string
-  tipoRescisao: string
-  valorLiquido: number
-  valorFgts: number
-  valorTotal: number
+  salario_base: number
+  data_admissao: string
+  data_demissao: string
+  tipo_rescisao: string
+  valor_liquido: number
+  valor_fgts: number
+  valor_total: number
   status: 'pendente' | 'pago'
   created_at?: string
   details?: any
