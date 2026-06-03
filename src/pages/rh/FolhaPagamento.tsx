@@ -17,7 +17,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Pencil, Trash2, FileText, Plus, X, CalendarClock, Loader2, Banknote, Printer } from 'lucide-react'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInCalendarDays } from 'date-fns'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInCalendarDays, getDaysInMonth } from 'date-fns'
 
 const emptyAdicional: PayrollAdicional = { descricao: '', tipo: 'provento', valor: 0 }
 
@@ -57,7 +57,7 @@ export default function FolhaPagamento() {
     status: 'pendente' as Payroll['status'],
     periodoInicio: '',
     periodoFim: '',
-    tipo_periodo: 'mes' as 'mes' | 'periodo',
+    tipo_periodo: 'mes' as 'mes' | 'periodo' | '13_salario',
     observacoes: '',
   })
   const [adicionais, setAdicionais] = useState<PayrollAdicional[]>([])
@@ -87,6 +87,7 @@ export default function FolhaPagamento() {
       periodo_inicio: form.periodoInicio || null,
       periodo_fim: form.periodoFim || null,
       adicionais: adicionais.length > 0 ? adicionais : [],
+      tipo_periodo: form.tipo_periodo,
       observacoes: form.observacoes || '',
     }
 
@@ -228,7 +229,7 @@ export default function FolhaPagamento() {
       status: 'pendente',
       periodoInicio: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
       periodoFim: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
-      tipo_periodo: 'mes',
+      tipo_periodo: 'mes' as 'mes' | 'periodo' | '13_salario',
       observacoes: '',
     })
     
@@ -286,7 +287,7 @@ export default function FolhaPagamento() {
     setAdicionais(adicionais.map((a, i) => i === idx ? { ...a, [field]: value } : a))
   }
 
-  function updatePeriodAndSalary(val: 'mes' | 'periodo', start: string, end: string, month: string) {
+  function updatePeriodAndSalary(val: 'mes' | 'periodo' | '13_salario', start: string, end: string, month: string) {
     setForm(prev => {
       const emp = employees.find(e => e.id === prev.funcionarioId)
       let baseSalario = emp?.salario || 0
@@ -299,6 +300,30 @@ export default function FolhaPagamento() {
           multiplier = dias / 30
           novoSalario = Number((baseSalario * multiplier).toFixed(2))
         }
+      } else if (val === '13_salario') {
+        const year = parseInt(month.split('-')[0], 10) || new Date().getFullYear();
+        if (emp?.dataAdmissao) {
+          const admissao = parseISO(emp.dataAdmissao);
+          const anoAdmissao = admissao.getFullYear();
+          if (anoAdmissao < year) {
+            multiplier = 1;
+          } else if (anoAdmissao > year) {
+            multiplier = 0;
+          } else {
+            let meses = 0;
+            for (let m = admissao.getMonth(); m <= 11; m++) {
+              if (m === admissao.getMonth()) {
+                const daysInMonth = getDaysInMonth(admissao);
+                const diasTrabalhados = daysInMonth - admissao.getDate() + 1;
+                if (diasTrabalhados >= 15) meses++;
+              } else {
+                meses++;
+              }
+            }
+            multiplier = meses / 12;
+          }
+        }
+        novoSalario = Number((baseSalario * multiplier).toFixed(2));
       }
 
       setAdicionais(prevAdics => {
@@ -538,6 +563,29 @@ export default function FolhaPagamento() {
                   if (form.tipo_periodo === 'periodo' && form.periodoInicio && form.periodoFim) {
                     const dias = differenceInCalendarDays(parseISO(form.periodoFim), parseISO(form.periodoInicio)) + 1
                     if (dias > 0) multiplier = dias / 30
+                  } else if (form.tipo_periodo === '13_salario') {
+                    const year = parseInt(form.mesReferencia.split('-')[0], 10) || new Date().getFullYear();
+                    if (emp?.dataAdmissao) {
+                      const admissao = parseISO(emp.dataAdmissao);
+                      const anoAdmissao = admissao.getFullYear();
+                      if (anoAdmissao < year) {
+                        multiplier = 1;
+                      } else if (anoAdmissao > year) {
+                        multiplier = 0;
+                      } else {
+                        let meses = 0;
+                        for (let m = admissao.getMonth(); m <= 11; m++) {
+                          if (m === admissao.getMonth()) {
+                            const daysInMonth = getDaysInMonth(admissao);
+                            const diasTrabalhados = daysInMonth - admissao.getDate() + 1;
+                            if (diasTrabalhados >= 15) meses++;
+                          } else {
+                            meses++;
+                          }
+                        }
+                        multiplier = meses / 12;
+                      }
+                    }
                   }
                   
                   setForm({ ...form, funcionarioId: e.target.value, salarioBruto: Number(((emp?.salario || 0) * multiplier).toFixed(2)), descontos: emp?.descontos_fixos || 0 })
@@ -576,7 +624,7 @@ export default function FolhaPagamento() {
                 <Select 
                   value={form.tipo_periodo} 
                   onChange={(e) => {
-                    const val = e.target.value as 'mes' | 'periodo'
+                    const val = e.target.value as 'mes' | 'periodo' | '13_salario'
                     let start = form.periodoInicio
                     let end = form.periodoFim
                     
@@ -592,6 +640,7 @@ export default function FolhaPagamento() {
                 >
                   <option value="mes">Mês Cheio</option>
                   <option value="periodo">Período Customizado</option>
+                  <option value="13_salario">13º Salário</option>
                 </Select>
               </div>
               <div>

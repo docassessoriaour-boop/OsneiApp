@@ -311,7 +311,7 @@ export interface Payroll {
   periodoInicio?: string
   periodoFim?: string
   adicionais?: PayrollAdicional[]
-  tipo_periodo?: 'mes' | 'periodo'
+  tipo_periodo?: 'mes' | 'periodo' | '13_salario'
   observacoes?: string
 }
 
