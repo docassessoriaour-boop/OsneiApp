@@ -389,6 +389,9 @@ export default function ContasPagar() {
         ;(payload as any).bank_transaction_id = null
       }
 
+      // Remove from payload before sending to Supabase because the column might not exist
+      delete (payload as any).destination_bank_account_id
+
       if (editingId) {
         if (parcelas > 1) {
           const promises = []
