@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const profileFetched = React.useRef(false)
   const lastUserId = React.useRef<string | null>(null)
 
-  const fetchProfile = async (userId: string, retries = 2) => {
+  const fetchProfile = async (userId: string, retries = 5) => {
     try {
       console.log('[Auth] Fetching profile for:', userId, 'retries left:', retries)
       
@@ -62,20 +62,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (error) {
-        if (error.code === 'PGRST116') {
-          console.warn('[Auth] PGRST116 (no rows). Mantendo perfil anterior se houver.')
+        if (error.code === 'PGRST116' || error.code === 'PGRST301') {
+          console.warn(`[Auth] Error ${error.code}. Mantendo perfil anterior se houver.`)
           if (retries > 0) {
-            console.log('[Auth] Retrying profile fetch due to PGRST116...')
-            await new Promise(r => setTimeout(r, 1000)) // Wait 1s for token refresh
+            console.log('[Auth] Retrying profile fetch...')
+            await new Promise(r => setTimeout(r, 1500)) // Wait 1.5s for token refresh
             return fetchProfile(userId, retries - 1)
           } else if (!profileFetched.current) {
             setProfile(null)
+            // Se falhou repetidas vezes por JWT/RLS, força logout para evitar estado inconsistente
+            supabase.auth.signOut()
+            window.location.href = '/'
           }
         } else {
           console.error('[Auth] Error fetching profile:', error)
           if (retries > 0) {
             console.log('[Auth] Retrying profile fetch...')
-            await new Promise(r => setTimeout(r, 500))
+            await new Promise(r => setTimeout(r, 1500))
             return fetchProfile(userId, retries - 1)
           }
         }
@@ -88,13 +91,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.error('[Auth] Unexpected error in fetchProfile:', error)
       if ((error.name === 'AbortError' || error.message === 'Timeout na requisição de perfil') && retries > 0) {
         console.log('[Auth] Timeout, retrying profile fetch...')
+        await new Promise(r => setTimeout(r, 1500))
         return fetchProfile(userId, retries - 1)
+      } else if (retries === 0) {
+        supabase.auth.signOut()
+        window.location.href = '/'
       }
     } finally {
-      // Só libera o loading quando esgotamos retries OU temos perfil válido.
-      // A condição antiga (profile !== undefined) era SEMPRE verdadeira
-      // (o state inicia como null, nunca undefined), fazendo o spinner
-      // sumir durante retries em curso.
       if (retries === 0 || profileFetched.current) {
         setLoading(false)
       }

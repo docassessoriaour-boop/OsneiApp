@@ -20,17 +20,23 @@ export function useDb<T>(table: string) {
 
       const controller = new AbortController()
       
-      const timeoutId = setTimeout(() => {
-        controller.abort()
-      }, 10000)
-
-      const { data: result, error: fetchError } = await supabase
+      const fetchPromise = supabase
         .from(table)
         .select('*')
         .order('created_at', { ascending: false })
         .abortSignal(controller.signal)
 
-      clearTimeout(timeoutId)
+      const timeoutPromise = new Promise<{data: null, error: any}>((_, reject) => {
+        setTimeout(() => {
+          controller.abort()
+          reject(new Error('Timeout'))
+        }, 10000)
+      })
+
+      const { data: result, error: fetchError } = await Promise.race([
+        fetchPromise,
+        timeoutPromise
+      ]) as any
 
       if (!isMounted) return
 
