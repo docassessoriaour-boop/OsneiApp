@@ -525,16 +525,19 @@ export default function Cadastro() {
           nome: finalName,
           tipo: 'medicamento',
           unidade: medForm.unidade_medida || 'comprimido',
-          para_que_serve: ''
+          para_que_serve: '',
+          estoque: 0,
+          estoque_minimo: 0,
+          fornecedor: ''
         })
         reloadProducts()
       }
 
       setMedDialogOpen(false)
       reloadMeds()
-    } catch (error) {
+    } catch (error: any) {
       console.error(error)
-      alert('Erro ao salvar medicação')
+      alert(`Erro ao salvar medicação: ${error.message || 'Erro desconhecido'}`)
     }
   }
 
