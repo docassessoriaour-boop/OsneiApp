@@ -78,7 +78,8 @@ export default function Configuracoes() {
         'employees', 'patients', 'contracts', 'medications', 'appointments', 
         'transaction_categories', 'bank_accounts', 'bills', 'incomes', 'invoices', 
         'products', 'entities', 'vacations', 'payrolls', 'bank_transactions', 
-        'schedule_exceptions', 'schedule_history', 'company_info', 'curriculums', 'terminations'
+        'schedule_exceptions', 'schedule_history', 'company_info', 'curriculums', 'terminations',
+        'patient_reports', 'technical_professionals', 'medication_entries', 'product_categories', 'invoice_items'
       ]
       
       const backupData: Record<string, any> = {}
@@ -161,8 +162,9 @@ export default function Configuracoes() {
       // Define a ordem correta para respeitar chaves estrangeiras
       const restorationOrder = [
         'clinic_config', 'company_info', 'transaction_categories', 'product_categories', 'entities',
-        'bank_accounts', 'employees', 'patients',
-        'contracts', 'medications', 'appointments', 'vacations', 'payrolls', 'terminations',
+        'bank_accounts', 'employees', 'technical_professionals', 'patients',
+        'contracts', 'medications', 'medication_entries', 'appointments', 'patient_reports', 
+        'vacations', 'payrolls', 'terminations',
         'schedule_exceptions', 'schedule_history', 'products', 'curriculums',
         'incomes', 'bills', 'invoices', 'invoice_items', 'bank_transactions'
       ]
