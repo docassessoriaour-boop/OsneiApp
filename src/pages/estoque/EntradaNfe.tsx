@@ -194,7 +194,7 @@ export default function EntradaNfe() {
 
       // 2. Processar Produtos
       for (const item of parsedData.products) {
-        const existing = products.find(p => p.nome.toLowerCase() === item.name.toLowerCase())
+        const existing = products.find(p => p.nome?.toLowerCase() === item.name?.toLowerCase())
         
         if (existing) {
           // Atualiza estoque e custo médio
@@ -230,7 +230,7 @@ export default function EntradaNfe() {
 
       // 3. Processar Cobrança (Contas a Pagar)
       // Buscar categoria de estoque/compras
-      const defaultCategory = categories.find(c => c.nome.toLowerCase().includes('estoque') || c.nome.toLowerCase().includes('compra') || c.nome.toLowerCase().includes('fornecedor'))
+      const defaultCategory = categories.find(c => c.nome?.toLowerCase().includes('estoque') || c.nome?.toLowerCase().includes('compra') || c.nome?.toLowerCase().includes('fornecedor'))
       
       for (const inst of parsedData.installments) {
         // Verifica se a data é válida (já deve vir do XML como YYYY-MM-DD, se correto)
@@ -239,14 +239,17 @@ export default function EntradaNfe() {
           safeDate = new Date().toISOString().slice(0, 10)
         }
 
-        await insertBill({
+        const billData: Partial<Bill> = {
           descricao: `NF ${parsedData.supplier.name} - Parcela ${inst.number}`,
           categoria: defaultCategory?.nome || 'Compras/NF-e',
-          category_id: defaultCategory?.id || '',
           valor: inst.amount,
           vencimento: safeDate,
           status: 'pendente'
-        })
+        }
+        if (defaultCategory?.id) {
+          billData.category_id = defaultCategory.id
+        }
+        await insertBill(billData)
       }
 
       alert('NF-e processada com sucesso! Produtos, fornecedor e Contas a Pagar atualizados.')
