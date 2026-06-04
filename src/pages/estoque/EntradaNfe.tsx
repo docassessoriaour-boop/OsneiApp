@@ -256,7 +256,7 @@ export default function EntradaNfe() {
       setParsedData(null)
     } catch (e) {
       console.error(e)
-      alert('Erro ao processar as informações no banco de dados.')
+      alert(`Erro ao processar as informações no banco de dados. Detalhes: ${e?.message || JSON.stringify(e)}`)
     } finally {
       setProcessing(false)
     }
