@@ -23,7 +23,7 @@ export default function Escalas() {
   
   const [clinic] = useClinic()
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [unidadeFilter, setUnidadeFilter] = useState<'Vila Moraes' | 'Jardim Matilde'>('Vila Moraes')
+  const [unidadeFilter, setUnidadeFilter] = useState<'Jardim Matilde'>('Jardim Matilde')
   const [turnoFilter, setTurnoFilter] = useState<'todos' | 'Diurno' | 'Noturno'>('todos')
   const [isManualMode, setIsManualMode] = useState(false)
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
@@ -39,7 +39,7 @@ export default function Escalas() {
 
   const activeEmployees = employees.filter(e => 
     e.status === 'ativo' && 
-    ((e.unidade || 'Vila Moraes') === unidadeFilter || e.unidade === 'Ambas') &&
+    ((e.unidade || 'Jardim Matilde') === unidadeFilter || e.unidade === 'Ambas') &&
     (turnoFilter === 'todos' || (e.turno || 'Diurno') === turnoFilter)
   ).sort((a, b) => a.nome.localeCompare(b.nome))
 
@@ -390,10 +390,9 @@ export default function Escalas() {
             </Button>
           </div>
           <div className="flex items-center gap-2">
-            <Select value={unidadeFilter} onChange={(e) => setUnidadeFilter(e.target.value as typeof unidadeFilter)} className="w-[150px]">
-              <option value="Vila Moraes">Vila Moraes</option>
-              <option value="Jardim Matilde">Jardim Matilde</option>
-            </Select>
+              <Select value={unidadeFilter} onChange={(e) => setUnidadeFilter(e.target.value as any)} className="w-40 bg-white">
+                <option value="Jardim Matilde">Jardim Matilde</option>
+              </Select>
             <Select value={turnoFilter} onChange={(e) => setTurnoFilter(e.target.value as typeof turnoFilter)} className="w-[120px]">
               <option value="todos">Todos</option>
               <option value="Diurno">Diurno</option>

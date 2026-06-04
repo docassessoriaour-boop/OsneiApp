@@ -26,7 +26,7 @@ const emptyPatient: Omit<Patient, 'id'> = {
   resp_rg: '', resp_cpf: '', resp_endereco: '', resp_cidade: '', resp_uf: '', resp_cep: '', resp_email: '',
   resp_is_whatsapp: false,
   resp_nacionalidade: 'Brasileira', resp_estado_civil: 'Casado(a)', resp_profissao: '',
-  status: 'ativo', unidade: 'Vila Moraes', data_entrada: new Date().toISOString().slice(0, 10), observacoes: '',
+  status: 'ativo', unidade: 'Jardim Matilde', data_entrada: new Date().toISOString().slice(0, 10), observacoes: '',
   outros_responsaveis: []
 }
 
@@ -44,7 +44,7 @@ export default function Cadastro() {
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'inativo'>('ativo')
-  const [unidadeFilter, setUnidadeFilter] = useState<'todos' | 'Vila Moraes' | 'Jardim Matilde'>('todos')
+  const [unidadeFilter, setUnidadeFilter] = useState<'todos' | 'Jardim Matilde'>('todos')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyPatient)
@@ -202,7 +202,7 @@ export default function Cadastro() {
   const filtered = patients.filter((p) => {
     const matchesSearch = p.nome.toLowerCase().includes(search.toLowerCase()) || p.cpf.includes(search)
     const matchesStatus = statusFilter === 'todos' || p.status === statusFilter
-    const matchesUnidade = unidadeFilter === 'todos' || (p.unidade || 'Vila Moraes') === unidadeFilter
+    const matchesUnidade = unidadeFilter === 'todos' || (p.unidade || 'Jardim Matilde') === unidadeFilter
     return matchesSearch && matchesStatus && matchesUnidade
   }).sort((a, b) => a.nome.localeCompare(b.nome))
 
@@ -311,7 +311,7 @@ export default function Cadastro() {
   function printReport() {
     const statusLabel = statusFilter === 'todos' ? 'Todos' : statusFilter === 'ativo' ? 'Ativos' : 'Inativos'
     const unidadeLabel = unidadeFilter === 'todos' ? 'Todas as Unidades' : unidadeFilter
-    const rows = filtered.map(p => `<tr><td>${p.nome}</td><td>${p.cpf}</td><td>${p.unidade || 'Vila Moraes'}</td><td>${p.responsavel}</td><td>${p.status}</td></tr>`).join('')
+    const rows = filtered.map(p => `<tr><td>${p.nome}</td><td>${p.cpf}</td><td>${p.unidade || 'Jardim Matilde'}</td><td>${p.responsavel}</td><td>${p.status}</td></tr>`).join('')
     printPDF(`Relatório de Pacientes - ${unidadeLabel} (${statusLabel})`, `
       <table><thead><tr><th>Nome</th><th>CPF</th><th>Unidade</th><th>Responsável</th><th>Status</th></tr></thead>
       <tbody>${rows}</tbody></table>
@@ -331,7 +331,7 @@ export default function Cadastro() {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
           <div><strong>Nome:</strong> ${p.nome}</div>
           <div><strong>CPF:</strong> ${p.cpf}</div>
-          <div><strong>Unidade:</strong> ${p.unidade || 'Vila Moraes'}</div>
+          <div><strong>Unidade:</strong> ${p.unidade || 'Jardim Matilde'}</div>
           <div><strong>RG:</strong> ${p.rg || '---'}</div>
           <div><strong>Data Nasc.:</strong> ${formatDate(p.data_nascimento)} (${p.idade} anos)</div>
           <div><strong>Data de Entrada:</strong> ${formatDate(p.data_entrada)}</div>
@@ -651,7 +651,7 @@ export default function Cadastro() {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
           <div><strong>Nome:</strong> ${p.nome}</div>
           <div><strong>CPF:</strong> ${p.cpf}</div>
-          <div><strong>Unidade:</strong> ${p.unidade || 'Vila Moraes'}</div>
+          <div><strong>Unidade:</strong> ${p.unidade || 'Jardim Matilde'}</div>
           <div><strong>RG:</strong> ${p.rg || '---'}</div>
           <div><strong>Data Nasc.:</strong> ${formatDate(p.data_nascimento)} (${p.idade} anos)</div>
           <div><strong>Data de Entrada:</strong> ${formatDate(p.data_entrada)}</div>
@@ -785,7 +785,6 @@ export default function Cadastro() {
               onChange={(e) => setUnidadeFilter(e.target.value as any)}
             >
               <option value="todos">Todas as Unidades</option>
-              <option value="Vila Moraes">Vila Moraes</option>
               <option value="Jardim Matilde">Jardim Matilde</option>
             </Select>
           </div>
@@ -813,7 +812,7 @@ export default function Cadastro() {
                     <TableCell className="font-medium">{patient.nome}</TableCell>
                     <TableCell>{patient.cpf}</TableCell>
                     <TableCell>
-                      <div>{patient.unidade || 'Vila Moraes'}</div>
+                      <div>{patient.unidade || 'Jardim Matilde'}</div>
                       <div className="text-[10px] text-muted-foreground">
                         {patient.idade || calculateAge(patient.data_nascimento)} anos
                       </div>
@@ -891,8 +890,7 @@ export default function Cadastro() {
                 <div><Label>Status</Label><Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Patient['status'] })} className="mt-1"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></Select></div>
                 <div>
                   <Label>Unidade de Internação</Label>
-                  <Select value={form.unidade || 'Vila Moraes'} onChange={(e) => setForm({ ...form, unidade: e.target.value as Patient['unidade'] })} className="mt-1">
-                    <option value="Vila Moraes">Vila Moraes</option>
+                  <Select value={form.unidade || 'Jardim Matilde'} onChange={(e) => setForm({ ...form, unidade: e.target.value as Patient['unidade'] })} className="mt-1">
                     <option value="Jardim Matilde">Jardim Matilde</option>
                   </Select>
                 </div>

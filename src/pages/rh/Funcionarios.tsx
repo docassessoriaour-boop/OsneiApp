@@ -25,7 +25,7 @@ const emptyEmployee: Omit<Employee, 'id'> = {
   cpf: '',
   rg: '',
   cargo: '',
-  unidade: 'Vila Moraes',
+  unidade: 'Jardim Matilde',
   turno: 'Diurno',
   escala: '40h',
   salario: 0,
@@ -227,7 +227,7 @@ export default function Funcionarios() {
 
   function printReport() {
     const statusLabel = statusFilter === 'todos' ? 'Todos' : statusFilter === 'ativo' ? 'Ativos' : statusFilter === 'ferias' ? 'Em Férias' : statusFilter === 'contrato_cancelado' ? 'Contrato Cancelado' : 'Inativos'
-    const rows = filtered.map(e => `<tr><td>${e.nome}</td><td>${e.cpf}</td><td>${e.cargo}<br/><small>${e.unidade || 'Vila Moraes'} - ${e.turno || 'Diurno'}</small></td><td>${e.escala}</td><td>${formatDatePDF(e.dataAdmissao)}</td><td class="text-right">${formatCurrencyPDF(e.salario)}</td><td>${e.status}</td></tr>`).join('')
+    const rows = filtered.map(e => `<tr><td>${e.nome}</td><td>${e.cpf}</td><td>${e.cargo}<br/><small>${e.unidade || 'Jardim Matilde'} - ${e.turno || 'Diurno'}</small></td><td>${e.escala}</td><td>${formatDatePDF(e.dataAdmissao)}</td><td class="text-right">${formatCurrencyPDF(e.salario)}</td><td>${e.status}</td></tr>`).join('')
     const totalSalario = filtered.reduce((s, e) => s + e.salario, 0)
     printPDF(`Relatório de Funcionários - ${statusLabel}`, `
       <table><thead><tr><th>Nome</th><th>CPF</th><th>Cargo / Unidade / Turno</th><th>Escala</th><th>Admissão</th><th class="text-right">Salário</th><th>Status</th></tr></thead>
@@ -358,7 +358,7 @@ export default function Funcionarios() {
         <h3 style="background: #f4f4f4; padding: 5px 10px; font-size: 12pt; border-bottom: 2px solid #1a1f2e; margin-bottom: 10px;">DADOS PROFISSIONAIS</h3>
         <table style="width: 100%; border: none;">
           <tr style="border:none;"><td style="border:none; padding: 4px; width: 30%;"><strong>Cargo:</strong></td><td style="border:none; padding: 4px;">${employee.cargo}</td></tr>
-          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Unidade:</strong></td><td style="border:none; padding: 4px;">${employee.unidade || 'Vila Moraes'}</td></tr>
+          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Unidade:</strong></td><td style="border:none; padding: 4px;">${employee.unidade || 'Jardim Matilde'}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Turno:</strong></td><td style="border:none; padding: 4px;">${employee.turno || 'Diurno'}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Escala:</strong></td><td style="border:none; padding: 4px;">${employee.escala}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Data de Admissão:</strong></td><td style="border:none; padding: 4px;">${formatDatePDF(employee.dataAdmissao)}</td></tr>
@@ -445,7 +445,7 @@ export default function Funcionarios() {
                     <TableCell>
                       <div>{employee.cargo}</div>
                       <div className="flex gap-1 mt-1">
-                        <Badge variant="outline" className="text-[10px]">{employee.unidade || 'Vila Moraes'}</Badge>
+                        <Badge variant="outline" className="text-[10px]">{employee.unidade || 'Jardim Matilde'}</Badge>
                         <Badge variant="outline" className="text-[10px] bg-blue-50/50">
                           {employee.turno || 'Diurno'} 
                           {employee.escala === '12x36' 
@@ -539,8 +539,7 @@ export default function Funcionarios() {
             </div>
             <div>
               <Label>Unidade de Trabalho</Label>
-              <Select value={form.unidade || 'Vila Moraes'} onChange={(e) => setForm({ ...form, unidade: e.target.value as Employee['unidade'] })} className="mt-1">
-                <option value="Vila Moraes">Vila Moraes</option>
+              <Select value={form.unidade || 'Jardim Matilde'} onChange={(e) => setForm({ ...form, unidade: e.target.value as Employee['unidade'] })} className="mt-1">
                 <option value="Jardim Matilde">Jardim Matilde</option>
                 <option value="Ambas">Ambas as Unidades</option>
               </Select>

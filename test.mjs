@@ -6,11 +6,8 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 async function test() {
-  const { error: err1 } = await supabase.from('products').insert({ estoqueMinimo: 0 });
-  console.log('estoqueMinimo:', err1?.message);
-
-  const { error: err2 } = await supabase.from('products').insert({ estoque_minimo: 0 });
-  console.log('estoque_minimo:', err2?.message);
+  const { data, error } = await supabase.from('products').select('*').limit(1);
+  console.log(error || data);
 }
 
 test()
