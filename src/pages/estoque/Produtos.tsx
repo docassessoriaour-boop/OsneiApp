@@ -21,7 +21,7 @@ import { Pencil, Trash2, FileText, Loader2, ArrowUpDown, ArrowUp, ArrowDown } fr
 import { useMemo } from 'react'
 
 const emptyProduct: Omit<Product, 'id'> = {
-  nome: '', tipo: 'material', estoque: 0, unidade: '', fornecedor: '', estoque_minimo: 0,
+  nome: '', tipo: 'material', estoque: 0, unidade: '', fornecedor: '', estoque_minimo: 0, ultima_data_entrada: ''
 }
 
 export default function Produtos() {
@@ -123,11 +123,12 @@ export default function Produtos() {
   function printReport() {
     const rows = filtered.map(p => {
       const cat = categories.find(c => c.id === p.category_id)?.nome || p.tipo || 'Outro'
-      return `<tr><td>${p.nome}</td><td>${cat}</td><td class="text-right">${p.estoque}</td><td class="text-right">${formatCurrency(p.custo_medio || 0)}</td><td class="text-right">${formatCurrency(p.ultimo_valor_comprado || 0)}</td><td>${p.unidade}</td><td>${p.fornecedor}</td><td class="text-right">${p.estoque_minimo}</td></tr>`
+      const dataEntradaStr = p.ultima_data_entrada ? new Date(p.ultima_data_entrada).toLocaleDateString('pt-BR') : '-'
+      return `<tr><td>${p.nome}</td><td>${cat}</td><td class="text-right">${p.estoque}</td><td class="text-right">${formatCurrency(p.custo_medio || 0)}</td><td class="text-right">${formatCurrency(p.ultimo_valor_comprado || 0)}</td><td class="text-center">${dataEntradaStr}</td><td>${p.unidade}</td><td>${p.fornecedor}</td><td class="text-right">${p.estoque_minimo}</td></tr>`
     }).join('')
     const lowStock = filtered.filter(p => p.estoque <= p.estoque_minimo)
     printPDF('Relatório de Estoque e Custos', `
-      <table><thead><tr><th>Produto</th><th>Tipo</th><th class="text-right">Estoque</th><th class="text-right">Custo Méd.</th><th class="text-right">Últ. Valor</th><th>Unidade</th><th>Fornecedor</th><th class="text-right">Mínimo</th></tr></thead>
+      <table><thead><tr><th>Produto</th><th>Tipo</th><th class="text-right">Estoque</th><th class="text-right">Custo Méd.</th><th class="text-right">Últ. Valor</th><th class="text-center">Últ. Entrada</th><th>Unidade</th><th>Fornecedor</th><th class="text-right">Mínimo</th></tr></thead>
       <tbody>${rows}</tbody></table>
       ${lowStock.length > 0 ? `<div style="margin-top:16px;padding:10px;background:#fef2f2;border-radius:6px;"><strong style="color:#dc2626;">⚠ ${lowStock.length} produto(s) com estoque baixo:</strong> ${lowStock.map(p => p.nome).join(', ')}</div>` : ''}
     `, clinic)
@@ -185,7 +186,16 @@ export default function Produtos() {
                     Custo Méd. {sortConfig?.key === 'custo_medio' ? (sortConfig.direction === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />) : <ArrowUpDown className="h-4 w-4 opacity-50" />}
                   </div>
                 </TableHead>
-                <TableHead>Últ. Valor</TableHead>
+                <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('ultimo_valor_comprado')}>
+                  <div className="flex items-center gap-2">
+                    Últ. Valor {sortConfig?.key === 'ultimo_valor_comprado' ? (sortConfig.direction === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />) : <ArrowUpDown className="h-4 w-4 opacity-50" />}
+                  </div>
+                </TableHead>
+                <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('ultima_data_entrada')}>
+                  <div className="flex items-center gap-2">
+                    Últ. Entrada {sortConfig?.key === 'ultima_data_entrada' ? (sortConfig.direction === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />) : <ArrowUpDown className="h-4 w-4 opacity-50" />}
+                  </div>
+                </TableHead>
                 <TableHead>Unidade</TableHead>
                 <TableHead className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => handleSort('fornecedor')}>
                   <div className="flex items-center gap-2">
@@ -216,6 +226,7 @@ export default function Produtos() {
                     </TableCell>
                     <TableCell>{formatCurrency(p.custo_medio || 0)}</TableCell>
                     <TableCell>{formatCurrency(p.ultimo_valor_comprado || 0)}</TableCell>
+                    <TableCell>{p.ultima_data_entrada ? new Date(p.ultima_data_entrada).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '-'}</TableCell>
                     <TableCell>{p.unidade}</TableCell>
                     <TableCell>{p.fornecedor}</TableCell>
                     <TableCell>
@@ -262,7 +273,10 @@ export default function Produtos() {
               <div><Label>Estoque Atual</Label><Input type="number" value={form.estoque} onChange={(e) => setForm({ ...form, estoque: Number(e.target.value) })} className="mt-1" /></div>
               <div><Label>Estoque Mínimo</Label><Input type="number" value={form.estoque_minimo} onChange={(e) => setForm({ ...form, estoque_minimo: Number(e.target.value) })} className="mt-1" /></div>
             </div>
-            <div><Label>Fornecedor</Label><Input value={form.fornecedor} onChange={(e) => setForm({ ...form, fornecedor: e.target.value })} className="mt-1" /></div>
+            <div className="grid grid-cols-2 gap-4">
+              <div><Label>Fornecedor</Label><Input value={form.fornecedor} onChange={(e) => setForm({ ...form, fornecedor: e.target.value })} className="mt-1" /></div>
+              <div><Label>Última Data Entrada</Label><Input type="date" value={form.ultima_data_entrada || ''} onChange={(e) => setForm({ ...form, ultima_data_entrada: e.target.value })} className="mt-1" /></div>
+            </div>
           </div>
         </DialogContent>
         <DialogFooter>

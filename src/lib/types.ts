@@ -254,6 +254,7 @@ export interface Product {
   estoque_minimo: number
   custo_medio?: number
   ultimo_valor_comprado?: number
+  ultima_data_entrada?: string
 }
 
 export interface ProductCategory {
