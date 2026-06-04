@@ -184,7 +184,7 @@ export default function Cadastro() {
 
 
   const patientMedications = allMedications
-    .filter(m => m.pacienteId === editingId)
+    .filter(m => (m.pacienteId || (m as any).paciente_id) === editingId)
     .sort((a, b) => {
       const getFirstTime = (m: Medication) => {
         if (m.tipo_escala !== 'regular' || !m.horario) return '99:99';
@@ -402,7 +402,7 @@ export default function Cadastro() {
       } else {
         await insertMedEntry({
           medication_id: entryMed.id,
-          paciente_id: entryMed.pacienteId,
+          paciente_id: entryMed.pacienteId || (entryMed as any).paciente_id,
           data: entryForm.data,
           quantidade: entryForm.quantidade,
           responsavel: entryForm.responsavel,
@@ -506,8 +506,8 @@ export default function Cadastro() {
     try {
       const payload = {
         ...medForm,
-        pacienteId: editingId,
-        pacienteNome: form.nome
+        paciente_id: editingId,
+        paciente_nome: form.nome
       }
 
       if (editingMedId) {
@@ -626,7 +626,7 @@ export default function Cadastro() {
 
   function printPatientFullReport(p: Patient) {
     const meds = allMedications
-      .filter(m => m.pacienteId === p.id)
+      .filter(m => (m.pacienteId || (m as any).paciente_id) === p.id)
       .sort((a, b) => {
         const getFirstTime = (m: Medication) => {
           if (m.tipo_escala !== 'regular' || !m.horario) return '99:99';

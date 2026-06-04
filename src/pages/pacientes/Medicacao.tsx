@@ -26,7 +26,7 @@ export default function Medicacao() {
 
   const patients = rawPatients.filter(p => p.status !== 'inativo').sort((a, b) => a.nome.localeCompare(b.nome))
   const activePatientIds = patients.map(p => p.id)
-  const medications = rawMedications.filter(m => activePatientIds.includes(m.pacienteId))
+  const medications = rawMedications.filter(m => activePatientIds.includes(m.pacienteId || (m as any).paciente_id))
   const { data: rawProducts, insert: insertBaseMed } = useDb<any>('products')
   const baseMeds = rawProducts.filter((p: any) => p.tipo === 'medicamento')
   const [exporting, setExporting] = useState(false)
@@ -46,9 +46,9 @@ export default function Medicacao() {
   const [selectedUnit, setSelectedUnit] = useState('all')
 
   const filtered = medications.filter(m => {
-    const patient = patients.find(p => p.id === m.pacienteId)
+    const patient = patients.find(p => p.id === (m.pacienteId || (m as any).paciente_id))
     const matchesUnit = selectedUnit === 'all' || (patient && patient.unidade === selectedUnit)
-    const matchesPatient = selectedPatientId === 'all' || m.pacienteId === selectedPatientId
+    const matchesPatient = selectedPatientId === 'all' || (m.pacienteId || (m as any).paciente_id) === selectedPatientId
     const matchesSearch = (m.pacienteNome || '').toLowerCase().includes(search.toLowerCase()) ||
                         m.medicamento.toLowerCase().includes(search.toLowerCase())
     
@@ -104,7 +104,7 @@ export default function Medicacao() {
     `;
 
     const htmlContent = targetPatients.map((patient, pIdx) => {
-      const patientMeds = medications.filter(m => m.pacienteId === patient.id)
+      const patientMeds = medications.filter(m => (m.pacienteId || (m as any).paciente_id) === patient.id)
       if (patientMeds.length === 0) return ''
 
       const standardTimes = ['06:00', '08:00', '12:00', '14:00', '18:00', '20:30'];
@@ -235,10 +235,11 @@ export default function Medicacao() {
     // Agrupar por paciente
     const medsByPatient: Record<string, { patientName: string, meds: Medication[] }> = {};
     filtered.forEach(m => {
-      if (!medsByPatient[m.pacienteId]) {
-        medsByPatient[m.pacienteId] = { patientName: m.pacienteNome || 'Desconhecido', meds: [] };
+      const pId = m.pacienteId || (m as any).paciente_id;
+      if (!medsByPatient[pId]) {
+        medsByPatient[pId] = { patientName: m.pacienteNome || (m as any).paciente_nome || 'Desconhecido', meds: [] };
       }
-      medsByPatient[m.pacienteId].meds.push(m);
+      medsByPatient[pId].meds.push(m);
     });
 
     const patientIds = Object.keys(medsByPatient).sort((a, b) => 
@@ -585,7 +586,7 @@ export default function Medicacao() {
         // 1. Create Entry
         await insertMedEntry({
           medication_id: med.id,
-          paciente_id: med.pacienteId,
+          paciente_id: med.pacienteId || (med as any).paciente_id,
           data: entryDate,
           quantidade: qty,
           responsavel: entryResponsavel
@@ -820,10 +821,11 @@ export default function Medicacao() {
               // Agrupar por paciente
               const medsByPatient: Record<string, { patientName: string, meds: Medication[] }> = {};
               filtered.forEach(m => {
-                if (!medsByPatient[m.pacienteId]) {
-                  medsByPatient[m.pacienteId] = { patientName: m.pacienteNome || 'Desconhecido', meds: [] };
+                const pId = m.pacienteId || (m as any).paciente_id;
+                if (!medsByPatient[pId]) {
+                  medsByPatient[pId] = { patientName: m.pacienteNome || (m as any).paciente_nome || 'Desconhecido', meds: [] };
                 }
-                medsByPatient[m.pacienteId].meds.push(m);
+                medsByPatient[pId].meds.push(m);
               });
 
               const patientIds = Object.keys(medsByPatient).sort((a, b) => 
