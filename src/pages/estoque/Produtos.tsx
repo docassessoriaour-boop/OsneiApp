@@ -29,6 +29,7 @@ export default function Produtos() {
   const { data: categories, insert: insertCategory } = useDb<ProductCategory>('product_categories')
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [catDialogOpen, setCatDialogOpen] = useState(false)
   const [newCatName, setNewCatName] = useState('')
@@ -36,7 +37,21 @@ export default function Produtos() {
   const [form, setForm] = useState(emptyProduct)
   const [sortConfig, setSortConfig] = useState<{ key: keyof Product; direction: 'asc' | 'desc' } | null>(null)
 
-  const filtered = products.filter(p => p.nome.toLowerCase().includes(search.toLowerCase()))
+  const uniqueCategories = useMemo(() => {
+    const names = new Set<string>()
+    categories.forEach(c => names.add(c.nome))
+    products.forEach(p => {
+      if (!p.category_id && p.tipo) names.add(p.tipo)
+    })
+    return Array.from(names).sort()
+  }, [categories, products])
+
+  const filtered = products.filter(p => {
+    const matchesSearch = p.nome.toLowerCase().includes(search.toLowerCase())
+    const catName = categories.find(c => c.id === p.category_id)?.nome || p.tipo || 'Outro'
+    const matchesCategory = categoryFilter === '' || catName === categoryFilter
+    return matchesSearch && matchesCategory
+  })
 
   const handleSort = (key: keyof Product) => {
     let direction: 'asc' | 'desc' = 'asc';
@@ -133,7 +148,19 @@ export default function Produtos() {
       </div>
 
       <Card className="p-6">
-        <SearchBar value={search} onChange={setSearch} placeholder="Buscar..." />
+        <div className="flex flex-col sm:flex-row gap-4">
+          <div className="flex-1">
+            <SearchBar value={search} onChange={setSearch} placeholder="Buscar..." />
+          </div>
+          <div className="w-full sm:w-64">
+            <Select value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
+              <option value="">Todas as Categorias</option>
+              {uniqueCategories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </Select>
+          </div>
+        </div>
         <div className="mt-4">
           <Table>
             <TableHeader>
