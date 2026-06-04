@@ -251,7 +251,7 @@ export interface Product {
   unidade: string
   fornecedor: string
   fornecedor_id?: string
-  estoqueMinimo: number
+  estoque_minimo: number
   custo_medio?: number
   ultimo_valor_comprado?: number
 }

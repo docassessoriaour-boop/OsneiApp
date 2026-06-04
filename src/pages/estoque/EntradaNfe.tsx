@@ -221,7 +221,7 @@ export default function EntradaNfe() {
             unidade: item.unit,
             fornecedor: supplier?.name || '',
             fornecedor_id: supplier?.id,
-            estoqueMinimo: 0,
+            estoque_minimo: 0,
             custo_medio: parseFloat(item.unitPrice.toFixed(2)),
             ultimo_valor_comprado: parseFloat(item.unitPrice.toFixed(2))
           })

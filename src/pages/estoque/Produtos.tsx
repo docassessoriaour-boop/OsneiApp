@@ -21,7 +21,7 @@ import { Pencil, Trash2, FileText, Loader2, ArrowUpDown, ArrowUp, ArrowDown } fr
 import { useMemo } from 'react'
 
 const emptyProduct: Omit<Product, 'id'> = {
-  nome: '', tipo: 'material', estoque: 0, unidade: '', fornecedor: '', estoqueMinimo: 0,
+  nome: '', tipo: 'material', estoque: 0, unidade: '', fornecedor: '', estoque_minimo: 0,
 }
 
 export default function Produtos() {
@@ -108,9 +108,9 @@ export default function Produtos() {
   function printReport() {
     const rows = filtered.map(p => {
       const cat = categories.find(c => c.id === p.category_id)?.nome || p.tipo || 'Outro'
-      return `<tr><td>${p.nome}</td><td>${cat}</td><td class="text-right">${p.estoque}</td><td class="text-right">${formatCurrency(p.custo_medio || 0)}</td><td class="text-right">${formatCurrency(p.ultimo_valor_comprado || 0)}</td><td>${p.unidade}</td><td>${p.fornecedor}</td><td class="text-right">${p.estoqueMinimo}</td></tr>`
+      return `<tr><td>${p.nome}</td><td>${cat}</td><td class="text-right">${p.estoque}</td><td class="text-right">${formatCurrency(p.custo_medio || 0)}</td><td class="text-right">${formatCurrency(p.ultimo_valor_comprado || 0)}</td><td>${p.unidade}</td><td>${p.fornecedor}</td><td class="text-right">${p.estoque_minimo}</td></tr>`
     }).join('')
-    const lowStock = filtered.filter(p => p.estoque <= p.estoqueMinimo)
+    const lowStock = filtered.filter(p => p.estoque <= p.estoque_minimo)
     printPDF('Relatório de Estoque e Custos', `
       <table><thead><tr><th>Produto</th><th>Tipo</th><th class="text-right">Estoque</th><th class="text-right">Custo Méd.</th><th class="text-right">Últ. Valor</th><th>Unidade</th><th>Fornecedor</th><th class="text-right">Mínimo</th></tr></thead>
       <tbody>${rows}</tbody></table>
@@ -183,7 +183,7 @@ export default function Produtos() {
               </Badge>
             </TableCell>
                     <TableCell>
-                      <Badge variant={p.estoque <= p.estoqueMinimo ? 'destructive' : 'success'}>
+                      <Badge variant={p.estoque <= p.estoque_minimo ? 'destructive' : 'success'}>
                         {p.estoque}
                       </Badge>
                     </TableCell>
@@ -233,7 +233,7 @@ export default function Produtos() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div><Label>Estoque Atual</Label><Input type="number" value={form.estoque} onChange={(e) => setForm({ ...form, estoque: Number(e.target.value) })} className="mt-1" /></div>
-              <div><Label>Estoque Mínimo</Label><Input type="number" value={form.estoqueMinimo} onChange={(e) => setForm({ ...form, estoqueMinimo: Number(e.target.value) })} className="mt-1" /></div>
+              <div><Label>Estoque Mínimo</Label><Input type="number" value={form.estoque_minimo} onChange={(e) => setForm({ ...form, estoque_minimo: Number(e.target.value) })} className="mt-1" /></div>
             </div>
             <div><Label>Fornecedor</Label><Input value={form.fornecedor} onChange={(e) => setForm({ ...form, fornecedor: e.target.value })} className="mt-1" /></div>
           </div>

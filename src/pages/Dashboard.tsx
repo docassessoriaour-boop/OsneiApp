@@ -40,7 +40,7 @@ export default function Dashboard() {
   const todayAppointments = appointments.filter(a => a.data === today && a.status === 'agendado')
 
   const totalStock = products.reduce((sum, p) => sum + p.estoque, 0)
-  const stockOk = products.length === 0 || products.every(p => p.estoque >= p.estoqueMinimo)
+  const stockOk = products.length === 0 || products.every(p => p.estoque >= p.estoque_minimo)
 
   // Calcular contratos a vencer em 30 dias
   const in30Days = new Date()

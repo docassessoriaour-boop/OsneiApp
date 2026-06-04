@@ -6,21 +6,11 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 async function test() {
-  console.log('Testing categories...');
-  const { data: catData, error: catErr } = await supabase.from('transaction_categories').select('*').limit(1);
-  console.log(catErr || catData);
+  const { error: err1 } = await supabase.from('products').insert({ estoqueMinimo: 0 });
+  console.log('estoqueMinimo:', err1?.message);
 
-  console.log('Testing entities...');
-  const { data: entData, error: entErr } = await supabase.from('entities').select('*').limit(1);
-  console.log(entErr || entData);
-
-  console.log('Testing products...');
-  const { data: prodData, error: prodErr } = await supabase.from('products').select('*').limit(1);
-  console.log(prodErr || prodData);
-
-  console.log('Testing bills...');
-  const { data: billsData, error: billsErr } = await supabase.from('bills').select('*').limit(1);
-  console.log(billsErr || billsData);
+  const { error: err2 } = await supabase.from('products').insert({ estoque_minimo: 0 });
+  console.log('estoque_minimo:', err2?.message);
 }
 
 test()
