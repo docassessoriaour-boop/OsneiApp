@@ -147,7 +147,7 @@ export default function Dashboard() {
                 ) : (
                   expiringContracts.map(c => (
                     <tr key={c.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-4 py-3 font-medium">{c.pacienteNome}</td>
+                      <td className="px-4 py-3 font-medium">{c.pacienteNome || (c as any).paciente_nome}</td>
                       <td className="px-4 py-3 text-destructive font-semibold">
                         {formatDate(c.dataFim)}
                       </td>

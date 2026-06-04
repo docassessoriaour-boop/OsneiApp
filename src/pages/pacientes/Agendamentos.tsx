@@ -29,7 +29,7 @@ export default function Agendamentos() {
   })
 
   const filtered = appointments.filter(a =>
-    (a.pacienteNome || '').toLowerCase().includes(search.toLowerCase()) ||
+    ((a.pacienteNome || (a as any).paciente_nome) || '').toLowerCase().includes(search.toLowerCase()) ||
     a.profissional.toLowerCase().includes(search.toLowerCase())
   )
 
@@ -46,6 +46,7 @@ export default function Agendamentos() {
     const aptData = {
       pacienteId,
       pacienteNome: patient.nome,
+      paciente_nome: patient.nome,
       ...restForm,
     }
     
@@ -141,7 +142,7 @@ export default function Agendamentos() {
                 ) : (
                   filtered.map(a => (
                     <TableRow key={a.id}>
-                      <TableCell className="font-medium">{a.pacienteNome}</TableCell>
+                      <TableCell className="font-medium">{a.pacienteNome || (a as any).paciente_nome}</TableCell>
                       <TableCell>{a.tipo}</TableCell>
                       <TableCell>{formatDate(a.data)}</TableCell>
                       <TableCell>{a.horario}</TableCell>
@@ -204,9 +205,9 @@ export default function Agendamentos() {
                             key={a.id} 
                             onClick={() => openEdit(a)}
                             className="text-[10px] p-1 rounded bg-secondary overflow-hidden truncate cursor-pointer hover:brightness-95 border-l-2 border-primary"
-                            title={`${a.horario} - ${a.pacienteNome} (${a.tipo})`}
+                            title={`${a.horario} - ${a.pacienteNome || (a as any).paciente_nome} (${a.tipo})`}
                           >
-                            <span className="font-semibold">{a.horario}</span> {a.pacienteNome}
+                            <span className="font-semibold">{a.horario}</span> {a.pacienteNome || (a as any).paciente_nome}
                           </div>
                         ))}
                         {dayAppointments.length > 3 && (

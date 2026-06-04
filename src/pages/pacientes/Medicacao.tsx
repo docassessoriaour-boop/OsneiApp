@@ -49,12 +49,12 @@ export default function Medicacao() {
     const patient = patients.find(p => p.id === (m.pacienteId || (m as any).paciente_id))
     const matchesUnit = selectedUnit === 'all' || (patient && patient.unidade === selectedUnit)
     const matchesPatient = selectedPatientId === 'all' || (m.pacienteId || (m as any).paciente_id) === selectedPatientId
-    const matchesSearch = (m.pacienteNome || '').toLowerCase().includes(search.toLowerCase()) ||
+    const matchesSearch = ((m.pacienteNome || (m as any).paciente_nome) || '').toLowerCase().includes(search.toLowerCase()) ||
                         m.medicamento.toLowerCase().includes(search.toLowerCase())
     
     return matchesUnit && matchesPatient && matchesSearch
   }).sort((a, b) => {
-    const patientCompare = (a.pacienteNome || '').localeCompare(b.pacienteNome || '');
+    const patientCompare = ((a.pacienteNome || (a as any).paciente_nome) || '').localeCompare((b.pacienteNome || (b as any).paciente_nome) || '');
     if (patientCompare !== 0) return patientCompare;
 
     const getFirstTime = (m: Medication) => {
@@ -346,7 +346,7 @@ export default function Medicacao() {
     
     const rows = medsToReport.map(m => `
       <tr>
-        <td>${m.pacienteNome}</td>
+        <td>${m.pacienteNome || (m as any).paciente_nome}</td>
         <td>${m.medicamento}</td>
         <td style="text-align:center; color:${(m.estoque_atual || 0) <= (m.estoque_minimo || 0) ? 'red' : 'inherit'}; font-weight:bold;">
           ${m.estoque_atual} ${m.unidade_medida}
@@ -412,8 +412,8 @@ export default function Medicacao() {
         };
       }
       
-      if (!groupedMeds[key].pacientes.includes(m.pacienteNome || 'Desconhecido')) {
-        groupedMeds[key].pacientes.push(m.pacienteNome || 'Desconhecido');
+      if (!groupedMeds[key].pacientes.includes(m.pacienteNome || (m as any).paciente_nome || 'Desconhecido')) {
+        groupedMeds[key].pacientes.push(m.pacienteNome || (m as any).paciente_nome || 'Desconhecido');
       }
       
       groupedMeds[key].estoqueTotal += (m.estoque_atual || 0);
@@ -772,7 +772,7 @@ export default function Medicacao() {
               ) : (
                 filtered.map(m => (
                   <TableRow key={m.id} className={ (m.estoque_atual || 0) <= (m.estoque_minimo || 0) ? "bg-red-50" : ""}>
-                    <TableCell className="font-medium">{m.pacienteNome}</TableCell>
+                    <TableCell className="font-medium">{m.pacienteNome || (m as any).paciente_nome}</TableCell>
                     <TableCell>
                       <div className="font-semibold">{m.medicamento}</div>
                       <div className="text-xs text-muted-foreground">{m.dosagem}</div>
@@ -983,7 +983,7 @@ export default function Medicacao() {
                       })
                       .map(m => (
                         <TableRow key={m.id}>
-                          <TableCell className="font-medium text-xs">{m.pacienteNome}</TableCell>
+                          <TableCell className="font-medium text-xs">{m.pacienteNome || (m as any).paciente_nome}</TableCell>
                           <TableCell className="text-center text-xs">{m.estoque_atual} {m.unidade_medida}</TableCell>
                           <TableCell className="text-center text-xs">{calculateDailyConsumption(m)} /dia</TableCell>
                           <TableCell className="text-right">
