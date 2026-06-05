@@ -17,7 +17,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, Loader2, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Minus } from 'lucide-react'
 import { useMemo } from 'react'
 
 const emptyProduct: Omit<Product, 'id'> = {
@@ -36,6 +36,10 @@ export default function Produtos() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyProduct)
   const [sortConfig, setSortConfig] = useState<{ key: keyof Product; direction: 'asc' | 'desc' } | null>(null)
+
+  const [baixaDialogOpen, setBaixaDialogOpen] = useState(false)
+  const [baixaProduto, setBaixaProduto] = useState<Product | null>(null)
+  const [baixaQtd, setBaixaQtd] = useState<number | string>('')
 
   const uniqueCategories = useMemo(() => {
     const names = new Set<string>()
@@ -93,6 +97,29 @@ export default function Produtos() {
 
   function openNew() { setForm(emptyProduct); setEditingId(null); setDialogOpen(true) }
   function openEdit(p: Product) { setForm(p); setEditingId(p.id); setDialogOpen(true) }
+
+  function openBaixa(p: Product) { setBaixaProduto(p); setBaixaQtd(''); setBaixaDialogOpen(true) }
+
+  async function handleBaixa() {
+    if (!baixaProduto) return
+    const qtd = Number(baixaQtd)
+    if (isNaN(qtd) || qtd <= 0) {
+      alert('Quantidade inválida')
+      return
+    }
+    if (baixaProduto.estoque < qtd) {
+      alert('Estoque insuficiente')
+      return
+    }
+    try {
+      await update(baixaProduto.id, { estoque: baixaProduto.estoque - qtd })
+      setBaixaDialogOpen(false)
+      setBaixaProduto(null)
+    } catch (error) {
+      console.error('Erro ao dar baixa:', error)
+      alert('Erro ao dar baixa no estoque')
+    }
+  }
 
   async function handleSave() {
     if (!form.nome) return
@@ -231,8 +258,9 @@ export default function Produtos() {
                     <TableCell>{p.fornecedor}</TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(p)}><Pencil className="h-4 w-4" /></Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => openBaixa(p)} title="Baixa no Estoque"><Minus className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => openEdit(p)} title="Editar"><Pencil className="h-4 w-4" /></Button>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(p.id)} title="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -303,6 +331,37 @@ export default function Produtos() {
         <DialogFooter>
           <Button variant="outline" onClick={() => setCatDialogOpen(false)}>Cancelar</Button>
           <Button onClick={handleAddCategory}>Criar Categoria</Button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={baixaDialogOpen} onOpenChange={setBaixaDialogOpen}>
+        <DialogHeader>
+          <DialogTitle>Baixa no Estoque</DialogTitle>
+          <DialogClose onClose={() => setBaixaDialogOpen(false)} />
+        </DialogHeader>
+        <DialogContent>
+          <div className="grid gap-4">
+            <div className="text-sm">
+              <p>Produto: <strong>{baixaProduto?.nome}</strong></p>
+              <p>Estoque atual: <strong>{baixaProduto?.estoque}</strong></p>
+            </div>
+            <div>
+              <Label>Quantidade para baixar</Label>
+              <Input 
+                type="number" 
+                value={baixaQtd} 
+                onChange={e => setBaixaQtd(e.target.value)} 
+                placeholder="Ex: 1"
+                className="mt-1"
+                min="1"
+                max={baixaProduto?.estoque}
+              />
+            </div>
+          </div>
+        </DialogContent>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setBaixaDialogOpen(false)}>Cancelar</Button>
+          <Button onClick={handleBaixa}>Confirmar</Button>
         </DialogFooter>
       </Dialog>
     </div>

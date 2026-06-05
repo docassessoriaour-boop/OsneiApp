@@ -15,7 +15,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, Loader2, Filter, ArrowUp, ArrowDown, Split } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, Filter, ArrowUp, ArrowDown, Split, CheckCircle } from 'lucide-react'
 
 const emptyBill: Omit<Bill, 'id'> = {
   descricao: '', 
@@ -45,7 +45,10 @@ export default function ContasPagar() {
   const [loadingXml, setLoadingXml] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [partialDialogOpen, setPartialDialogOpen] = useState(false)
+  const [totalDialogOpen, setTotalDialogOpen] = useState(false)
   const [partialBill, setPartialBill] = useState<Bill | null>(null)
+  const [totalBill, setTotalBill] = useState<Bill | null>(null)
+  const [totalForm, setTotalForm] = useState({ dataPagamento: new Date().toISOString().slice(0, 10), bank_account_id: '' })
   const [partialForm, setPartialForm] = useState({ valorPago: 0, dataPagamento: new Date().toISOString().slice(0, 10), bank_account_id: '' })
   const [form, setForm] = useState(emptyBill)
   const [parcelas, setParcelas] = useState(1)
@@ -129,6 +132,15 @@ export default function ContasPagar() {
     setPartialDialogOpen(true)
   }
 
+  function openTotal(b: Bill) {
+    setTotalBill(b)
+    setTotalForm({
+      dataPagamento: new Date().toISOString().slice(0, 10),
+      bank_account_id: ''
+    })
+    setTotalDialogOpen(true)
+  }
+
   const handlePartialPayment = async () => {
     if (!partialBill || partialForm.valorPago <= 0 || partialForm.valorPago >= partialBill.valor) {
       alert("O valor pago deve ser maior que zero e menor que o valor total da conta.")
@@ -187,6 +199,45 @@ export default function ContasPagar() {
     } catch (e: any) {
       console.error(e)
       alert("Erro ao realizar baixa parcial: " + e.message)
+    }
+  }
+
+  const handleTotalPayment = async () => {
+    if (!totalBill) return
+    if (!totalForm.bank_account_id) {
+      alert("Selecione uma conta bancária.")
+      return
+    }
+
+    try {
+      const bt = await insertBankTransaction({
+        data: totalForm.dataPagamento,
+        descricao: `Pagamento: ${totalBill.descricao}`,
+        valor: totalBill.valor,
+        tipo: 'debito',
+        origem: 'manual',
+        bank_account_id: totalForm.bank_account_id,
+        categoria: totalBill.categoria,
+        category_id: totalBill.category_id
+      } as any)
+
+      await update(totalBill.id, {
+        ...totalBill,
+        status: 'pago',
+        payment_date: totalForm.dataPagamento,
+        bank_account_id: totalForm.bank_account_id,
+        bank_transaction_id: bt.id
+      })
+
+      if ((totalBill as any).termination_id) {
+        await updateTermination((totalBill as any).termination_id, { status: 'pago' })
+      }
+
+      setTotalDialogOpen(false)
+      alert("Baixa total efetuada com sucesso!")
+    } catch (e: any) {
+      console.error(e)
+      alert("Erro ao realizar baixa total: " + e.message)
     }
   }
 
@@ -653,9 +704,14 @@ export default function ContasPagar() {
                   <TableCell>
                     <div className="flex items-center gap-1">
                       {(b.status === 'pendente' || b.status === 'vencido') && (
-                        <Button variant="ghost" size="icon" onClick={() => openPartial(b)} title="Baixa Parcial">
-                          <Split className="h-4 w-4 text-blue-600" />
-                        </Button>
+                        <>
+                          <Button variant="ghost" size="icon" onClick={() => openTotal(b)} title="Baixa Total">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => openPartial(b)} title="Baixa Parcial">
+                            <Split className="h-4 w-4 text-blue-600" />
+                          </Button>
+                        </>
                       )}
                       <Button variant="ghost" size="icon" onClick={() => openEdit(b)} title="Editar"><Pencil className="h-4 w-4" /></Button>
                       <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(b.id)} title="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
@@ -986,6 +1042,52 @@ export default function ContasPagar() {
         <DialogFooter>
           <Button variant="outline" onClick={() => setPartialDialogOpen(false)}>Cancelar</Button>
           <Button onClick={handlePartialPayment}>Confirmar Baixa Parcial</Button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={totalDialogOpen} onOpenChange={setTotalDialogOpen}>
+        <DialogHeader>
+          <DialogTitle>Baixa Total</DialogTitle>
+          <DialogClose onClose={() => setTotalDialogOpen(false)} />
+        </DialogHeader>
+        <DialogContent>
+          {totalBill && (
+            <div className="grid gap-4">
+              <div className="bg-muted/50 p-3 rounded-lg text-sm mb-2">
+                <p><strong>Conta:</strong> {totalBill.descricao}</p>
+                <p><strong>Valor Total:</strong> {formatCurrency(totalBill.valor)}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Data do Pagamento</Label>
+                  <Input 
+                    type="date" 
+                    value={totalForm.dataPagamento} 
+                    onChange={(e) => setTotalForm({ ...totalForm, dataPagamento: e.target.value })} 
+                    className="mt-1" 
+                  />
+                </div>
+                <div>
+                  <Label>Banco / Origem</Label>
+                  <Select
+                    value={totalForm.bank_account_id}
+                    onChange={(e) => setTotalForm({ ...totalForm, bank_account_id: e.target.value })}
+                    className="mt-1"
+                  >
+                    <option value="">-- Selecione o Banco --</option>
+                    {bankAccounts.map(ba => (
+                      <option key={ba.id} value={ba.id}>{ba.nome} {ba.banco ? `(${ba.banco})` : ''}</option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setTotalDialogOpen(false)}>Cancelar</Button>
+          <Button onClick={handleTotalPayment}>Confirmar Baixa Total</Button>
         </DialogFooter>
       </Dialog>
 

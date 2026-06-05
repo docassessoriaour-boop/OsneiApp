@@ -14,7 +14,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, Loader2, ArrowUp, ArrowDown, Split, Receipt } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, ArrowUp, ArrowDown, Split, Receipt, CheckCircle } from 'lucide-react'
 
 const emptyIncome: Omit<Income, 'id'> = {
   descricao: '', 
@@ -49,10 +49,19 @@ export default function ContasReceber() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [partialDialogOpen, setPartialDialogOpen] = useState(false)
+  const [totalDialogOpen, setTotalDialogOpen] = useState(false)
   const [partialIncome, setPartialIncome] = useState<Income | null>(null)
+  const [totalIncome, setTotalIncome] = useState<Income | null>(null)
   const [partialForm, setPartialForm] = useState({ 
     valorPago: 0, 
     dataPagamento: new Date().toISOString().slice(0, 10), 
+    bank_account_id: '',
+    paid_by: '',
+    paid_by_phone: '',
+    paid_by_document: ''
+  })
+  const [totalForm, setTotalForm] = useState({
+    dataPagamento: new Date().toISOString().slice(0, 10),
     bank_account_id: '',
     paid_by: '',
     paid_by_phone: '',
@@ -192,6 +201,18 @@ export default function ContasReceber() {
     setPartialDialogOpen(true)
   }
 
+  function openTotal(i: Income) {
+    setTotalIncome(i)
+    setTotalForm({
+      dataPagamento: new Date().toISOString().slice(0, 10),
+      bank_account_id: '',
+      paid_by: '',
+      paid_by_phone: '',
+      paid_by_document: ''
+    })
+    setTotalDialogOpen(true)
+  }
+
   const handlePartialPayment = async () => {
     if (!partialIncome || partialForm.valorPago <= 0 || partialForm.valorPago >= partialIncome.valor) {
       alert("O valor recebido deve ser maior que zero e menor que o valor total.")
@@ -283,6 +304,62 @@ export default function ContasReceber() {
     } catch (e: any) {
       console.error(e)
       alert("Erro ao realizar baixa parcial: " + e.message)
+    }
+  }
+
+  const handleTotalPayment = async () => {
+    if (!totalIncome) return
+    if (!totalForm.bank_account_id) {
+      alert("Selecione uma conta bancária.")
+      return
+    }
+
+    try {
+      const bt = await insertBankTransaction({
+        data: totalForm.dataPagamento,
+        descricao: `Recebimento: ${totalIncome.descricao}`,
+        valor: totalIncome.valor,
+        tipo: 'credito',
+        origem: 'manual',
+        bank_account_id: totalForm.bank_account_id,
+        categoria: totalIncome.categoria,
+        category_id: totalIncome.category_id,
+        paid_by: totalForm.paid_by,
+        paid_by_phone: totalForm.paid_by_phone,
+        paid_by_document: totalForm.paid_by_document
+      } as any)
+
+      await update(totalIncome.id, {
+        ...totalIncome,
+        status: 'recebido',
+        payment_date: totalForm.dataPagamento,
+        bank_account_id: totalForm.bank_account_id,
+        bank_transaction_id: bt.id,
+        paid_by: totalForm.paid_by,
+        paid_by_phone: totalForm.paid_by_phone,
+        paid_by_document: totalForm.paid_by_document
+      } as any)
+
+      const relatedInvoice = invoices.find(inv => inv.income_id === totalIncome.id)
+      if (relatedInvoice) {
+        await updateInvoice(relatedInvoice.id, {
+          status: 'pago',
+          payment_date: totalForm.dataPagamento,
+          bank_account_id: totalForm.bank_account_id,
+          bank_transaction_id: bt.id,
+          paid_by: totalForm.paid_by,
+          paid_by_phone: totalForm.paid_by_phone,
+          paid_by_document: totalForm.paid_by_document
+        })
+      }
+
+      setTotalDialogOpen(false)
+      if (confirm("Baixa total efetuada com sucesso! Deseja enviar o recibo via WhatsApp?")) {
+        sendWhatsAppReceipt(totalIncome, totalIncome.valor, totalForm.paid_by, totalForm.paid_by_phone)
+      }
+    } catch (e: any) {
+      console.error(e)
+      alert("Erro ao realizar baixa total: " + e.message)
     }
   }
 
@@ -603,9 +680,14 @@ export default function ContasReceber() {
                         </>
                       )}
                       {(i.status === 'pendente' || i.status === 'vencido') && (
-                        <Button variant="ghost" size="icon" onClick={() => openPartial(i)} title="Baixa Parcial">
-                          <Split className="h-4 w-4 text-blue-600" />
-                        </Button>
+                        <>
+                          <Button variant="ghost" size="icon" onClick={() => openTotal(i)} title="Baixa Total">
+                            <CheckCircle className="h-4 w-4 text-green-600" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => openPartial(i)} title="Baixa Parcial">
+                            <Split className="h-4 w-4 text-blue-600" />
+                          </Button>
+                        </>
                       )}
                       <Button variant="ghost" size="icon" onClick={() => openEdit(i)} title="Editar"><Pencil className="h-4 w-4" /></Button>
                       <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(i.id)} title="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
@@ -875,6 +957,77 @@ export default function ContasReceber() {
         <DialogFooter>
           <Button variant="outline" onClick={() => setPartialDialogOpen(false)}>Cancelar</Button>
           <Button onClick={handlePartialPayment}>Confirmar Baixa Parcial</Button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={totalDialogOpen} onOpenChange={setTotalDialogOpen}>
+        <DialogHeader>
+          <DialogTitle>Baixa Total</DialogTitle>
+          <DialogClose onClose={() => setTotalDialogOpen(false)} />
+        </DialogHeader>
+        <DialogContent>
+          {totalIncome && (
+            <div className="grid gap-4">
+              <div className="bg-muted/50 p-3 rounded-lg text-sm mb-2">
+                <p><strong>Conta:</strong> {totalIncome.descricao}</p>
+                <p><strong>Valor Total:</strong> {formatCurrency(totalIncome.valor)}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Data do Recebimento</Label>
+                  <Input 
+                    type="date" 
+                    value={totalForm.dataPagamento} 
+                    onChange={(e) => setTotalForm({ ...totalForm, dataPagamento: e.target.value })} 
+                    className="mt-1" 
+                  />
+                </div>
+                <div>
+                  <Label>Banco / Destino</Label>
+                  <Select
+                    value={totalForm.bank_account_id}
+                    onChange={(e) => setTotalForm({ ...totalForm, bank_account_id: e.target.value })}
+                    className="mt-1"
+                  >
+                    <option value="">-- Selecione o Banco --</option>
+                    {bankAccounts.map(ba => (
+                      <option key={ba.id} value={ba.id}>{ba.nome} {ba.banco ? `(${ba.banco})` : ''}</option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label>Responsável pelo Pagamento</Label>
+                <Select
+                  value={totalForm.paid_by}
+                  onChange={(e) => {
+                    const opt = getPayerOptions(totalIncome).find(o => o.name === e.target.value)
+                    setTotalForm({ 
+                      ...totalForm, 
+                      paid_by: e.target.value, 
+                      paid_by_phone: opt?.phone || '',
+                      paid_by_document: opt?.document || ''
+                    })
+                  }}
+                  className="mt-1"
+                >
+                  <option value="">-- Selecione o Payer --</option>
+                  {getPayerOptions(totalIncome).map((o, idx) => (
+                    <option key={idx} value={o.name}>{o.name} ({o.type})</option>
+                  ))}
+                </Select>
+                {totalForm.paid_by_phone && (
+                  <p className="text-[10px] text-muted-foreground mt-1">WhatsApp: {totalForm.paid_by_phone}</p>
+                )}
+              </div>
+            </div>
+          )}
+        </DialogContent>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setTotalDialogOpen(false)}>Cancelar</Button>
+          <Button onClick={handleTotalPayment}>Confirmar Baixa Total</Button>
         </DialogFooter>
       </Dialog>
 
