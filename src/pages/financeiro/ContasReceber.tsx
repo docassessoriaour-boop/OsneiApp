@@ -43,8 +43,8 @@ export default function ContasReceber() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'todos' | 'pendente' | 'recebido' | 'vencido'>('todos')
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
+  const [startDate, setStartDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10))
+  const [endDate, setEndDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10))
   const [selectedPatient, setSelectedPatient] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -68,7 +68,7 @@ export default function ContasReceber() {
     paid_by_document: ''
   })
   const [form, setForm] = useState(emptyIncome)
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   
   const findPatientForIncome = (income: Income) => {
     const relInv = invoices.find(inv => inv.income_id === income.id)

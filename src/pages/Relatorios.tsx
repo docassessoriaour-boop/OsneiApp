@@ -16,12 +16,12 @@ import { Select } from '@/components/ui/select'
 import { 
   Users, Heart, CreditCard, HandCoins, 
   Package, FileText, Printer, Filter, 
-  BarChart3, Landmark, PieChart 
+  BarChart3, Landmark, PieChart, TrendingUp 
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 
-type ReportType = 'geral' | 'contasPagar' | 'contasReceber' | 'bancario' | 'fluxoCaixa' | 'custoPaciente' | 'contratos' | 'aniversariantes'
+type ReportType = 'geral' | 'contasPagar' | 'contasReceber' | 'bancario' | 'fluxoCaixa' | 'custoPaciente' | 'contratos' | 'aniversariantes' | 'mapaCategoria'
 type ViewMode = 'sintetico' | 'analitico'
 
 export default function Relatorios() {
@@ -189,6 +189,43 @@ export default function Relatorios() {
     }
     return data
   }, [reportType, incomes, bills, payrolls, bankAccounts, estMonthlyCost])
+
+  // ── Mapa Comparativo Mês a Mês ─────────────────────────────────────────────
+  const mapaData = useMemo(() => {
+    if (reportType !== 'mapaCategoria') return { months: [], categories: [], grid: {}, monthTotals: {}, categoryTotals: {} }
+
+    // Last 12 months (regardless of date filter)
+    const now = new Date()
+    const months: { key: string; label: string }[] = []
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+      const label = d.toLocaleString('pt-BR', { month: 'short' }).replace('.', '') + '/' + String(d.getFullYear()).slice(-2)
+      months.push({ key, label: label.charAt(0).toUpperCase() + label.slice(1) })
+    }
+
+    const grid: Record<string, Record<string, number>> = {} // grid[category][monthKey]
+    const categoryTotals: Record<string, number> = {}
+    const monthTotals: Record<string, number> = {}
+
+    bills.forEach(b => {
+      if (!b.vencimento) return
+      const monthKey = b.vencimento.slice(0, 7)
+      if (!months.find(m => m.key === monthKey)) return
+      const catName = categories.find(c => c.id === b.category_id)?.nome || b.categoria || 'Não Categorizado'
+
+      if (!grid[catName]) grid[catName] = {}
+      grid[catName][monthKey] = (grid[catName][monthKey] || 0) + b.valor
+      categoryTotals[catName] = (categoryTotals[catName] || 0) + b.valor
+      monthTotals[monthKey] = (monthTotals[monthKey] || 0) + b.valor
+    })
+
+    // Sort categories by total descending
+    const categoryList = Object.keys(categoryTotals).sort((a, b) => categoryTotals[b] - categoryTotals[a])
+    const grandTotal = Object.values(categoryTotals).reduce((s, v) => s + v, 0)
+
+    return { months, categories: categoryList, grid, monthTotals, categoryTotals, grandTotal }
+  }, [reportType, bills, categories])
 
   const sortedPatients = useMemo(() => {
     const list = filteredData.patients.map(p => {
@@ -461,6 +498,7 @@ export default function Relatorios() {
               <option value="contasReceber">Contas a Receber</option>
               <option value="bancario">Movimentação Bancária</option>
               <option value="fluxoCaixa">Fluxo de Caixa</option>
+              <option value="mapaCategoria">Mapa Comparativo — Contas a Pagar</option>
               <option value="custoPaciente">Custo Efetivo por Paciente</option>
               <option value="contratos">Contratos de Pacientes</option>
               <option value="aniversariantes">Calendário de Aniversariantes</option>
@@ -919,6 +957,150 @@ export default function Relatorios() {
           </div>
         </Card>
       )}
+
+      {reportType === 'mapaCategoria' && (() => {
+        const { months, categories: cats, grid, monthTotals, categoryTotals, grandTotal = 0 } = mapaData
+        // Max value in any cell for heat intensity
+        const maxCell = Math.max(
+          ...cats.flatMap(cat => months.map(m => grid[cat]?.[m.key] || 0)),
+          1
+        )
+        const heatColor = (val: number) => {
+          if (val === 0) return 'transparent'
+          const intensity = Math.round((val / maxCell) * 100)
+          if (intensity > 80) return 'rgba(239,68,68,0.85)'
+          if (intensity > 60) return 'rgba(239,68,68,0.60)'
+          if (intensity > 40) return 'rgba(239,68,68,0.38)'
+          if (intensity > 20) return 'rgba(239,68,68,0.20)'
+          return 'rgba(239,68,68,0.09)'
+        }
+        const textColor = (val: number) => {
+          const intensity = Math.round((val / maxCell) * 100)
+          return intensity > 60 ? '#fff' : 'inherit'
+        }
+        return (
+          <Card className="p-6">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="h-5 w-5 text-red-600" />
+              <h3 className="font-bold text-lg">Mapa Comparativo — Contas a Pagar por Categoria</h3>
+            </div>
+            <p className="text-sm text-muted-foreground mb-6">Últimos 12 meses • Intensidade de cor indica volume de gastos</p>
+
+            {/* Summary KPIs */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+              <div className="p-3 bg-red-50 rounded-lg border border-red-100 text-center">
+                <p className="text-[10px] text-red-600 uppercase font-black">Total 12 meses</p>
+                <p className="text-lg font-bold text-red-700 mt-1">{formatCurrency(grandTotal)}</p>
+              </div>
+              <div className="p-3 bg-muted/30 rounded-lg border text-center">
+                <p className="text-[10px] text-muted-foreground uppercase font-black">Categorias</p>
+                <p className="text-lg font-bold mt-1">{cats.length}</p>
+              </div>
+              <div className="p-3 bg-muted/30 rounded-lg border text-center">
+                <p className="text-[10px] text-muted-foreground uppercase font-black">Média Mensal</p>
+                <p className="text-lg font-bold mt-1">{formatCurrency(grandTotal / 12)}</p>
+              </div>
+              <div className="p-3 bg-muted/30 rounded-lg border text-center">
+                <p className="text-[10px] text-muted-foreground uppercase font-black">Maior Mês</p>
+                <p className="text-lg font-bold text-red-700 mt-1">
+                  {formatCurrency(Math.max(...Object.values(monthTotals), 0))}
+                </p>
+              </div>
+            </div>
+
+            {cats.length === 0 ? (
+              <p className="text-center text-muted-foreground py-12">Nenhuma conta a pagar registrada nos últimos 12 meses.</p>
+            ) : (
+              <div className="overflow-x-auto rounded-xl border shadow-sm">
+                <table className="w-full text-xs border-collapse" style={{ minWidth: `${180 + months.length * 90}px` }}>
+                  <thead>
+                    <tr className="bg-muted/60">
+                      <th className="p-2 text-left font-bold sticky left-0 bg-muted/60 z-10 min-w-[160px] border-b border-r">
+                        Categoria
+                      </th>
+                      {months.map(m => (
+                        <th key={m.key} className="p-2 text-center font-semibold border-b border-r whitespace-nowrap">
+                          {m.label}
+                        </th>
+                      ))}
+                      <th className="p-2 text-right font-bold border-b bg-muted/40 whitespace-nowrap">Total</th>
+                      <th className="p-2 text-right font-bold border-b bg-muted/40 whitespace-nowrap">%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {cats.map((cat, rowIdx) => (
+                      <tr key={cat} className={rowIdx % 2 === 0 ? 'bg-white dark:bg-background' : 'bg-muted/20'}>
+                        <td className="p-2 font-medium sticky left-0 z-10 border-r truncate max-w-[160px]"
+                          style={{ background: rowIdx % 2 === 0 ? 'var(--background, #fff)' : 'rgba(0,0,0,0.02)' }}
+                          title={cat}>
+                          {cat}
+                        </td>
+                        {months.map(m => {
+                          const val = grid[cat]?.[m.key] || 0
+                          return (
+                            <td key={m.key}
+                              className="p-2 text-right border-r font-medium tabular-nums"
+                              style={{ background: heatColor(val), color: textColor(val) }}
+                              title={val > 0 ? formatCurrency(val) : '—'}>
+                              {val > 0 ? formatCurrency(val).replace('R$\u00a0', 'R$') : <span className="text-muted-foreground/40">—</span>}
+                            </td>
+                          )
+                        })}
+                        <td className="p-2 text-right font-bold tabular-nums text-red-700">
+                          {formatCurrency(categoryTotals[cat])}
+                        </td>
+                        <td className="p-2 text-right tabular-nums text-muted-foreground">
+                          {grandTotal > 0 ? ((categoryTotals[cat] / grandTotal) * 100).toFixed(1) : '0.0'}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-muted/50 font-bold border-t-2">
+                      <td className="p-2 sticky left-0 z-10 bg-muted/50 border-r">TOTAL MENSAL</td>
+                      {months.map(m => (
+                        <td key={m.key} className="p-2 text-right border-r tabular-nums text-red-700">
+                          {monthTotals[m.key] ? formatCurrency(monthTotals[m.key]) : <span className="text-muted-foreground/40">—</span>}
+                        </td>
+                      ))}
+                      <td className="p-2 text-right text-red-700 tabular-nums">{formatCurrency(grandTotal)}</td>
+                      <td className="p-2 text-right">100%</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
+
+            {/* Category bar chart */}
+            {cats.length > 0 && (
+              <div className="mt-6">
+                <h4 className="text-sm font-bold text-muted-foreground uppercase mb-3">Distribuição por Categoria (12 meses)</h4>
+                <div className="space-y-2">
+                  {cats.slice(0, 10).map(cat => {
+                    const pct = grandTotal > 0 ? (categoryTotals[cat] / grandTotal) * 100 : 0
+                    return (
+                      <div key={cat}>
+                        <div className="flex justify-between text-xs mb-1">
+                          <span className="font-medium truncate max-w-[200px]" title={cat}>{cat}</span>
+                          <span className="font-bold text-red-700 ml-4 whitespace-nowrap">
+                            {formatCurrency(categoryTotals[cat])} ({pct.toFixed(1)}%)
+                          </span>
+                        </div>
+                        <div className="h-2 w-full bg-red-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-700"
+                            style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #f87171, #dc2626)' }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+          </Card>
+        )
+      })()}
 
       {reportType === 'aniversariantes' && (
         <Card className="p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">

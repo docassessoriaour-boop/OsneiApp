@@ -53,9 +53,9 @@ export default function ContasPagar() {
   const [form, setForm] = useState(emptyBill)
   const [parcelas, setParcelas] = useState(1)
   const [categoryFilter, setCategoryFilter] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+  const [startDate, setStartDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10))
+  const [endDate, setEndDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10))
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   
   // States for split category

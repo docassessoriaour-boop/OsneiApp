@@ -2,6 +2,23 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
+// ─── Lê a sessão do localStorage de forma síncrona para evitar flash de login ─
+function getStoredUser(): User | null {
+  try {
+    const raw = localStorage.getItem('gom-estoque-auth-v1')
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    // Supabase armazena { currentSession: { user: {...}, expires_at: ... } }
+    const session = parsed?.currentSession ?? parsed
+    if (!session?.user) return null
+    // Verifica se a sessão expirou
+    if (session.expires_at && session.expires_at * 1000 < Date.now()) return null
+    return session.user as User
+  } catch {
+    return null
+  }
+}
+
 export type UserRole = 'admin' | 'manager' | 'user'
 
 export interface Profile {
@@ -24,9 +41,10 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<User | null>(() => getStoredUser())
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Se já temos um usuário cacheado, não mostramos loading para evitar redirect
+  const [loading, setLoading] = useState(() => !getStoredUser())
   const initialized = React.useRef(false)
   const profileFetched = React.useRef(false)
   const lastUserId = React.useRef<string | null>(null)
@@ -149,7 +167,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(currentUser)
 
       if (currentUser) {
-        if (event === 'SIGNED_IN') {
+        if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
           // Supabase re-emite SIGNED_IN ao voltar de aba/inatividade mesmo
           // sem novo login. Se já temos perfil deste mesmo usuário, não
           // refaz o fetch — evita saturar a conexão e timeout em cascata
