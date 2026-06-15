@@ -47,8 +47,13 @@ export default function Dashboard() {
   in30Days.setDate(in30Days.getDate() + 30)
   const limitDate = in30Days.toISOString().slice(0, 10)
   
-  const expiringContracts = contracts.filter(c => 
+  const expiringContracts = contracts.map(c => ({
+    ...c,
+    dataFim: (c as any).data_fim || c.dataFim,
+    pacienteNome: (c as any).paciente_nome || c.pacienteNome
+  })).filter(c => 
     c.status === 'ativo' && 
+    c.dataFim &&
     c.dataFim <= limitDate && 
     c.dataFim >= today
   ).sort((a, b) => a.dataFim.localeCompare(b.dataFim))

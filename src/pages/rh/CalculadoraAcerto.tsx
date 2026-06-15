@@ -46,6 +46,7 @@ export default function CalculadoraAcerto() {
     workSchedule: '44h',
     workedDays: 30,
     hasExpiredVacation: false,
+    expiredVacationDays: 30,
     hasInsalubridade: false,
     insalubridadePercent: 20,
     fgtsBalance: 0,
@@ -163,7 +164,7 @@ export default function CalculadoraAcerto() {
 
     const feriasPropMeses = calculateVacationAvos()
     const feriasProporcionais = (baseCalculo / 12) * feriasPropMeses
-    const feriasVencidas = hasExpiredVacation ? baseCalculo : 0
+    const feriasVencidas = hasExpiredVacation ? (baseCalculo / 30) * (form.expiredVacationDays || 30) : 0
     const umTercoConstitucional = (feriasProporcionais + feriasVencidas) / 3
 
     // 4. Aviso Prévio (Já calculado acima para uso na projeção)
@@ -344,7 +345,7 @@ export default function CalculadoraAcerto() {
           ${results.saldoInsalubridade > 0 ? `<tr><td>Adicional Insalubridade s/ Saldo</td><td class="text-right">${formatCurrency(results.saldoInsalubridade)}</td><td></td></tr>` : ''}
           <tr><td>13º Salário Proporcional (${results.monthsInYear}/12)</td><td class="text-right">${formatCurrency(results.decimoTerceiro)}</td><td></td></tr>
           <tr><td>Férias Proporcionais (${results.feriasPropMeses}/12)</td><td class="text-right">${formatCurrency(results.feriasProporcionais)}</td><td></td></tr>
-          ${results.feriasVencidas > 0 ? `<tr><td>Férias Vencidas</td><td class="text-right">${formatCurrency(results.feriasVencidas)}</td><td></td></tr>` : ''}
+          ${results.feriasVencidas > 0 ? `<tr><td>Férias Vencidas (${form.expiredVacationDays || 30} dias)</td><td class="text-right">${formatCurrency(results.feriasVencidas)}</td><td></td></tr>` : ''}
           <tr><td>1/3 Constitucional sobre Férias</td><td class="text-right">${formatCurrency(results.umTercoConstitucional)}</td><td></td></tr>
           ${results.avisoPrevioValue > 0 ? `<tr><td>Aviso Prévio Indenizado (${results.avisoPrevioDays} dias)</td><td class="text-right">${formatCurrency(results.avisoPrevioValue)}</td><td></td></tr>` : ''}
           ${results.avisoPrevioDiscount > 0 ? `<tr><td>Aviso Prévio Descontado (Não Cumprido)</td><td></td><td class="text-right">${formatCurrency(results.avisoPrevioDiscount)}</td></tr>` : ''}
@@ -726,6 +727,18 @@ export default function CalculadoraAcerto() {
                     className="w-4 h-4 text-primary rounded border-gray-300"
                   />
                   <Label htmlFor="expiredVacation" className="cursor-pointer">Possui Férias Vencidas?</Label>
+                  
+                  {form.hasExpiredVacation && (
+                    <div className="flex items-center gap-2 ml-4">
+                      <Label className="text-xs">Dias:</Label>
+                      <Input 
+                        type="number" 
+                        className="w-20 h-8" 
+                        value={form.expiredVacationDays || ''} 
+                        onChange={e => setForm({...form, expiredVacationDays: Number(e.target.value)})}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-3">
