@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useDb } from '@/hooks/useDb'
 import type { Patient, Medication, BaseMedication, MedicationEntry } from '@/lib/types'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -16,7 +16,8 @@ import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFo
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Pencil, Trash2, Loader2, FileText, Plus, History, PackagePlus } from 'lucide-react'
+import { Pencil, Trash2, Loader2, FileText, Plus, History, PackagePlus, RefreshCw } from 'lucide-react'
+import { recalcularTodosEstoques } from '@/lib/stockCalculator'
 
 export default function Medicacao() {
   const [clinic] = useClinic()
@@ -41,9 +42,44 @@ export default function Medicacao() {
   const [entryResponsavel, setEntryResponsavel] = useState('')
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10))
   const [isProcessingEntry, setIsProcessingEntry] = useState(false)
+  const [isRecalculating, setIsRecalculating] = useState(false)
+  const autoRecalcDone = useRef(false)
 
   const [selectedPatientId, setSelectedPatientId] = useState('all')
   const [selectedUnit, setSelectedUnit] = useState('all')
+
+  // ── Recálculo automático de estoque ao carregar dados ──────────────────────
+  useEffect(() => {
+    // Aguarda os dados carregarem e executa apenas uma vez por sessão
+    if (loading || entriesLoading) return
+    if (rawMedications.length === 0) return
+    if (autoRecalcDone.current) return
+    autoRecalcDone.current = true
+
+    recalcularTodosEstoques(rawMedications, medEntries, updateMed)
+      .then(count => {
+        if (count > 0) {
+          reloadMeds()
+        }
+      })
+      .catch(err => console.error('Erro no recálculo automático de estoque:', err))
+  }, [loading, entriesLoading, rawMedications.length, medEntries.length])
+
+  // ── Recálculo manual (botão) ───────────────────────────────────────────────
+  async function handleRecalcularEstoque() {
+    if (isRecalculating) return
+    setIsRecalculating(true)
+    try {
+      const count = await recalcularTodosEstoques(rawMedications, medEntries, updateMed)
+      await reloadMeds()
+      alert(`Estoque recalculado com sucesso! ${count} medicamento(s) atualizado(s).`)
+    } catch (err: any) {
+      console.error(err)
+      alert('Erro ao recalcular estoque: ' + err.message)
+    } finally {
+      setIsRecalculating(false)
+    }
+  }
 
   const filtered = medications.filter(m => {
     const patient = patients.find(p => p.id === (m.pacienteId || (m as any).paciente_id))
@@ -737,6 +773,19 @@ export default function Medicacao() {
             </Button>
             <Button variant="outline" size="sm" onClick={printEntriesReport} className="gap-2 h-8 text-xs text-indigo-600 border-indigo-200 hover:bg-indigo-50">
                 <History className="h-4 w-4" /> Histórico de Entradas
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleRecalcularEstoque}
+              disabled={isRecalculating}
+              className="gap-2 h-8 text-xs text-orange-600 border-orange-200 hover:bg-orange-50"
+              title="Recalcula o estoque de todos os medicamentos com base nas entradas registradas e no consumo diário da escala"
+            >
+              {isRecalculating
+                ? <Loader2 className="h-4 w-4 animate-spin" />
+                : <RefreshCw className="h-4 w-4" />}
+              Recalcular Estoque
             </Button>
             <Button variant="default" size="sm" onClick={() => setStockEntryOpen(true)} className="gap-2 h-8 text-xs bg-green-600 hover:bg-green-700 shadow-sm">
                 <PackagePlus className="h-4 w-4" /> Lançar Estoque (Global)
