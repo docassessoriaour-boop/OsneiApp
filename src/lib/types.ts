@@ -428,3 +428,17 @@ export interface TechnicalProfessional {
   funcao: string
   status: 'ativo' | 'inativo'
 }
+
+export interface PersonalItemEntry {
+  id: string
+  paciente_id: string
+  paciente_nome?: string
+  data: string
+  tipo: 'fralda' | 'bem_pessoal'
+  item: string
+  quantidade: number
+  unidade?: string
+  entregue_por: string
+  observacoes?: string
+  created_at?: string
+}

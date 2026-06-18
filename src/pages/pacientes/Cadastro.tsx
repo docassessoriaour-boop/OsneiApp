@@ -3,7 +3,7 @@ import { useDb } from '@/hooks/useDb'
 import { useCep } from '@/hooks/useCep'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
-import type { Patient, Medication, BaseMedication, MedicationEntry, CompanionEntry } from '@/lib/types'
+import type { Patient, Medication, BaseMedication, MedicationEntry, CompanionEntry, PersonalItemEntry } from '@/lib/types'
 
 import { SearchBar } from '@/components/shared/SearchBar'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -17,7 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Pencil, Trash2, FileText, Loader2, Pill, Plus, Calendar, ShieldAlert, Save, Receipt, Printer, History, ArrowDownToLine } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, Pill, Plus, Calendar, ShieldAlert, Save, Receipt, Printer, History, ArrowDownToLine, Package } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -77,6 +77,19 @@ export default function Cadastro() {
     responsavel: '',
     valor: 0,
     status: 'ativo'
+  })
+
+  const { data: allPersonalItems, insert: insertPersonalItem, update: updatePersonalItem, remove: removePersonalItem } = useDb<PersonalItemEntry>('patient_personal_items')
+  const [personalItemDialogOpen, setPersonalItemDialogOpen] = useState(false)
+  const [editingPersonalItemId, setEditingPersonalItemId] = useState<string | null>(null)
+  const [personalItemForm, setPersonalItemForm] = useState<Partial<PersonalItemEntry>>({
+    data: new Date().toISOString().slice(0, 10),
+    tipo: 'fralda',
+    item: '',
+    quantidade: 1,
+    unidade: 'pacote',
+    entregue_por: '',
+    observacoes: ''
   })
 
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false)
@@ -751,6 +764,32 @@ export default function Cadastro() {
     printPDF(`Ficha Completa - ${p.nome}`, fichaHtml + medsHtml, clinic)
   }
 
+  async function handleSavePersonalItem() {
+    if (!editingId || !personalItemForm.item || !personalItemForm.entregue_por) {
+      alert('Preencha o item e quem entregou.')
+      return
+    }
+    try {
+      const payload = {
+        ...personalItemForm,
+        paciente_id: editingId,
+        paciente_nome: form.nome
+      }
+      if (editingPersonalItemId) {
+        await updatePersonalItem(editingPersonalItemId, payload as any)
+        alert('Registro atualizado com sucesso!')
+      } else {
+        await insertPersonalItem(payload as any)
+        alert('Entrada registrada com sucesso!')
+      }
+      setPersonalItemDialogOpen(false)
+      setEditingPersonalItemId(null)
+    } catch (error: any) {
+      console.error(error)
+      alert(`Erro ao salvar: ${error.message || 'Erro desconhecido'}`)
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -860,16 +899,19 @@ export default function Cadastro() {
             </div>
           </div>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-            <div className="px-6 pt-4 border-b bg-muted/20">
-              <TabsList className="grid w-full grid-cols-3 mb-4">
-                <TabsTrigger value="dados" className="gap-2">
-                  <FileText className="h-4 w-4" /> {isStandard ? 'Visualizar Dados' : 'Dados do Paciente'}
+            <div className="px-6 pt-3 border-b bg-muted/20">
+              <TabsList className="grid w-full grid-cols-4 mb-3 h-9">
+                <TabsTrigger value="dados" className="gap-1.5 text-xs px-2">
+                  <FileText className="h-3.5 w-3.5" /> {isStandard ? 'Dados' : 'Dados'}
                 </TabsTrigger>
-                <TabsTrigger value="medicacao" disabled={!editingId} className="gap-2">
-                  <Pill className="h-4 w-4" /> Medicações {!editingId && <span className="text-[10px] ml-1">(Salvar primeiro)</span>}
+                <TabsTrigger value="medicacao" disabled={!editingId} className="gap-1.5 text-xs px-2">
+                  <Pill className="h-3.5 w-3.5" /> Medicações
                 </TabsTrigger>
-                <TabsTrigger value="acompanhantes" disabled={!editingId} className="gap-2">
-                  <ShieldAlert className="h-4 w-4" /> Acompanhantes {!editingId && <span className="text-[10px] ml-1">(Salvar primeiro)</span>}
+                <TabsTrigger value="acompanhantes" disabled={!editingId} className="gap-1.5 text-xs px-2">
+                  <ShieldAlert className="h-3.5 w-3.5" /> Acompanhantes
+                </TabsTrigger>
+                <TabsTrigger value="fraldas_bens" disabled={!editingId} className="gap-1.5 text-xs px-2">
+                  <Package className="h-3.5 w-3.5" /> Fraldas e Bens
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -1340,6 +1382,93 @@ export default function Cadastro() {
             )}
           </div>
         </TabsContent>
+
+        <TabsContent value="fraldas_bens" className="m-0 border-0 p-0">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-lg font-semibold">Fraldas e Bens Pessoais</h3>
+              <p className="text-sm text-muted-foreground">Registre a entrada de fraldas e bens pessoais de {form.nome}</p>
+            </div>
+            <Button onClick={() => {
+              setPersonalItemForm({
+                data: new Date().toISOString().slice(0, 10),
+                tipo: 'fralda',
+                item: '',
+                quantidade: 1,
+                unidade: 'pacote',
+                entregue_por: '',
+                observacoes: ''
+              })
+              setEditingPersonalItemId(null)
+              setPersonalItemDialogOpen(true)
+            }} className="gap-2">
+              <Plus className="h-4 w-4" /> Registrar Entrada
+            </Button>
+          </div>
+
+          <div className="grid gap-4">
+            {allPersonalItems.filter(i => i.paciente_id === editingId).length === 0 ? (
+              <EmptyState message="Nenhuma entrada de fralda ou bem pessoal registrada para este paciente." />
+            ) : (
+              <div className="border rounded-lg overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Data</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Item</TableHead>
+                      <TableHead>Qtd</TableHead>
+                      <TableHead>Entregue por</TableHead>
+                      <TableHead>Observações</TableHead>
+                      <TableHead className="text-right">Ações</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {allPersonalItems
+                      .filter(i => i.paciente_id === editingId)
+                      .sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime())
+                      .map((item) => (
+                        <TableRow key={item.id}>
+                          <TableCell className="font-medium">{formatDate(item.data)}</TableCell>
+                          <TableCell>
+                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                              item.tipo === 'fralda'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-purple-50 text-purple-700 border border-purple-200'
+                            }`}>
+                              {item.tipo === 'fralda' ? '🩺 Fralda' : '🧳 Bem Pessoal'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="font-medium">{item.item}</TableCell>
+                          <TableCell>{item.quantidade} {item.unidade || ''}</TableCell>
+                          <TableCell>{item.entregue_por}</TableCell>
+                          <TableCell className="text-muted-foreground text-xs">{item.observacoes || '-'}</TableCell>
+                          <TableCell className="text-right">
+                            <div className="flex justify-end gap-1">
+                              <Button variant="ghost" size="icon" title="Editar" onClick={() => {
+                                setPersonalItemForm(item)
+                                setEditingPersonalItemId(item.id)
+                                setPersonalItemDialogOpen(true)
+                              }}>
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button variant="ghost" size="icon" title="Excluir" onClick={async () => {
+                                if (confirm('Excluir este registro?')) {
+                                  await removePersonalItem(item.id)
+                                }
+                              }}>
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+        </TabsContent>
         </div>
       </Tabs>
         
@@ -1742,6 +1871,127 @@ export default function Cadastro() {
             <Button variant="outline" onClick={() => setReceiptDialogOpen(false)}>Cancelar</Button>
             <Button onClick={handlePrintReceipt} className="gap-2 bg-green-600 hover:bg-green-700 text-white">
               <Printer className="h-4 w-4" /> Gerar Recibo PDF
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de Cadastro de Fraldas e Bens Pessoais */}
+      <Dialog open={personalItemDialogOpen} onOpenChange={setPersonalItemDialogOpen} className="max-w-lg w-[95vw]">
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Package className="h-5 w-5 text-blue-600" />
+              {editingPersonalItemId ? 'Editar Registro' : 'Nova Entrada – Fraldas / Bens Pessoais'}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            {/* Tipo */}
+            <div>
+              <Label>Tipo</Label>
+              <Select
+                value={personalItemForm.tipo || 'fralda'}
+                onChange={(e) => setPersonalItemForm({ ...personalItemForm, tipo: e.target.value as any })}
+                className="mt-1"
+              >
+                <option value="fralda">🩺 Fralda</option>
+                <option value="bem_pessoal">🧳 Bem Pessoal</option>
+              </Select>
+            </div>
+
+            {/* Item */}
+            <div>
+              <Label>Descrição do Item *</Label>
+              {personalItemForm.tipo === 'fralda' ? (
+                <Select
+                  value={personalItemForm.item || ''}
+                  onChange={(e) => setPersonalItemForm({ ...personalItemForm, item: e.target.value })}
+                  className="mt-1"
+                >
+                  <option value="">Selecione o tipo de fralda...</option>
+                  <option value="Fralda Geriátrica P">Fralda Geriátrica P</option>
+                  <option value="Fralda Geriátrica M">Fralda Geriátrica M</option>
+                  <option value="Fralda Geriátrica G">Fralda Geriátrica G</option>
+                  <option value="Fralda Geriátrica XG">Fralda Geriátrica XG</option>
+                  <option value="Fralda Geriátrica EG">Fralda Geriátrica EG</option>
+                  <option value="Absorvente Geriátrico">Absorvente Geriátrico</option>
+                  <option value="Outro">Outro (descrever nas observações)</option>
+                </Select>
+              ) : (
+                <Input
+                  value={personalItemForm.item || ''}
+                  onChange={(e) => setPersonalItemForm({ ...personalItemForm, item: e.target.value })}
+                  placeholder="Ex: Roupa, sapato, cobertor, etc."
+                  className="mt-1"
+                />
+              )}
+            </div>
+
+            {/* Quantidade + Unidade */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Quantidade *</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={personalItemForm.quantidade || 1}
+                  onChange={(e) => setPersonalItemForm({ ...personalItemForm, quantidade: Number(e.target.value) })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Unidade</Label>
+                <Select
+                  value={personalItemForm.unidade || 'pacote'}
+                  onChange={(e) => setPersonalItemForm({ ...personalItemForm, unidade: e.target.value })}
+                  className="mt-1"
+                >
+                  <option value="pacote">Pacote(s)</option>
+                  <option value="unidade">Unidade(s)</option>
+                  <option value="caixa">Caixa(s)</option>
+                  <option value="par">Par(es)</option>
+                  <option value="peca">Peça(s)</option>
+                </Select>
+              </div>
+            </div>
+
+            {/* Data */}
+            <div>
+              <Label>Data da Entrega *</Label>
+              <Input
+                type="date"
+                value={personalItemForm.data || new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setPersonalItemForm({ ...personalItemForm, data: e.target.value })}
+                className="mt-1"
+              />
+            </div>
+
+            {/* Entregue por */}
+            <div>
+              <Label>Entregue por (Responsável) *</Label>
+              <Input
+                value={personalItemForm.entregue_por || ''}
+                onChange={(e) => setPersonalItemForm({ ...personalItemForm, entregue_por: e.target.value })}
+                placeholder="Nome de quem entregou..."
+                className="mt-1"
+              />
+            </div>
+
+            {/* Observações */}
+            <div>
+              <Label>Observações</Label>
+              <Textarea
+                value={personalItemForm.observacoes || ''}
+                onChange={(e) => setPersonalItemForm({ ...personalItemForm, observacoes: e.target.value })}
+                placeholder="Informações adicionais..."
+                className="mt-1 min-h-[80px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPersonalItemDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSavePersonalItem} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
+              <Save className="h-4 w-4" /> {editingPersonalItemId ? 'Atualizar' : 'Registrar Entrada'}
             </Button>
           </DialogFooter>
         </DialogContent>
