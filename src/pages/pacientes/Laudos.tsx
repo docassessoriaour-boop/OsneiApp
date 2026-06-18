@@ -17,7 +17,6 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { formatDate } from '@/lib/utils'
 import { Pencil, Trash2, FileText, Loader2, Plus, Search, Wand2, Type } from 'lucide-react'
-import { useAuth } from '@/hooks/useAuth'
 import { fixSpelling, normalizeCase } from '@/lib/spelling'
 
 const emptyReport: Omit<PatientReport, 'id' | 'created_at'> = {
@@ -34,8 +33,7 @@ export default function Laudos() {
   const { data: patients, loading: loadingPatients } = useDb<Patient>('patients')
   const { data: professionals } = useDb<TechnicalProfessional>('technical_professionals')
   const [clinic] = useClinic()
-  const { profile } = useAuth()
-  
+
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -48,14 +46,24 @@ export default function Laudos() {
     r.title.toLowerCase().includes(search.toLowerCase())
   ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
 
-  function openNew() { 
+  function openNew() {
+    const firstProf = professionals.filter(p => p.status === 'ativo')[0]
+    let defaultProfName = ''
+    if (firstProf) {
+      let regLabel = firstProf.coren_crm
+      if (!regLabel.toUpperCase().includes('COREN') && !regLabel.toUpperCase().includes('CRM') && !regLabel.toUpperCase().includes('CRP')) {
+        regLabel = `COREN/CRM: ${regLabel}`
+      }
+      const docStr = firstProf.cpf ? `${regLabel} - CPF: ${firstProf.cpf}` : regLabel
+      defaultProfName = `${firstProf.nome} - ${docStr}`
+    }
     setForm({
       ...emptyReport,
       date: new Date().toISOString().slice(0, 10),
-      professional_name: profile?.full_name || ''
+      professional_name: defaultProfName
     })
-    setEditingId(null) 
-    setDialogOpen(true) 
+    setEditingId(null)
+    setDialogOpen(true)
   }
 
   function openEdit(report: PatientReport) {

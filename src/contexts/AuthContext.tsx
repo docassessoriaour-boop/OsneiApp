@@ -2,23 +2,6 @@ import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
-// ─── Lê a sessão do localStorage de forma síncrona para evitar flash de login ─
-function getStoredUser(): User | null {
-  try {
-    const raw = localStorage.getItem('gom-estoque-auth-v1')
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    // Supabase armazena { currentSession: { user: {...}, expires_at: ... } }
-    const session = parsed?.currentSession ?? parsed
-    if (!session?.user) return null
-    // Verifica se a sessão expirou
-    if (session.expires_at && session.expires_at * 1000 < Date.now()) return null
-    return session.user as User
-  } catch {
-    return null
-  }
-}
-
 export type UserRole = 'admin' | 'manager' | 'user'
 
 export interface Profile {
@@ -40,207 +23,176 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => getStoredUser())
-  const [profile, setProfile] = useState<Profile | null>(null)
-  // Se já temos um usuário cacheado, não mostramos loading para evitar redirect
-  const [loading, setLoading] = useState(() => !getStoredUser())
-  const initialized = React.useRef(false)
-  const profileFetched = React.useRef(false)
-  const lastUserId = React.useRef<string | null>(null)
+// ── Cache do profile em sessionStorage para evitar flash branco ao recarregar ──
+const PROFILE_CACHE_KEY = 'gom-profile-cache-v1'
 
-  const forceLogout = () => {
-    console.log('[Auth] Forcing logout due to invalid state')
-    localStorage.removeItem('gom-estoque-auth-v1') // Synchronously clear token to prevent loop
-    supabase.auth.signOut().catch(() => {})
-    setUser(null)
-    setProfile(null)
-    profileFetched.current = false
-    lastUserId.current = null
-    setLoading(false)
+function getCachedProfile(): Profile | null {
+  try {
+    const raw = sessionStorage.getItem(PROFILE_CACHE_KEY)
+    return raw ? (JSON.parse(raw) as Profile) : null
+  } catch {
+    return null
   }
+}
 
-  const fetchProfile = async (userId: string, retries = 3) => {
+function setCachedProfile(p: Profile | null) {
+  try {
+    if (p) {
+      sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(p))
+    } else {
+      sessionStorage.removeItem(PROFILE_CACHE_KEY)
+    }
+  } catch {}
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null)
+  // Inicia com o cache para não piscar enquanto getSession() resolve
+  const [profile, setProfile] = useState<Profile | null>(() => getCachedProfile())
+  // Sempre começa como true – só vira false quando getSession() resolver
+  const [loading, setLoading] = useState(true)
+
+  const profileFetchedRef = React.useRef(false)
+  const lastUserIdRef = React.useRef<string | null>(null)
+
+  // ── Busca o perfil no banco com retry ──────────────────────────────────────
+  const fetchProfile = async (userId: string, retries = 3): Promise<void> => {
     try {
-      console.log('[Auth] Fetching profile for:', userId, 'retries left:', retries)
-      
-      const controller = new AbortController()
-      
-      const fetchPromise = supabase
+      const { data, error } = await supabase
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .abortSignal(controller.signal)
         .single()
-        
-      const timeoutPromise = new Promise<{data: null, error: any}>((_, reject) => {
-        const timeoutId = setTimeout(() => {
-          controller.abort()
-          reject(new Error('Timeout na requisição de perfil'))
-        }, 5000)
-        ;(controller as any).timeoutId = timeoutId
-      })
-
-      const { data, error } = await Promise.race([
-        fetchPromise,
-        timeoutPromise
-      ])
-      
-      if ((controller as any).timeoutId) {
-        clearTimeout((controller as any).timeoutId)
-      }
 
       if (error) {
-        if (error.code === 'PGRST116' || error.code === 'PGRST301') {
-          console.warn(`[Auth] Error ${error.code}.`)
-          if (retries > 0) {
-            console.log('[Auth] Retrying profile fetch...')
-            await new Promise(r => setTimeout(r, 1000))
-            return fetchProfile(userId, retries - 1)
-          } else if (!profileFetched.current) {
-            forceLogout()
-            return
-          }
-        } else {
-          console.error('[Auth] Error fetching profile:', error)
-          if (retries > 0) {
-            console.log('[Auth] Retrying profile fetch...')
-            await new Promise(r => setTimeout(r, 1000))
-            return fetchProfile(userId, retries - 1)
-          }
+        if (retries > 0) {
+          await new Promise(r => setTimeout(r, 800))
+          return fetchProfile(userId, retries - 1)
         }
-      } else {
-        console.log('[Auth] Profile loaded successfully', data)
-        setProfile(data as Profile)
-        profileFetched.current = true
-      }
-    } catch (error: any) {
-      console.error('[Auth] Unexpected error in fetchProfile:', error)
-      if ((error.name === 'AbortError' || error.message === 'Timeout na requisição de perfil') && retries > 0) {
-        console.log('[Auth] Timeout, retrying profile fetch...')
-        await new Promise(r => setTimeout(r, 1000))
-        return fetchProfile(userId, retries - 1)
-      } else if (retries === 0 && !profileFetched.current) {
-        forceLogout()
+        console.error('[Auth] Failed to fetch profile after retries:', error)
         return
       }
-    } finally {
-      if (retries === 0 || profileFetched.current) {
-        setLoading(false)
+
+      if (data) {
+        const p = data as Profile
+        setProfile(p)
+        setCachedProfile(p)
+        profileFetchedRef.current = true
+        lastUserIdRef.current = userId
       }
+    } catch (err) {
+      if (retries > 0) {
+        await new Promise(r => setTimeout(r, 800))
+        return fetchProfile(userId, retries - 1)
+      }
+      console.error('[Auth] Exception fetching profile:', err)
     }
   }
 
   useEffect(() => {
     let mounted = true
 
-    const initializeAuth = async () => {
-      if (initialized.current) return
-      
+    // ── 1. Inicialização: lê sessão ativa do Supabase ──────────────────────
+    const initialize = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        
+
         if (!mounted) return
 
         if (session?.user) {
           setUser(session.user)
-          lastUserId.current = session.user.id
-          await fetchProfile(session.user.id)
+
+          // Verifica se o cache já é do mesmo usuário para evitar rebusca
+          const cached = getCachedProfile()
+          if (cached && cached.id === session.user.id) {
+            setProfile(cached)
+            profileFetchedRef.current = true
+            lastUserIdRef.current = session.user.id
+          } else {
+            await fetchProfile(session.user.id)
+          }
         } else {
-          setLoading(false)
+          // Sem sessão ativa: limpa tudo
+          setUser(null)
+          setProfile(null)
+          setCachedProfile(null)
         }
-        
-        initialized.current = true
-      } catch (error) {
-        console.error('[Auth] Initialization error:', error)
+      } catch (err) {
+        console.error('[Auth] Initialization error:', err)
+      } finally {
         if (mounted) setLoading(false)
       }
     }
 
-    initializeAuth()
+    initialize()
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return
-      console.log('[Auth] Event:', event, 'User:', session?.user?.id)
-      
-      const currentUser = session?.user ?? null
-      setUser(currentUser)
+    // ── 2. Escuta mudanças de estado (login, refresh de token, logout) ─────
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return
+        console.log('[Auth] Event:', event, 'User:', session?.user?.id)
 
-      if (currentUser) {
-        if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
-          // Supabase re-emite SIGNED_IN ao voltar de aba/inatividade mesmo
-          // sem novo login. Se já temos perfil deste mesmo usuário, não
-          // refaz o fetch — evita saturar a conexão e timeout em cascata
-          // nas demais queries da página.
-          const sameUserAlreadyLoaded =
-            profileFetched.current && lastUserId.current === currentUser.id
-          if (!sameUserAlreadyLoaded) {
-            lastUserId.current = currentUser.id
-            await fetchProfile(currentUser.id)
-          } else {
-            setLoading(false)
-          }
-        } else if (event === 'TOKEN_REFRESHED') {
-          // Sessão renovada. Se ainda não temos o profile (falhou no initial load), tenta buscar agora.
-          if (!profileFetched.current) {
-             lastUserId.current = currentUser.id
-             await fetchProfile(currentUser.id)
-          } else {
-             setLoading(false)
-          }
-        } else if (event === 'SIGNED_OUT') {
+        if (event === 'SIGNED_OUT') {
+          setUser(null)
           setProfile(null)
-          profileFetched.current = false
-          lastUserId.current = null
+          setCachedProfile(null)
+          profileFetchedRef.current = false
+          lastUserIdRef.current = null
           setLoading(false)
-        } else if (!profileFetched.current && initialized.current) {
-          await fetchProfile(currentUser.id)
+          return
         }
-      } else {
-        setProfile(null)
-        profileFetched.current = false
-        setLoading(false)
-      }
-    })
 
-    // Safety timeout: force loading to false after 8 seconds
-    const timeout = setTimeout(() => {
-      if (mounted && loading) {
-        console.warn('[Auth] Loading timeout reached, forcing render')
-        setLoading(false)
+        if (
+          event === 'SIGNED_IN' ||
+          event === 'TOKEN_REFRESHED' ||
+          event === 'USER_UPDATED'
+        ) {
+          const currentUser = session?.user ?? null
+          setUser(currentUser)
+
+          if (currentUser) {
+            // Só rebusca profile se ainda não temos o do usuário atual
+            const alreadyLoaded =
+              profileFetchedRef.current &&
+              lastUserIdRef.current === currentUser.id
+
+            if (!alreadyLoaded) {
+              await fetchProfile(currentUser.id)
+            }
+          }
+          setLoading(false)
+        }
       }
-    }, 8000)
+    )
 
     return () => {
       mounted = false
       subscription.unsubscribe()
-      clearTimeout(timeout)
     }
   }, [])
 
   const isAdmin = profile?.role === 'admin'
   const isManager = profile?.role === 'manager' || isAdmin
 
-  const value = {
+  const value: AuthContextType = {
     user,
     profile,
     loading,
     isAdmin,
     isManager,
     signOut: async () => {
-      setLoading(true)
+      setCachedProfile(null)
+      profileFetchedRef.current = false
+      lastUserIdRef.current = null
       try {
-        // Race the network request against a timeout to ensure it never hangs
-        await Promise.race([
-          supabase.auth.signOut(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout logging out')), 3000))
-        ])
-      } catch (error) {
-        console.error('[Auth] Error signing out:', error)
-      } finally {
-        forceLogout()
+        await supabase.auth.signOut()
+      } catch (err) {
+        console.error('[Auth] Error signing out:', err)
       }
-    }
+      setUser(null)
+      setProfile(null)
+      setLoading(false)
+    },
   }
 
   return (
