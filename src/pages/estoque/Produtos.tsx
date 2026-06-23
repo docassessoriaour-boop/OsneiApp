@@ -4,8 +4,9 @@ import { formatCurrency } from '@/lib/utils'
 
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
-import type { Product, ProductCategory } from '@/lib/types'
+import type { Product, ProductCategory, Medication } from '@/lib/types'
 import { Plus } from 'lucide-react'
+import { sincronizarEstoqueProdutos, vincularMedicamentosAoProduto } from '@/lib/stockCalculator'
 
 import { SearchBar } from '@/components/shared/SearchBar'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -17,7 +18,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Minus } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, ArrowUpDown, ArrowUp, ArrowDown, Minus, RefreshCw } from 'lucide-react'
 import { useMemo } from 'react'
 
 const emptyProduct: Omit<Product, 'id'> = {
@@ -25,8 +26,9 @@ const emptyProduct: Omit<Product, 'id'> = {
 }
 
 export default function Produtos() {
-  const { data: products, loading, insert, update, remove } = useDb<Product>('products')
+  const { data: products, loading, insert, update, remove, reload: reloadProducts } = useDb<Product>('products')
   const { data: categories, insert: insertCategory } = useDb<ProductCategory>('product_categories')
+  const { data: allMedications } = useDb<Medication>('medications')
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
@@ -40,6 +42,19 @@ export default function Produtos() {
   const [baixaDialogOpen, setBaixaDialogOpen] = useState(false)
   const [baixaProduto, setBaixaProduto] = useState<Product | null>(null)
   const [baixaQtd, setBaixaQtd] = useState<number | string>('')
+  const [isSyncing, setIsSyncing] = useState(false)
+
+  // Contagem de pacientes por product_id
+  const pacientesPorProduto = useMemo(() => {
+    const map: Record<string, number> = {}
+    allMedications.forEach(m => {
+      const pid = (m as any).product_id
+      if (pid) {
+        map[pid] = (map[pid] || 0) + 1
+      }
+    })
+    return map
+  }, [allMedications])
 
   const uniqueCategories = useMemo(() => {
     const names = new Set<string>()
@@ -161,6 +176,32 @@ export default function Produtos() {
     `, clinic)
   }
 
+  async function handleSyncMedicacao() {
+    if (isSyncing) return
+    setIsSyncing(true)
+    try {
+      // 1. Vincula medicamentos que ainda não foram vinculados
+      const vinculados = await vincularMedicamentosAoProduto(allMedications)
+
+      // 2. Sincroniza estoque dos produtos com base na soma dos estoques dos pacientes
+      const atualizados = await sincronizarEstoqueProdutos(allMedications)
+
+      // 3. Recarrega os produtos para mostrar os valores atualizados
+      await reloadProducts()
+
+      alert(
+        `Sincronização concluída!\n` +
+        `• ${vinculados} novo(s) vínculo(s) medicamento↔produto criado(s)\n` +
+        `• ${atualizados} produto(s) com estoque atualizado`
+      )
+    } catch (err: any) {
+      console.error(err)
+      alert('Erro ao sincronizar: ' + err.message)
+    } finally {
+      setIsSyncing(false)
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -169,6 +210,16 @@ export default function Produtos() {
           <p className="text-muted-foreground">Cadastro de produtos e medicamentos</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleSyncMedicacao}
+            disabled={isSyncing}
+            className="gap-2 text-orange-600 border-orange-200 hover:bg-orange-50"
+            title="Atualiza o estoque dos medicamentos com base na soma dos estoques individuais dos pacientes"
+          >
+            {isSyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Sincronizar Medicação
+          </Button>
           <Button variant="outline" onClick={printReport} className="gap-2"><FileText className="h-4 w-4" /> PDF</Button>
           <Button variant="secondary" onClick={() => setCatDialogOpen(true)} className="gap-2"><Plus className="h-4 w-4" /> Nova Categoria</Button>
           <Button onClick={openNew}>Novo Produto</Button>
@@ -229,14 +280,15 @@ export default function Produtos() {
                     Fornecedor {sortConfig?.key === 'fornecedor' ? (sortConfig.direction === 'asc' ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />) : <ArrowUpDown className="h-4 w-4 opacity-50" />}
                   </div>
                 </TableHead>
+                <TableHead>Pacientes</TableHead>
                 <TableHead>Ações</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
-                <TableRow><TableCell colSpan={8}><div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div></TableCell></TableRow>
+                <TableRow><TableCell colSpan={10}><div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div></TableCell></TableRow>
               ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={8}><EmptyState message="Nenhum produto" /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={10}><EmptyState message="Nenhum produto" /></TableCell></TableRow>
               ) : (
                 sortedData.map(p => (
                   <TableRow key={p.id}>
@@ -256,6 +308,15 @@ export default function Produtos() {
                     <TableCell>{p.ultima_data_entrada ? new Date(p.ultima_data_entrada).toLocaleDateString('pt-BR', { timeZone: 'UTC' }) : '-'}</TableCell>
                     <TableCell>{p.unidade}</TableCell>
                     <TableCell>{p.fornecedor}</TableCell>
+                    <TableCell>
+                      {pacientesPorProduto[p.id] ? (
+                        <Badge variant="secondary" className="text-xs">
+                          {pacientesPorProduto[p.id]} pac.
+                        </Badge>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <Button variant="ghost" size="icon" onClick={() => openBaixa(p)} title="Baixa no Estoque"><Minus className="h-4 w-4" /></Button>

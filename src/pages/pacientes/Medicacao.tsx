@@ -17,7 +17,7 @@ import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Pencil, Trash2, Loader2, FileText, Plus, History, PackagePlus, RefreshCw } from 'lucide-react'
-import { recalcularTodosEstoques } from '@/lib/stockCalculator'
+import { recalcularTodosEstoques, sincronizarEstoqueProdutos, vincularMedicamentosAoProduto } from '@/lib/stockCalculator'
 
 export default function Medicacao() {
   const [clinic] = useClinic()
@@ -56,11 +56,24 @@ export default function Medicacao() {
     if (autoRecalcDone.current) return
     autoRecalcDone.current = true
 
+    // 1. Vincula automaticamente os medicamentos aos produtos do estoque (por nome/dosagem)
+    vincularMedicamentosAoProduto(rawMedications)
+      .then(vinculados => {
+        if (vinculados > 0) console.log(`[Conciliação] ${vinculados} medicamento(s) vinculado(s) ao estoque automaticamente.`)
+      })
+      .catch(err => console.error('Erro na vinculação automática:', err))
+
+    // 2. Recalcula estoque individual dos pacientes
     recalcularTodosEstoques(rawMedications, medEntries, updateMed)
-      .then(count => {
+      .then(async count => {
         if (count > 0) {
-          reloadMeds()
+          await reloadMeds()
         }
+        // 3. Sincroniza com o almoxarifado (products)
+        return sincronizarEstoqueProdutos(rawMedications)
+      })
+      .then(prodAtual => {
+        if (prodAtual > 0) console.log(`[Conciliação] ${prodAtual} produto(s) do almoxarifado sincronizado(s).`)
       })
       .catch(err => console.error('Erro no recálculo automático de estoque:', err))
   }, [loading, entriesLoading, rawMedications.length, medEntries.length])
@@ -70,9 +83,22 @@ export default function Medicacao() {
     if (isRecalculating) return
     setIsRecalculating(true)
     try {
+      // 1. Vincula medicamentos aos produtos do estoque (caso ainda não vinculados)
+      const vinculados = await vincularMedicamentosAoProduto(rawMedications)
+
+      // 2. Recalcula estoque individual dos pacientes
       const count = await recalcularTodosEstoques(rawMedications, medEntries, updateMed)
       await reloadMeds()
-      alert(`Estoque recalculado com sucesso! ${count} medicamento(s) atualizado(s).`)
+
+      // 3. Sincroniza com o almoxarifado
+      const prodAtualizados = await sincronizarEstoqueProdutos(rawMedications)
+
+      alert(
+        `Recálculo concluído!\n` +
+        `• ${count} medicamento(s) de paciente atualizado(s)\n` +
+        `• ${vinculados} novo(s) vínculo(s) com o estoque criado(s)\n` +
+        `• ${prodAtualizados} produto(s) do almoxarifado sincronizado(s)`
+      )
     } catch (err: any) {
       console.error(err)
       alert('Erro ao recalcular estoque: ' + err.message)
@@ -613,13 +639,16 @@ export default function Medicacao() {
 
     setIsProcessingEntry(true)
     try {
+      // Lista de meds que receberam estoque (para sincronização posterior)
+      const medsAtualizados: typeof medications = []
+
       for (const [medId, qty] of Object.entries(distribution)) {
         if (qty <= 0) continue
         
         const med = medications.find(m => m.id === medId)
         if (!med) continue
 
-        // 1. Create Entry
+        // 1. Registrar entrada
         await insertMedEntry({
           medication_id: med.id,
           paciente_id: med.pacienteId || (med as any).paciente_id,
@@ -628,16 +657,33 @@ export default function Medicacao() {
           responsavel: entryResponsavel
         } as any)
 
-        // 2. Update Stock
+        // 2. Atualizar estoque individual do paciente
         const currentStock = med.estoque_atual || 0
-        await updateMed(med.id, {
-          estoque_atual: currentStock + qty
-        } as any)
+        const novoEstoque = currentStock + qty
+        await updateMed(med.id, { estoque_atual: novoEstoque } as any)
+
+        // Atualiza o objeto local para a sincronização posterior
+        medsAtualizados.push({ ...med, estoque_atual: novoEstoque })
       }
 
-      alert('Estoque atualizado com sucesso para todos os pacientes selecionados!')
+      // 3. Recarrega dados atualizados
+      await reloadMeds()
+
+      // 4. Sincroniza o almoxarifado com a soma dos estoques dos pacientes
+      // Monta a lista atualizada substituindo os meds que foram modificados
+      const medsAtualizadosIds = new Set(medsAtualizados.map(m => m.id))
+      const listaParaSincronizar = [
+        ...medications.filter(m => !medsAtualizadosIds.has(m.id)),
+        ...medsAtualizados
+      ]
+      const prodAtualizados = await sincronizarEstoqueProdutos(listaParaSincronizar)
+
+      const msgSinc = prodAtualizados > 0
+        ? `\n✓ ${prodAtualizados} produto(s) do almoxarifado sincronizado(s).`
+        : ''
+
+      alert(`Estoque atualizado com sucesso para todos os pacientes selecionados!${msgSinc}`)
       setStockEntryOpen(false)
-      reloadMeds()
     } catch (error: any) {
       console.error(error)
       alert('Erro ao salvar entrada global: ' + error.message)

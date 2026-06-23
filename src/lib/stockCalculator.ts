@@ -1,4 +1,5 @@
 import type { Medication, MedicationEntry } from '@/lib/types'
+import { supabase } from '@/lib/supabase'
 
 /**
  * Calcula o fator de consumo diário baseado no tipo de escala.
@@ -111,4 +112,145 @@ export async function recalcularTodosEstoques(
   }
 
   return updatedCount
+}
+
+/**
+ * Tenta vincular automaticamente as prescrições de medicação
+ * (medications) ao produto correspondente no estoque (products)
+ * com base na similaridade de nome e dosagem.
+ *
+ * A correspondência é feita normalizando os textos:
+ * - Remove acentos, maiúsculas, espaços extras e hífens
+ * - Verifica se o nome do produto contém o nome do medicamento
+ *   e a dosagem (ou vice-versa)
+ *
+ * @returns número de vínculos criados
+ */
+export async function vincularMedicamentosAoProduto(
+  medications: Medication[]
+): Promise<number> {
+  // Busca todos os produtos do tipo medicamento
+  const { data: produtos, error } = await supabase
+    .from('products')
+    .select('id, nome, tipo')
+    .or("tipo.eq.medicamento,tipo.ilike.MEDICAMENTO")
+
+  if (error || !produtos) {
+    console.error('Erro ao buscar produtos:', error)
+    return 0
+  }
+
+  let vinculados = 0
+
+  // Normaliza texto: lowercase, sem acento, só letras/números/espaço
+  function normalizar(texto: string): string {
+    return texto
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  for (const med of medications) {
+    // Pula se já vinculado
+    if ((med as any).product_id) continue
+
+    const nomeMedNorm = normalizar(med.medicamento)
+    const dosagemNorm = normalizar(med.dosagem || '')
+
+    // Busca o produto cuja nome normalizado contenha o nome do medicamento
+    let melhorProduto: any = null
+    let melhorScore = 0
+
+    for (const produto of produtos) {
+      const nomeProdNorm = normalizar(produto.nome)
+
+      // Verifica se o nome do produto contém o nome do medicamento
+      const conteNome = nomeProdNorm.includes(nomeMedNorm) || nomeMedNorm.includes(nomeProdNorm.split(' ')[0])
+
+      if (!conteNome) continue
+
+      let score = 1
+
+      // Bonus se a dosagem também estiver presente no nome do produto
+      if (dosagemNorm && nomeProdNorm.includes(dosagemNorm.replace(/\s/g, ''))) {
+        score += 2
+      }
+
+      // Verifica correspondência parcial de dosagem (ex: "100mg" vs "100 mg")
+      const dosagemSemEspaco = dosagemNorm.replace(/\s/g, '')
+      const prodNormSemEspaco = nomeProdNorm.replace(/\s/g, '')
+      if (dosagemSemEspaco && prodNormSemEspaco.includes(dosagemSemEspaco)) {
+        score += 3
+      }
+
+      if (score > melhorScore) {
+        melhorScore = score
+        melhorProduto = produto
+      }
+    }
+
+    // Só vincula se tiver uma correspondência razoável
+    if (melhorProduto && melhorScore >= 1) {
+      const { error: updErr } = await supabase
+        .from('medications')
+        .update({ product_id: melhorProduto.id })
+        .eq('id', med.id)
+
+      if (!updErr) {
+        vinculados++
+      }
+    }
+  }
+
+  return vinculados
+}
+
+/**
+ * Sincroniza o estoque dos produtos (almoxarifado) com base
+ * na soma dos estoques individuais dos pacientes (medications.estoque_atual),
+ * agrupando por product_id.
+ *
+ * Apenas atualiza produtos do tipo "medicamento" que possuem
+ * pelo menos um medication vinculado.
+ *
+ * @param medications - lista de todos os medicamentos dos pacientes
+ * @returns número de produtos atualizados
+ */
+export async function sincronizarEstoqueProdutos(
+  medications: Medication[]
+): Promise<number> {
+  // Agrupa estoque_atual por product_id
+  const somaPorProduto: Record<string, number> = {}
+
+  for (const med of medications) {
+    const pid = (med as any).product_id
+    if (!pid) continue
+    if (somaPorProduto[pid] === undefined) somaPorProduto[pid] = 0
+    somaPorProduto[pid] += med.estoque_atual || 0
+  }
+
+  const productIds = Object.keys(somaPorProduto)
+  if (productIds.length === 0) return 0
+
+  let atualizados = 0
+
+  for (const productId of productIds) {
+    const novoEstoque = Math.round(somaPorProduto[productId])
+
+    const { error } = await supabase
+      .from('products')
+      .update({ estoque: novoEstoque })
+      .eq('id', productId)
+
+    if (!error) {
+      atualizados++
+    } else {
+      console.error(`Erro ao atualizar produto ${productId}:`, error)
+    }
+  }
+
+  return atualizados
 }
