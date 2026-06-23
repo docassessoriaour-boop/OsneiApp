@@ -109,25 +109,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(session.user)
 
           // Verifica se o cache já é do mesmo usuário para evitar rebusca
-          const cached = getCachedProfile()
-          if (cached && cached.id === session.user.id) {
-            setProfile(cached)
+          const cachedProfile = getCachedProfile()
+          if (cachedProfile && cachedProfile.id === session.user.id) {
+            setProfile(cachedProfile)
             profileFetchedRef.current = true
             lastUserIdRef.current = session.user.id
           } else {
-            await fetchProfile(session.user.id)
+            // Sincroniza imediatamente usando os dados da sessão
+            setProfile({
+              id: session.user.id,
+              full_name: session.user.user_metadata?.full_name || 'Usuário',
+              email: session.user.email || '',
+              role: session.user.user_metadata?.role || 'user',
+              created_at: session.user.created_at || new Date().toISOString()
+            })
             
-            // Fallback: Se não encontrou no banco, usa os metadados da sessão!
-            // Isso evita que o usuário fique com perfil nulo se o banco/RLS falhar.
-            if (!profileFetchedRef.current) {
-               setProfile({
-                 id: session.user.id,
-                 full_name: session.user.user_metadata?.full_name || 'Usuário',
-                 email: session.user.email || '',
-                 role: session.user.user_metadata?.role || 'user',
-                 created_at: session.user.created_at || new Date().toISOString()
-               })
-            }
+            await fetchProfile(session.user.id)
           }
         } else {
           // Sem sessão ativa: limpa tudo
@@ -172,24 +169,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(currentUser)
 
           if (currentUser) {
-            // Só rebusca profile se ainda não temos o do usuário atual
-            const alreadyLoaded =
-              profileFetchedRef.current &&
-              lastUserIdRef.current === currentUser.id
+            // Usamos timeout para evitar fetchProfile duplo no initial load se initialize() já rodou
+            const cachedProfile = getCachedProfile()
+            const syncTimer = setTimeout(async () => {
+              const alreadyLoaded = profileFetchedRef.current && cachedProfile?.id === currentUser.id
 
-            if (!alreadyLoaded) {
-              await fetchProfile(currentUser.id)
-              
-              if (!profileFetchedRef.current) {
-                 setProfile({
-                   id: currentUser.id,
-                   full_name: currentUser.user_metadata?.full_name || 'Usuário',
-                   email: currentUser.email || '',
-                   role: currentUser.user_metadata?.role || 'user',
-                   created_at: currentUser.created_at || new Date().toISOString()
-                 })
+              if (!alreadyLoaded) {
+                // Sincroniza imediatamente usando os dados da sessão
+                setProfile({
+                  id: currentUser.id,
+                  full_name: currentUser.user_metadata?.full_name || 'Usuário',
+                  email: currentUser.email || '',
+                  role: currentUser.user_metadata?.role || 'user',
+                  created_at: currentUser.created_at || new Date().toISOString()
+                })
+                
+                await fetchProfile(currentUser.id)
               }
-            }
+            }, 50)
+            
+            return () => clearTimeout(syncTimer)
           }
           clearTimeout(fallbackTimer)
           setLoading(false)
