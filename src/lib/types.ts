@@ -165,6 +165,7 @@ export interface Contract {
   dataFim: string
   status: 'ativo' | 'vencido' | 'cancelado'
   observacoes: string
+  contrato_renovado_de?: string
 }
 
 export interface TransactionCategory {

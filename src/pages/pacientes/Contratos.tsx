@@ -16,7 +16,7 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, BarChart3, Loader2 } from 'lucide-react'
+import { Pencil, Trash2, FileText, BarChart3, Loader2, RefreshCw, History } from 'lucide-react'
 
 export default function Contratos() {
   const { data: patients, loading: loadingPatients } = useDb<Patient>('patients')
@@ -25,6 +25,7 @@ export default function Contratos() {
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [renovandoDe, setRenovandoDe] = useState<Contract | null>(null)
   const [view, setView] = useState<'table' | 'timeline'>('table')
   const [filterStart, setFilterStart] = useState('')
   const [filterEnd, setFilterEnd] = useState('')
@@ -33,6 +34,11 @@ export default function Contratos() {
   const [form, setForm] = useState({
     pacienteId: '', valor: 0, valorExtra: 0, descricaoExtra: '', dataInicio: '', dataFim: '', status: 'ativo' as Contract['status'], observacoes: '',
   })
+
+  // Histórico
+  const [historicoOpen, setHistoricoOpen] = useState(false)
+  const [historicoPacienteId, setHistoricoPacienteId] = useState<string | null>(null)
+  const [historicoPacienteNome, setHistoricoPacienteNome] = useState('')
 
   const today = new Date()
 
@@ -47,7 +53,6 @@ export default function Contratos() {
         valorExtra: (c as any).valor_extra || c.valorExtra,
         descricaoExtra: (c as any).descricao_extra || c.descricaoExtra,
       } as Contract
-      // Fallback para buscar o nome no cadastro caso esteja vazio no contrato
       if (!mapped.pacienteNome && mapped.pacienteId) {
         const p = patients.find(px => px.id === mapped.pacienteId)
         if (p) mapped.pacienteNome = p.nome
@@ -55,17 +60,78 @@ export default function Contratos() {
       mapped.pacienteNome = mapped.pacienteNome || 'Desconhecido'
       return mapped
     }).filter(c => (c.pacienteNome).toLowerCase().includes(search.toLowerCase()))
-    
+
     if (statusFilter !== 'todos') list = list.filter(c => c.status === statusFilter)
     if (filterStart) list = list.filter(c => c.dataFim >= filterStart)
     if (filterEnd) list = list.filter(c => c.dataFim <= filterEnd)
     return list.sort((a, b) => new Date(a.dataFim).getTime() - new Date(b.dataFim).getTime())
   }, [contracts, patients, search, filterStart, filterEnd, statusFilter])
 
+  // Todos os contratos mapeados (sem filtro de status) — usado no histórico
+  const allMapped = useMemo(() => {
+    return contracts.map(c => {
+      const mapped = {
+        ...c,
+        pacienteId: (c as any).paciente_id || c.pacienteId,
+        pacienteNome: (c as any).paciente_nome || c.pacienteNome,
+        dataInicio: (c as any).data_inicio || c.dataInicio,
+        dataFim: (c as any).data_fim || c.dataFim,
+        valorExtra: (c as any).valor_extra || c.valorExtra,
+        descricaoExtra: (c as any).descricao_extra || c.descricaoExtra,
+      } as Contract
+      if (!mapped.pacienteNome && mapped.pacienteId) {
+        const p = patients.find(px => px.id === mapped.pacienteId)
+        if (p) mapped.pacienteNome = p.nome
+      }
+      mapped.pacienteNome = mapped.pacienteNome || 'Desconhecido'
+      return mapped
+    })
+  }, [contracts, patients])
+
+  // Histórico do paciente selecionado, do mais recente ao mais antigo
+  const historicoContratos = useMemo(() => {
+    if (!historicoPacienteId) return []
+    return allMapped
+      .filter(c => c.pacienteId === historicoPacienteId)
+      .sort((a, b) => new Date(b.dataInicio).getTime() - new Date(a.dataInicio).getTime())
+  }, [allMapped, historicoPacienteId])
+
   function openNew() {
     setForm({ pacienteId: patients[0]?.id || '', valor: 0, valorExtra: 0, descricaoExtra: '', dataInicio: '', dataFim: '', status: 'ativo', observacoes: '' })
     setEditingId(null)
+    setRenovandoDe(null)
     setDialogOpen(true)
+  }
+
+  function openRenovar(c: Contract) {
+    // Calcula nova data início = dia seguinte ao vencimento do contrato atual
+    const fimAtual = c.dataFim ? new Date(c.dataFim + 'T12:00:00') : new Date()
+    const novoInicio = new Date(fimAtual)
+    novoInicio.setDate(novoInicio.getDate() + 1)
+    const novoFim = new Date(novoInicio)
+    novoFim.setFullYear(novoInicio.getFullYear() + 1)
+
+    const toStr = (d: Date) => d.toISOString().split('T')[0]
+
+    setForm({
+      pacienteId: c.pacienteId || (c as any).paciente_id,
+      valor: c.valor,
+      valorExtra: c.valorExtra || 0,
+      descricaoExtra: c.descricaoExtra || '',
+      dataInicio: toStr(novoInicio),
+      dataFim: toStr(novoFim),
+      status: 'ativo',
+      observacoes: `Renovação do contrato ${c.numero_contrato || c.id.slice(0, 8).toUpperCase()}`,
+    })
+    setEditingId(null)
+    setRenovandoDe(c)
+    setDialogOpen(true)
+  }
+
+  function openHistorico(c: Contract) {
+    setHistoricoPacienteId(c.pacienteId || (c as any).paciente_id)
+    setHistoricoPacienteNome(c.pacienteNome)
+    setHistoricoOpen(true)
   }
 
   async function handleSave() {
@@ -74,11 +140,11 @@ export default function Contratos() {
       alert('Selecione um paciente cadastrado.')
       return
     }
-    
+
     setSaving(true)
     try {
-      const dbPayload = { 
-        paciente_id: form.pacienteId, 
+      const dbPayload = {
+        paciente_id: form.pacienteId,
         paciente_nome: patient.nome,
         valor: form.valor,
         valor_extra: form.valorExtra,
@@ -86,7 +152,7 @@ export default function Contratos() {
         data_inicio: form.dataInicio,
         data_fim: form.dataFim,
         status: form.status,
-        observacoes: form.observacoes
+        observacoes: form.observacoes,
       }
 
       if (editingId) {
@@ -99,10 +165,17 @@ export default function Contratos() {
         const hh = String(now.getHours()).padStart(2, '0')
         const min = String(now.getMinutes()).padStart(2, '0')
         const num = `CPS-${dd}${mm}${yyyy}${hh}${min}`
-        
-        await insert({ ...dbPayload, numero_contrato: num } as any)
+
+        // Se for renovação, registra referência ao contrato anterior e marca-o como vencido
+        if (renovandoDe) {
+          await insert({ ...dbPayload, numero_contrato: num, contrato_renovado_de: renovandoDe.id } as any)
+          await update(renovandoDe.id, { status: 'vencido' } as any)
+        } else {
+          await insert({ ...dbPayload, numero_contrato: num } as any)
+        }
       }
       setDialogOpen(false)
+      setRenovandoDe(null)
     } catch (error) {
       console.error(error)
       alert('Erro ao salvar contrato.')
@@ -131,18 +204,19 @@ export default function Contratos() {
       dataInicio: (c as any).data_inicio || c.dataInicio,
       dataFim: (c as any).data_fim || c.dataFim
     }
-    
-    setForm({ 
-      pacienteId: mappedC.pacienteId, 
-      valor: mappedC.valor, 
+
+    setForm({
+      pacienteId: mappedC.pacienteId,
+      valor: mappedC.valor,
       valorExtra: mappedC.valorExtra || 0,
       descricaoExtra: mappedC.descricaoExtra || '',
-      dataInicio: mappedC.dataInicio, 
-      dataFim: mappedC.dataFim, 
-      status: mappedC.status, 
-      observacoes: mappedC.observacoes 
+      dataInicio: mappedC.dataInicio,
+      dataFim: mappedC.dataFim,
+      status: mappedC.status,
+      observacoes: mappedC.observacoes
     })
     setEditingId(c.id)
+    setRenovandoDe(null)
     setDialogOpen(true)
   }
 
@@ -152,7 +226,6 @@ export default function Contratos() {
     return <Badge variant={map[status]}>{labels[status]}</Badge>
   }
 
-  // Timeline helpers
   function getDaysRemaining(dataFim: string) {
     const diff = Math.ceil((new Date(dataFim).getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
     return diff
@@ -175,7 +248,6 @@ export default function Contratos() {
     return '#16a34a'
   }
 
-  // PDF Timeline export
   function exportTimelinePDF() {
     let rows = ''
     for (const c of filtered) {
@@ -207,7 +279,8 @@ export default function Contratos() {
   }
 
   function printContract(c: Contract) {
-    const p = patients.find(px => px.id === c.pacienteId)
+    const pid = c.pacienteId || (c as any).paciente_id
+    const p = patients.find(px => px.id === pid)
     if (!p) return
 
     const fullAddress = `${p.resp_endereco || ''}, ${p.resp_cep || ''}, ${p.resp_cidade || ''}`
@@ -224,6 +297,12 @@ export default function Contratos() {
       ${i > 0 ? '<p style="margin-top: 10px;">E também como <strong>CO-CONTRATANTE:</strong></p>' : ''}
       <p><strong>${i > 0 ? i + 1 + 'º ' : ''}CONTRATANTE: ${r.nome}</strong>, ${r.nac || 'Brasileira'}, ${r.civil || '---'}, ${r.prof || '---'}, portador(a) do RG nº ${r.rg || '---'} e CPF nº ${r.cpf || '---'}, residente na ${r.end}.</p>
     `).join('')
+
+    const dInicio = c.dataInicio || (c as any).data_inicio
+    const dFim = c.dataFim || (c as any).data_fim
+    const valor = c.valor
+    const valorExtra = c.valorExtra || (c as any).valor_extra
+    const descricaoExtra = c.descricaoExtra || (c as any).descricao_extra
 
     const html = `
       <div style="text-align: center; margin-bottom: 30px;">
@@ -256,9 +335,9 @@ export default function Contratos() {
         <p style="margin-top: 15px;"><strong>1.3. DA AUTONOMIA DOS SERVIÇOS:</strong> Os serviços serão prestados pela CONTRATADA de forma autônoma e independente, sem qualquer vínculo empregatício com o(a) CONTRATANTE.</p>
 
         <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA SEGUNDA - DOS VALORES E TAXAS</h3>
-        <p>2.1. O valor mensal é de <strong>${formatCurrencyPDF(c.valor)}</strong>, a ser pago todo <strong>5º dia útil</strong> de cada mês.</p>
-        ${c.valorExtra && c.valorExtra > 0 ? `
-        <p>2.1.1. <strong>Valores Extras Adicionais:</strong> Também será devido o valor de <strong>${formatCurrencyPDF(c.valorExtra)}</strong>, referente a: <em>${c.descricaoExtra || '---'}</em>.</p>
+        <p>2.1. O valor mensal é de <strong>${formatCurrencyPDF(valor)}</strong>, a ser pago todo <strong>5º dia útil</strong> de cada mês.</p>
+        ${valorExtra && valorExtra > 0 ? `
+        <p>2.1.1. <strong>Valores Extras Adicionais:</strong> Também será devido o valor de <strong>${formatCurrencyPDF(valorExtra)}</strong>, referente a: <em>${descricaoExtra || '---'}</em>.</p>
         ` : ''}
         <p>2.2. <strong>Penalidades:</strong> Multa de 2% sobre o atraso e juros de 1% ao mês.</p>
         <p style="font-size: 14pt;"><strong>2.3. Taxas Extras: Será cobrada uma taxa extra de ½ salário mínimo em dezembro para despesas de final de ano e encargos.</strong></p>
@@ -273,7 +352,7 @@ export default function Contratos() {
         <p>4.1. Não estão inclusos: Consultas externas, acompanhamento hospitalar, fraldas descartáveis, medicamentos pessoais, materiais para curativos específicos, roupas de uso pessoal e cobertores.</p>
 
         <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA QUINTA - VIGÊNCIA E RESCISÃO</h3>
-        <p>5.1. O contrato entra em vigor em <strong>${formatDatePDF(c.dataInicio)}</strong> com término em <strong>${formatDatePDF(c.dataFim)}</strong>.</p>
+        <p>5.1. O contrato entra em vigor em <strong>${formatDatePDF(dInicio)}</strong> com término em <strong>${formatDatePDF(dFim)}</strong>.</p>
         <p>5.2. A rescisão pode ocorrer por qualquer parte com aviso prévio de <strong>30 dias</strong>. Caso o Contratante rescinda sem aviso, será cobrada multa de 50% da mensalidade.</p>
         <p>5.3. O contrato é rescindido de pleno direito em caso de falecimento do idoso, sendo devido o pagamento proporcional aos serviços prestados no mês.</p>
 
@@ -401,6 +480,8 @@ export default function Contratos() {
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Button variant="ghost" size="icon" onClick={() => printContract(c)} title="Imprimir Contrato"><FileText className="h-4 w-4 text-blue-600" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => openRenovar(c)} title="Renovar Contrato"><RefreshCw className="h-4 w-4 text-green-600" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => openHistorico(c)} title="Histórico de Contratos"><History className="h-4 w-4 text-purple-600" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
                         </div>
@@ -430,16 +511,17 @@ export default function Contratos() {
                       <p className="text-[10px] text-muted-foreground">{c.numero_contrato || c.id.slice(0, 8).toUpperCase()}</p>
                       <p className="text-xs text-muted-foreground">{formatCurrency(c.valor)}/mês</p>
                     </div>
-                    <div className="text-right">
-                      <span
-                        className="text-sm font-semibold"
-                        style={{ color }}
-                      >
-                        {days < 0 ? `Vencido há ${Math.abs(days)} dias` : days === 0 ? 'Vence hoje' : `${days} dias restantes`}
-                      </span>
-                      <p className="text-xs text-muted-foreground">
-                        {formatDate(c.dataInicio)} — {formatDate(c.dataFim)}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      <Button variant="ghost" size="icon" onClick={() => openRenovar(c)} title="Renovar"><RefreshCw className="h-4 w-4 text-green-600" /></Button>
+                      <Button variant="ghost" size="icon" onClick={() => openHistorico(c)} title="Histórico"><History className="h-4 w-4 text-purple-600" /></Button>
+                      <div className="text-right">
+                        <span className="text-sm font-semibold" style={{ color }}>
+                          {days < 0 ? `Vencido há ${Math.abs(days)} dias` : days === 0 ? 'Vence hoje' : `${days} dias restantes`}
+                        </span>
+                        <p className="text-xs text-muted-foreground">
+                          {formatDate(c.dataInicio)} — {formatDate(c.dataFim)}
+                        </p>
+                      </div>
                     </div>
                   </div>
                   {/* Progress bar */}
@@ -460,41 +542,149 @@ export default function Contratos() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+      {/* ── DIALOG: Novo / Editar / Renovar ─────────────────────────────── */}
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setRenovandoDe(null) }}>
         <DialogHeader>
-          <DialogTitle>{editingId ? 'Editar Contrato' : 'Novo Contrato'}</DialogTitle>
-          <DialogClose onClose={() => setDialogOpen(false)} />
+          <DialogTitle>
+            {renovandoDe
+              ? `🔄 Renovar Contrato — ${renovandoDe.pacienteNome}`
+              : editingId ? 'Editar Contrato' : 'Novo Contrato'}
+          </DialogTitle>
+          <DialogClose onClose={() => { setDialogOpen(false); setRenovandoDe(null) }} />
         </DialogHeader>
         <DialogContent>
+          {renovandoDe && (
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-2 text-sm text-green-800">
+              <strong>Renovação:</strong> O contrato anterior <span className="font-mono">{renovandoDe.numero_contrato || renovandoDe.id.slice(0, 8).toUpperCase()}</span> será marcado como <strong>Vencido</strong> automaticamente ao salvar.
+            </div>
+          )}
           <div className="grid gap-4">
             <div>
               <Label>Paciente</Label>
-              <Select value={form.pacienteId} onChange={(e) => setForm({ ...form, pacienteId: e.target.value })} className="mt-1">
+              <Select
+                value={form.pacienteId}
+                onChange={(e) => setForm({ ...form, pacienteId: e.target.value })}
+                className="mt-1"
+                disabled={!!renovandoDe}
+              >
                 <option value="">Selecionar...</option>
                 {patients.filter(p => p.status === 'ativo').map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </Select>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>Valor Mensal</Label><Input type="number" value={form.valor} onChange={(e) => setForm({ ...form, valor: Number(e.target.value) })} className="mt-1" /></div>
-              <div><Label>Status</Label><Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Contract['status'] })} className="mt-1"><option value="ativo">Ativo</option><option value="vencido">Vencido</option><option value="cancelado">Cancelado</option></Select></div>
+              <div>
+                <Label>Valor Mensal (R$)</Label>
+                <Input type="number" value={form.valor} onChange={(e) => setForm({ ...form, valor: Number(e.target.value) })} className="mt-1" />
+              </div>
+              <div>
+                <Label>Status</Label>
+                <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Contract['status'] })} className="mt-1">
+                  <option value="ativo">Ativo</option>
+                  <option value="vencido">Vencido</option>
+                  <option value="cancelado">Cancelado</option>
+                </Select>
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>Valor Extra</Label><Input type="number" value={form.valorExtra} onChange={(e) => setForm({ ...form, valorExtra: Number(e.target.value) })} className="mt-1" placeholder="Ex: Higiene, Fraldas..." /></div>
-              <div><Label>Informar Referência do Extra</Label><Input value={form.descricaoExtra} onChange={(e) => setForm({ ...form, descricaoExtra: e.target.value })} className="mt-1" placeholder="A que se refere esse valor?" /></div>
+              <div>
+                <Label>Valor Extra</Label>
+                <Input type="number" value={form.valorExtra} onChange={(e) => setForm({ ...form, valorExtra: Number(e.target.value) })} className="mt-1" placeholder="Ex: Higiene, Fraldas..." />
+              </div>
+              <div>
+                <Label>Referência do Extra</Label>
+                <Input value={form.descricaoExtra} onChange={(e) => setForm({ ...form, descricaoExtra: e.target.value })} className="mt-1" placeholder="A que se refere esse valor?" />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div><Label>Data Início</Label><Input type="date" value={form.dataInicio} onChange={(e) => handleDateInicioChange(e.target.value)} className="mt-1" /></div>
-              <div><Label>Data Fim</Label><Input type="date" value={form.dataFim} onChange={(e) => setForm({ ...form, dataFim: e.target.value })} className="mt-1" /></div>
+              <div>
+                <Label>Data Início</Label>
+                <Input type="date" value={form.dataInicio} onChange={(e) => handleDateInicioChange(e.target.value)} className="mt-1" />
+              </div>
+              <div>
+                <Label>Data Fim</Label>
+                <Input type="date" value={form.dataFim} onChange={(e) => setForm({ ...form, dataFim: e.target.value })} className="mt-1" />
+              </div>
             </div>
-            <div><Label>Observações</Label><Textarea value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} className="mt-1" /></div>
+            <div>
+              <Label>Observações</Label>
+              <Textarea value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} className="mt-1" />
+            </div>
           </div>
         </DialogContent>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button variant="outline" onClick={() => { setDialogOpen(false); setRenovandoDe(null) }}>Cancelar</Button>
+          <Button onClick={handleSave} disabled={saving} className={renovandoDe ? 'bg-green-600 hover:bg-green-700' : ''}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            Salvar
+            {renovandoDe ? '🔄 Confirmar Renovação' : 'Salvar'}
           </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* ── MODAL: Histórico de Contratos ────────────────────────────────── */}
+      <Dialog open={historicoOpen} onOpenChange={setHistoricoOpen}>
+        <DialogHeader>
+          <DialogTitle>
+            <History className="inline h-5 w-5 mr-2 text-purple-600" />
+            Histórico de Contratos — {historicoPacienteNome}
+          </DialogTitle>
+          <DialogClose onClose={() => setHistoricoOpen(false)} />
+        </DialogHeader>
+        <DialogContent>
+          {historicoContratos.length === 0 ? (
+            <EmptyState message="Nenhum contrato encontrado para este paciente." />
+          ) : (
+            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+              {historicoContratos.map((c, idx) => {
+                const days = getDaysRemaining(c.dataFim)
+                const isAtual = idx === 0
+                return (
+                  <div
+                    key={c.id}
+                    className={`border rounded-lg p-4 ${isAtual ? 'border-green-400 bg-green-50' : 'border-gray-200 bg-gray-50'}`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-semibold text-gray-600">
+                          {c.numero_contrato || c.id.slice(0, 8).toUpperCase()}
+                        </span>
+                        {isAtual && <span className="text-[10px] bg-green-200 text-green-800 px-1.5 py-0.5 rounded font-semibold">ATUAL</span>}
+                        {c.contrato_renovado_de && <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">Renovação</span>}
+                      </div>
+                      {statusBadge(c.status)}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-sm text-gray-700 mb-2">
+                      <div>
+                        <span className="text-xs text-gray-500 block">Início</span>
+                        {formatDate(c.dataInicio)}
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500 block">Vencimento</span>
+                        {formatDate(c.dataFim)}
+                      </div>
+                      <div>
+                        <span className="text-xs text-gray-500 block">Valor</span>
+                        {formatCurrency(c.valor)}/mês
+                      </div>
+                    </div>
+                    {c.observacoes && (
+                      <p className="text-xs text-gray-500 italic mb-2">{c.observacoes}</p>
+                    )}
+                    <div className="flex justify-end">
+                      <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => printContract(c)}>
+                        <FileText className="h-3 w-3" /> Imprimir
+                      </Button>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+          <div className="mt-3 text-xs text-muted-foreground text-right">
+            {historicoContratos.length} contrato{historicoContratos.length !== 1 ? 's' : ''} no histórico
+          </div>
+        </DialogContent>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setHistoricoOpen(false)}>Fechar</Button>
         </DialogFooter>
       </Dialog>
     </div>
