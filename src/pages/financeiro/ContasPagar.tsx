@@ -36,6 +36,7 @@ export default function ContasPagar() {
   const { data: bankAccounts } = useDb<BankAccount>('bank_accounts')
   const { insert: insertBankTransaction, update: updateBankTransaction, remove: removeBankTransaction } = useDb<any>('bank_transactions')
   const { update: updateTermination } = useDb<Termination>('terminations')
+  const { update: updatePayroll } = useDb<any>('payrolls')
   
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
@@ -181,6 +182,10 @@ export default function ContasPagar() {
       if ((partialBill as any).termination_id) {
         await updateTermination((partialBill as any).termination_id, { status: 'pago' })
       }
+      // Se for uma folha de pagamento, dar baixa na folha também
+      if ((partialBill as any).payroll_id) {
+        await updatePayroll((partialBill as any).payroll_id, { status: 'pago' })
+      }
 
       // 3. Criar a nova conta com o saldo restante
       await insert({
@@ -231,6 +236,10 @@ export default function ContasPagar() {
 
       if ((totalBill as any).termination_id) {
         await updateTermination((totalBill as any).termination_id, { status: 'pago' })
+      }
+      // Se for uma folha de pagamento, dar baixa na folha também
+      if ((totalBill as any).payroll_id) {
+        await updatePayroll((totalBill as any).payroll_id, { status: 'pago' })
       }
 
       setTotalDialogOpen(false)
@@ -470,6 +479,10 @@ export default function ContasPagar() {
           if (payload.status === 'pago' && (payload as any).termination_id) {
             await updateTermination((payload as any).termination_id, { status: 'pago' })
           }
+          // Se for uma folha de pagamento, dar baixa na folha também
+          if (payload.status === 'pago' && (payload as any).payroll_id) {
+            await updatePayroll((payload as any).payroll_id, { status: 'pago' })
+          }
           
           if (isSplit) {
             const cat2 = categories.find(c => c.id === splitForm.category2_id)
@@ -504,6 +517,10 @@ export default function ContasPagar() {
           // Se for uma rescisão e já estiver sendo inserida como paga, dar baixa nela também
           if (payload.status === 'pago' && (payload as any).termination_id) {
              await updateTermination((payload as any).termination_id, { status: 'pago' })
+          }
+          // Se for uma folha de pagamento, dar baixa na folha também
+          if (payload.status === 'pago' && (payload as any).payroll_id) {
+            await updatePayroll((payload as any).payroll_id, { status: 'pago' })
           }
           
           if (isSplit) {

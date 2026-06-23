@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useDb } from '@/hooks/useDb'
 import { formatCurrency } from '@/lib/utils'
-import type { Employee, Payroll, PayrollAdicional, ScheduleException, Bill } from '@/lib/types'
+import type { Employee, Payroll, PayrollAdicional, ScheduleException, Bill, BankAccount } from '@/lib/types'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF, formatCurrencyPDF, formatDatePDF } from '@/lib/pdf'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Pencil, Trash2, FileText, Plus, X, CalendarClock, Loader2, Banknote, Printer } from 'lucide-react'
+import { Pencil, Trash2, FileText, Plus, X, CalendarClock, Loader2, Banknote, Printer, CheckCircle2 } from 'lucide-react'
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInCalendarDays, getDaysInMonth } from 'date-fns'
 
 const emptyAdicional: PayrollAdicional = { descricao: '', tipo: 'provento', valor: 0 }
@@ -39,7 +39,9 @@ export default function FolhaPagamento() {
     periodoFim: p.periodoFim || p.periodo_fim,
   })) as Payroll[]
   const { data: exceptions } = useDb<ScheduleException>('schedule_exceptions')
-  const { insert: insertBill } = useDb<Bill>('bills')
+  const { data: bills, insert: insertBill, update: updateBill } = useDb<Bill>('bills')
+  const { data: bankAccounts } = useDb<BankAccount>('bank_accounts')
+  const { insert: insertBankTx } = useDb<any>('bank_transactions')
   
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
@@ -47,7 +49,13 @@ export default function FolhaPagamento() {
   const [massDialogOpen, setMassDialogOpen] = useState(false)
   const [massMonth, setMassMonth] = useState(format(new Date(), 'yyyy-MM'))
   const [generating, setGenerating] = useState(false)
-  
+
+  // --- Dialog Dar Baixa ---
+  const [baixaOpen, setBaixaOpen] = useState(false)
+  const [baixaPayroll, setBaixaPayroll] = useState<Payroll | null>(null)
+  const [baixaForm, setBaixaForm] = useState({ dataPagamento: new Date().toISOString().slice(0, 10), bank_account_id: '' })
+  const [baixaSaving, setBaixaSaving] = useState(false)
+
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState({
     funcionarioId: '',
@@ -453,18 +461,102 @@ export default function FolhaPagamento() {
     printPDF('Relatório de Folha de Pagamento', html, clinic)
   }
 
+  // Abre dialog de dar baixa — confronta bill existente
+  function openDarBaixa(p: Payroll) {
+    setBaixaPayroll(p)
+    setBaixaForm({ dataPagamento: new Date().toISOString().slice(0, 10), bank_account_id: bankAccounts[0]?.id || '' })
+    setBaixaOpen(true)
+  }
+
+  // Dar baixa: confronta, cria ou paga bill, atualiza folha — sem duplicar
+  async function handleDarBaixa() {
+    if (!baixaPayroll) return
+    if (!baixaForm.bank_account_id) { alert('Selecione a conta bancária para lançar o pagamento.'); return }
+    setBaixaSaving(true)
+    try {
+      const p = baixaPayroll
+      // 1. Confronta: existe bill vinculada a esta folha?
+      const existingBill = bills.find(b => (b as any).payroll_id === p.id)
+
+      if (existingBill && existingBill.status === 'pago') {
+        // Já pago em Contas a Pagar → apenas marca a folha como paga
+        await update(p.id, { status: 'pago' } as any)
+        alert(`✅ Pagamento já registrado em Contas a Pagar (${formatCurrency(existingBill.valor)}). Folha marcada como Paga.`)
+      } else if (existingBill && existingBill.status !== 'pago') {
+        // Bill existe mas ainda pendente → baixa a conta + marca folha
+        const bt = await insertBankTx({
+          data: baixaForm.dataPagamento,
+          descricao: `Pagamento: ${existingBill.descricao}`,
+          valor: existingBill.valor,
+          tipo: 'debito',
+          origem: 'manual',
+          bank_account_id: baixaForm.bank_account_id,
+          categoria: 'Folha de Pagamento'
+        })
+        await updateBill(existingBill.id, {
+          ...existingBill,
+          status: 'pago',
+          payment_date: baixaForm.dataPagamento,
+          bank_account_id: baixaForm.bank_account_id,
+          bank_transaction_id: bt?.id || null
+        } as any)
+        await update(p.id, { status: 'pago' } as any)
+        alert(`✅ Conta a Pagar baixada e Folha marcada como Paga!`)
+      } else {
+        // Nenhuma bill vinculada → cria já como paga + marca folha
+        const descricao = `Folha de Pagamento - ${p.funcionarioNome} - ${p.mesReferencia}`
+        const bt = await insertBankTx({
+          data: baixaForm.dataPagamento,
+          descricao: `Pagamento: ${descricao}`,
+          valor: p.salarioLiquido,
+          tipo: 'debito',
+          origem: 'manual',
+          bank_account_id: baixaForm.bank_account_id,
+          categoria: 'Folha de Pagamento'
+        })
+        await insertBill({
+          descricao,
+          valor: p.salarioLiquido,
+          vencimento: baixaForm.dataPagamento,
+          status: 'pago',
+          payment_date: baixaForm.dataPagamento,
+          bank_account_id: baixaForm.bank_account_id,
+          bank_transaction_id: bt?.id || null,
+          categoria: 'Folha de Pagamento',
+          payroll_id: p.id
+        } as any)
+        await update(p.id, { status: 'pago' } as any)
+        alert(`✅ Pagamento lançado em Contas a Pagar e Folha marcada como Paga!`)
+      }
+      setBaixaOpen(false)
+    } catch (err) {
+      console.error(err)
+      alert('Erro ao registrar pagamento.')
+    } finally {
+      setBaixaSaving(false)
+    }
+  }
+
+  // Gerar Conta a Pagar (pendente) — com proteção anti-duplicata por payroll_id
   async function gerarContaPagar(p: Payroll) {
-    if (confirm(`Deseja gerar uma Conta a Pagar no valor de ${formatCurrency(p.salarioLiquido)} para ${p.funcionarioNome}?`)) {
+    // Verifica se já existe bill vinculada
+    const existing = bills.find(b => (b as any).payroll_id === p.id)
+    if (existing) {
+      alert(`⚠️ Já existe uma Conta a Pagar para esta folha (Status: ${existing.status === 'pago' ? 'Paga' : 'Pendente'}). Use o botão ✅ Dar Baixa para registrar o pagamento.`)
+      return
+    }
+    if (confirm(`Gerar Conta a Pagar (pendente) de ${formatCurrency(p.salarioLiquido)} para ${p.funcionarioNome}?`)) {
       try {
         await insertBill({
           descricao: `Folha de Pagamento - ${p.funcionarioNome} - ${p.mesReferencia}`,
           valor: p.salarioLiquido,
           vencimento: new Date().toISOString().slice(0, 10),
           status: 'pendente',
-          categoria: 'Folha de Pagamento'
-        } as Omit<Bill, 'id'>)
+          categoria: 'Folha de Pagamento',
+          payroll_id: p.id
+        } as any)
         alert('Conta a Pagar gerada com sucesso!')
-      } catch (error) {
+      } catch {
         alert('Erro ao gerar Conta a Pagar')
       }
     }
@@ -542,7 +634,12 @@ export default function FolhaPagamento() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="icon" title="Gerar Conta a Pagar" onClick={() => gerarContaPagar(p)}>
+                        {p.status !== 'pago' && (
+                          <Button variant="ghost" size="icon" title="Dar Baixa / Registrar Pagamento" onClick={() => openDarBaixa(p)}>
+                            <CheckCircle2 className="h-4 w-4 text-green-600" />
+                          </Button>
+                        )}
+                        <Button variant="ghost" size="icon" title="Gerar Conta a Pagar (Pendente)" onClick={() => gerarContaPagar(p)}>
                           <Banknote className="h-4 w-4 text-emerald-600" />
                         </Button>
                         <Button variant="ghost" size="icon" title="Gerar Recibo PDF" onClick={() => printReceipt(p)}>
@@ -812,6 +909,87 @@ export default function FolhaPagamento() {
           <Button onClick={handleMassGenerate} disabled={generating} className="gap-2">
             {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarClock className="h-4 w-4" />}
             Gerar Folhas do Mês
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* ── DIALOG: Dar Baixa / Registrar Pagamento ───────────────────── */}
+      <Dialog open={baixaOpen} onOpenChange={(open) => { setBaixaOpen(open) }}>
+        <DialogHeader>
+          <DialogTitle>
+            <CheckCircle2 className="inline h-5 w-5 mr-2 text-green-600" />
+            Dar Baixa — {baixaPayroll?.funcionarioNome}
+          </DialogTitle>
+          <DialogClose onClose={() => setBaixaOpen(false)} />
+        </DialogHeader>
+        <DialogContent>
+          {baixaPayroll && (
+            <>
+              {/* Confronto automático */}
+              {(() => {
+                const linked = bills.find(b => (b as any).payroll_id === baixaPayroll.id)
+                if (linked && linked.status === 'pago') {
+                  return (
+                    <div className="bg-green-50 border border-green-300 rounded-lg p-3 mb-4 text-sm text-green-800">
+                      ✅ <strong>Já pago em Contas a Pagar!</strong> Valor: {formatCurrency(linked.valor)} em {linked.payment_date || '—'}.<br />
+                      Ao confirmar, a Folha será marcada como <strong>Paga</strong> sem criar novo lançamento.
+                    </div>
+                  )
+                }
+                if (linked && linked.status !== 'pago') {
+                  return (
+                    <div className="bg-amber-50 border border-amber-300 rounded-lg p-3 mb-4 text-sm text-amber-800">
+                      ⚠️ <strong>Conta a Pagar pendente encontrada</strong> ({formatCurrency(linked.valor)}).<br />
+                      Ao confirmar, ela será <strong>baixada automaticamente</strong> e a Folha marcada como Paga.
+                    </div>
+                  )
+                }
+                return (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-sm text-blue-800">
+                    ℹ️ Nenhuma Conta a Pagar vinculada. Um novo lançamento <strong>pago</strong> será criado em Contas a Pagar.
+                  </div>
+                )
+              })()}
+
+              <div className="grid gap-4">
+                <div className="grid grid-cols-2 gap-3 text-sm bg-muted/40 rounded-lg p-3">
+                  <div><span className="text-muted-foreground text-xs block">Funcionário</span>{baixaPayroll.funcionarioNome}</div>
+                  <div><span className="text-muted-foreground text-xs block">Mês Ref.</span>{baixaPayroll.mesReferencia}</div>
+                  <div><span className="text-muted-foreground text-xs block">Sal. Líquido</span><strong>{formatCurrency(baixaPayroll.salarioLiquido)}</strong></div>
+                  <div><span className="text-muted-foreground text-xs block">Status Atual</span><Badge variant="warning">Pendente</Badge></div>
+                </div>
+
+                <div>
+                  <Label>Data do Pagamento</Label>
+                  <Input
+                    type="date"
+                    value={baixaForm.dataPagamento}
+                    onChange={e => setBaixaForm({ ...baixaForm, dataPagamento: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>Conta Bancária</Label>
+                  <Select
+                    value={baixaForm.bank_account_id}
+                    onChange={e => setBaixaForm({ ...baixaForm, bank_account_id: e.target.value })}
+                    className="mt-1"
+                  >
+                    <option value="">Selecionar conta...</option>
+                    {bankAccounts.map(ba => (
+                      <option key={ba.id} value={ba.id}>{ba.nome} — {ba.banco}</option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setBaixaOpen(false)}>Cancelar</Button>
+          <Button onClick={handleDarBaixa} disabled={baixaSaving} className="bg-green-600 hover:bg-green-700 gap-2">
+            {baixaSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+            Confirmar Pagamento
           </Button>
         </DialogFooter>
       </Dialog>
