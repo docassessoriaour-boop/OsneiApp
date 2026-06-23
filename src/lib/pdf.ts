@@ -4,7 +4,7 @@ import type { CompanySettings, Invoice, Patient } from './types'
  * Opens a styled print window with the provided HTML content.
  * Works for both "Print" and "Save as PDF" via the browser's native dialog.
  */
-export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettings, options?: { hideLogo?: boolean, hideClinicHeader?: boolean, compactLayout?: boolean }) {
+export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettings, options?: { hideLogo?: boolean, hideClinicHeader?: boolean, compactLayout?: boolean, hideTitle?: boolean }) {
   const win = window.open('', '_blank', 'width=900,height=700')
   if (!win) return
 
@@ -118,10 +118,7 @@ export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettin
 </head>
 <body>
   ${clinicHeader}
-  <div style="text-align: center; margin-bottom: 20px;">
-    <h2>${title}</h2>
-    <p style="font-size: 10pt; color: #666; margin-top: -8pt;">Gerado em: ${new Date().toLocaleString('pt-BR')}</p>
-  </div>
+  ${!options?.hideTitle ? `<div style="text-align: center; margin-bottom: 20px;"><h2>${title}</h2><p style="font-size: 10pt; color: #666; margin-top: -8pt;">Gerado em: ${new Date().toLocaleString('pt-BR')}</p></div>` : ''}
   ${bodyHtml}
 </body>
 </html>`)

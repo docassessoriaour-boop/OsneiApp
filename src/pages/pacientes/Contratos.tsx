@@ -341,7 +341,7 @@ export default function Contratos() {
         ` : ''}
         <p>2.2. <strong>Penalidades:</strong> Multa de 2% sobre o atraso e juros de 1% ao mês.</p>
         <p style="font-size: 14pt;"><strong>2.3. Taxas Extras: Será cobrada uma taxa extra de ½ salário mínimo em dezembro para despesas de final de ano e encargos.</strong></p>
-        <p>2.4. <strong>Reajustes:</strong> O valor será corrigido anualmente ou em caso de mudança no grau de dependência do idoso.</p>
+        <p>2.4. <strong>Reajustes:</strong> O valor será corrigido anualmente em 15% (automaticamente) ou em caso de mudança no grau de dependência do idoso.</p>
 
         <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA TERCEIRA - DAS OBRIGAÇÕES DO CONTRATANTE</h3>
         <p>3.1. Fornecer dados de profissionais particulares (médicos, dentistas) e relação de medicamentos com receituário atualizado.</p>
@@ -354,7 +354,7 @@ export default function Contratos() {
         <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA QUINTA - VIGÊNCIA E RESCISÃO</h3>
         <p>5.1. O contrato entra em vigor em <strong>${formatDatePDF(dInicio)}</strong> com término em <strong>${formatDatePDF(dFim)}</strong>.</p>
         <p>5.2. A rescisão pode ocorrer por qualquer parte com aviso prévio de <strong>30 dias</strong>. Caso o Contratante rescinda sem aviso, será cobrada multa de 50% da mensalidade.</p>
-        <p>5.3. O contrato é rescindido de pleno direito em caso de falecimento do idoso, sendo devido o pagamento proporcional aos serviços prestados no mês.</p>
+        <p>5.3. Em caso de falecimento do idoso, o contrato será automaticamente rescindido de pleno direito, sendo devido apenas o pagamento proporcional aos serviços efetivamente prestados no mês em curso. Fica estabelecido que não haverá qualquer devolução de valores já pagos à clínica, seja a título de mensalidade, taxa de adesão ou outros encargos, considerando que tais quantias correspondem a serviços disponibilizados e/ou custos administrativos já assumidos.</p>
 
         <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA SEXTA - REGRAS GERAIS</h3>
         <p>6.1. <strong>Foro:</strong> Fica eleito o foro da Comarca de <strong>Ourinhos/SP</strong> para dirimir quaisquer dúvidas oriundas deste contrato.</p>
@@ -388,7 +388,7 @@ export default function Contratos() {
         </div>
       </div>
     `
-    printPDF('Contrato de Prestação de Serviços', html, clinic)
+    printPDF('Contrato de Prestação de Serviços', html, clinic, { hideTitle: true })
   }
 
   const handleDateInicioChange = (date: string) => {
