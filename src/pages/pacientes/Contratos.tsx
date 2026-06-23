@@ -278,8 +278,7 @@ export default function Contratos() {
         <p>5.3. O contrato é rescindido de pleno direito em caso de falecimento do idoso, sendo devido o pagamento proporcional aos serviços prestados no mês.</p>
 
         <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA SEXTA - REGRAS GERAIS</h3>
-        <p>6.1. <strong>Visitas:</strong> Todos os dias, das 14h00 às 16h00. Retorno de passeios externos até as 18h00.</p>
-        <p>6.2. <strong>Foro:</strong> Fica eleito o foro da Comarca de <strong>Ourinhos/SP</strong> para dirimir quaisquer dúvidas oriundas deste contrato.</p>
+        <p>6.1. <strong>Foro:</strong> Fica eleito o foro da Comarca de <strong>Ourinhos/SP</strong> para dirimir quaisquer dúvidas oriundas deste contrato.</p>
 
         <div style="margin-top: 50px;">
           <p style="text-indent: 0;">Ourinhos, ${todayStr}.</p>
