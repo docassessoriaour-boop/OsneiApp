@@ -116,6 +116,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             lastUserIdRef.current = session.user.id
           } else {
             await fetchProfile(session.user.id)
+            
+            // Fallback: Se não encontrou no banco, usa os metadados da sessão!
+            // Isso evita que o usuário fique com perfil nulo se o banco/RLS falhar.
+            if (!profileFetchedRef.current) {
+               setProfile({
+                 id: session.user.id,
+                 full_name: session.user.user_metadata?.full_name || 'Usuário',
+                 email: session.user.email || '',
+                 role: session.user.user_metadata?.role || 'user',
+                 created_at: session.user.created_at || new Date().toISOString()
+               })
+            }
           }
         } else {
           // Sem sessão ativa: limpa tudo
@@ -167,6 +179,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (!alreadyLoaded) {
               await fetchProfile(currentUser.id)
+              
+              if (!profileFetchedRef.current) {
+                 setProfile({
+                   id: currentUser.id,
+                   full_name: currentUser.user_metadata?.full_name || 'Usuário',
+                   email: currentUser.email || '',
+                   role: currentUser.user_metadata?.role || 'user',
+                   created_at: currentUser.created_at || new Date().toISOString()
+                 })
+              }
             }
           }
           clearTimeout(fallbackTimer)
@@ -192,17 +214,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAdmin,
     isManager,
     signOut: async () => {
+      // Limpa estado local PRIMEIRO para dar feedback instantâneo na UI
       setCachedProfile(null)
       profileFetchedRef.current = false
       lastUserIdRef.current = null
+      setUser(null)
+      setProfile(null)
+      setLoading(false)
+      
       try {
         await supabase.auth.signOut()
       } catch (err) {
         console.error('[Auth] Error signing out:', err)
       }
-      setUser(null)
-      setProfile(null)
-      setLoading(false)
     },
   }
 
