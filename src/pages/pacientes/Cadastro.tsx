@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useDb } from '@/hooks/useDb'
 import { useCep } from '@/hooks/useCep'
 import { useClinic } from '@/lib/clinicConfig'
@@ -65,6 +65,9 @@ export default function Cadastro() {
   const [entryOldQtd, setEntryOldQtd] = useState<number>(0)
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [historyMed, setHistoryMed] = useState<Medication | null>(null)
+  
+  // Ref para evitar duplo clique ao salvar entrada
+  const isSavingEntryRef = useRef(false)
   
   const [compDialogOpen, setCompDialogOpen] = useState(false)
   const [editingCompId, setEditingCompId] = useState<string | null>(null)
@@ -398,6 +401,9 @@ export default function Cadastro() {
 
   async function handleSaveEntry() {
     if (!entryMed || !entryForm.quantidade) return
+    if (isSavingEntryRef.current) return
+    
+    isSavingEntryRef.current = true
     try {
       if (editingEntryId) {
         await updateMedEntry(editingEntryId, {
@@ -434,6 +440,8 @@ export default function Cadastro() {
     } catch (error) {
       console.error(error)
       alert('Erro ao salvar entrada')
+    } finally {
+      isSavingEntryRef.current = false
     }
   }
 

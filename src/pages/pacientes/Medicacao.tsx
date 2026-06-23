@@ -44,6 +44,7 @@ export default function Medicacao() {
   const [isProcessingEntry, setIsProcessingEntry] = useState(false)
   const [isRecalculating, setIsRecalculating] = useState(false)
   const autoRecalcDone = useRef(false)
+  const isProcessingRef = useRef(false)
 
   const [selectedPatientId, setSelectedPatientId] = useState('all')
   const [selectedUnit, setSelectedUnit] = useState('all')
@@ -631,12 +632,14 @@ export default function Medicacao() {
 
   async function handleSaveGlobalEntry() {
     if (!selectedMedKey || totalQuantity <= 0) return
+    if (isProcessingRef.current) return
     
     const sumDist = Object.values(distribution).reduce((a, b) => a + b, 0)
     if (sumDist !== totalQuantity) {
       if (!confirm(`A soma das quantidades (${sumDist}) é diferente do total recebido (${totalQuantity}). Deseja prosseguir assim mesmo?`)) return
     }
 
+    isProcessingRef.current = true
     setIsProcessingEntry(true)
     try {
       // Lista de meds que receberam estoque (para sincronização posterior)
@@ -688,6 +691,7 @@ export default function Medicacao() {
       console.error(error)
       alert('Erro ao salvar entrada global: ' + error.message)
     } finally {
+      isProcessingRef.current = false
       setIsProcessingEntry(false)
     }
   }
