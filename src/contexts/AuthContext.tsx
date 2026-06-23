@@ -92,6 +92,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     let mounted = true
 
+    // Fallback de segurança: forçar carregamento para false após 8 segundos
+    // Evita que o app fique travado em tela branca se houver erro silencioso de rede ou do supabase
+    const fallbackTimer = setTimeout(() => {
+      if (mounted) setLoading(false)
+    }, 8000)
+
     // ── 1. Inicialização: lê sessão ativa do Supabase ──────────────────────
     const initialize = async () => {
       try {
@@ -120,6 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.error('[Auth] Initialization error:', err)
       } finally {
+        clearTimeout(fallbackTimer)
         if (mounted) setLoading(false)
       }
     }
@@ -138,11 +145,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setCachedProfile(null)
           profileFetchedRef.current = false
           lastUserIdRef.current = null
+          clearTimeout(fallbackTimer)
           setLoading(false)
           return
         }
 
         if (
+          event === 'INITIAL_SESSION' ||
           event === 'SIGNED_IN' ||
           event === 'TOKEN_REFRESHED' ||
           event === 'USER_UPDATED'
@@ -160,6 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               await fetchProfile(currentUser.id)
             }
           }
+          clearTimeout(fallbackTimer)
           setLoading(false)
         }
       }
@@ -167,6 +177,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => {
       mounted = false
+      clearTimeout(fallbackTimer)
       subscription.unsubscribe()
     }
   }, [])
