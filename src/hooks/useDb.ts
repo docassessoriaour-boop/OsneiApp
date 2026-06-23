@@ -26,8 +26,9 @@ export function useDb<T>(table: string) {
         .order('created_at', { ascending: false })
         .abortSignal(controller.signal)
 
+      let timeoutId: any
       const timeoutPromise = new Promise<{data: null, error: any}>((_, reject) => {
-        setTimeout(() => {
+        timeoutId = setTimeout(() => {
           controller.abort()
           reject(new Error('Timeout'))
         }, 10000)
@@ -37,6 +38,8 @@ export function useDb<T>(table: string) {
         fetchPromise,
         timeoutPromise
       ]) as any
+      
+      clearTimeout(timeoutId)
 
       if (!isMounted) return
 
@@ -50,10 +53,8 @@ export function useDb<T>(table: string) {
         }
 
         if (fetchError?.message?.toLowerCase().includes('jwt') || fetchError?.code === 'PGRST301') {
-          supabase.auth.getSession().then(({ data }) => {
-            if (!data.session) {
-              window.location.href = '/'
-            }
+          supabase.auth.signOut().finally(() => {
+            window.location.href = '/'
           })
         }
       } else {
