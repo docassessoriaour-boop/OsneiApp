@@ -14,7 +14,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, Loader2, ArrowUp, ArrowDown, Split, Receipt, CheckCircle } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, ArrowUp, ArrowDown, Split, Receipt, CheckCircle, Percent } from 'lucide-react'
 
 const emptyIncome: Omit<Income, 'id'> = {
   descricao: '', 
@@ -29,6 +29,27 @@ const emptyIncome: Omit<Income, 'id'> = {
   paid_by: '',
   paid_by_phone: '',
   paid_by_document: ''
+}
+
+const FINE_RATE = 0.02
+const MONTHLY_INTEREST_RATE = 0.01
+
+function calculateLateFee(valorBase: number, vencimento: string, dataAtualizacao: string) {
+  const base = Number(valorBase) || 0
+  const dueDate = new Date(`${vencimento}T00:00:00`)
+  const updateDate = new Date(`${dataAtualizacao}T00:00:00`)
+  const diffMs = updateDate.getTime() - dueDate.getTime()
+  const diasAtraso = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
+  const multa = diasAtraso > 0 ? base * FINE_RATE : 0
+  const juros = diasAtraso > 0 ? base * MONTHLY_INTEREST_RATE * (diasAtraso / 30) : 0
+  const valorAtualizado = Number((base + multa + juros).toFixed(2))
+
+  return {
+    diasAtraso,
+    multa: Number(multa.toFixed(2)),
+    juros: Number(juros.toFixed(2)),
+    valorAtualizado
+  }
 }
 
 export default function ContasReceber() {
@@ -52,6 +73,12 @@ export default function ContasReceber() {
   const [totalDialogOpen, setTotalDialogOpen] = useState(false)
   const [partialIncome, setPartialIncome] = useState<Income | null>(null)
   const [totalIncome, setTotalIncome] = useState<Income | null>(null)
+  const [lateFeeDialogOpen, setLateFeeDialogOpen] = useState(false)
+  const [lateFeeIncome, setLateFeeIncome] = useState<Income | null>(null)
+  const [lateFeeForm, setLateFeeForm] = useState({
+    valorBase: 0,
+    dataAtualizacao: new Date().toISOString().slice(0, 10)
+  })
   const [partialForm, setPartialForm] = useState({ 
     valorPago: 0, 
     dataPagamento: new Date().toISOString().slice(0, 10), 
@@ -211,6 +238,52 @@ export default function ContasReceber() {
       paid_by_document: ''
     })
     setTotalDialogOpen(true)
+  }
+
+  function openLateFee(i: Income) {
+    setLateFeeIncome(i)
+    setLateFeeForm({
+      valorBase: i.valor,
+      dataAtualizacao: new Date().toISOString().slice(0, 10)
+    })
+    setLateFeeDialogOpen(true)
+  }
+
+  const lateFeePreview = lateFeeIncome
+    ? calculateLateFee(lateFeeForm.valorBase, lateFeeIncome.vencimento, lateFeeForm.dataAtualizacao)
+    : null
+
+  async function handleApplyLateFee() {
+    if (!lateFeeIncome || !lateFeePreview) return
+    if (lateFeePreview.diasAtraso <= 0) {
+      alert('Esta conta ainda não está em atraso na data informada.')
+      return
+    }
+
+    try {
+      await update(lateFeeIncome.id, {
+        ...lateFeeIncome,
+        valor: lateFeePreview.valorAtualizado
+      } as any)
+
+      const relatedInvoice = invoices.find(inv => inv.income_id === lateFeeIncome.id)
+      if (relatedInvoice) {
+        const currentTotal = relatedInvoice.total_amount || lateFeeForm.valorBase || 1
+        await updateInvoice(relatedInvoice.id, {
+          total_amount: lateFeePreview.valorAtualizado,
+          items: (relatedInvoice.items || []).map(item => ({
+            ...item,
+            price: Number(((item.price / currentTotal) * lateFeePreview.valorAtualizado).toFixed(2))
+          }))
+        })
+      }
+
+      setLateFeeDialogOpen(false)
+      alert('Valor a receber atualizado com multa e juros.')
+    } catch (error: any) {
+      console.error('Erro ao aplicar multa e juros:', error)
+      alert(`Erro ao aplicar multa e juros: ${error.message || 'Erro desconhecido'}`)
+    }
   }
 
   const handlePartialPayment = async () => {
@@ -687,6 +760,9 @@ export default function ContasReceber() {
                           <Button variant="ghost" size="icon" onClick={() => openPartial(i)} title="Baixa Parcial">
                             <Split className="h-4 w-4 text-blue-600" />
                           </Button>
+                          <Button variant="ghost" size="icon" onClick={() => openLateFee(i)} title="Calcular Multa e Juros">
+                            <Percent className="h-4 w-4 text-orange-600" />
+                          </Button>
                         </>
                       )}
                       <Button variant="ghost" size="icon" onClick={() => openEdit(i)} title="Editar"><Pencil className="h-4 w-4" /></Button>
@@ -1028,6 +1104,45 @@ export default function ContasReceber() {
         <DialogFooter>
           <Button variant="outline" onClick={() => setTotalDialogOpen(false)}>Cancelar</Button>
           <Button onClick={handleTotalPayment}>Confirmar Baixa Total</Button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={lateFeeDialogOpen} onOpenChange={setLateFeeDialogOpen}>
+        <DialogHeader>
+          <DialogTitle>Calcular Multa e Juros</DialogTitle>
+          <DialogClose onClose={() => setLateFeeDialogOpen(false)} />
+        </DialogHeader>
+        <DialogContent>
+          {lateFeeIncome && lateFeePreview && (
+            <div className="grid gap-4">
+              <div className="bg-muted/50 p-3 rounded-lg text-sm">
+                <p><strong>Conta:</strong> {lateFeeIncome.descricao}</p>
+                <p><strong>Vencimento:</strong> {formatDate(lateFeeIncome.vencimento)}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Valor Inicial</Label>
+                  <Input type="number" step="0.01" value={lateFeeForm.valorBase} onChange={(e) => setLateFeeForm({ ...lateFeeForm, valorBase: Number(e.target.value) })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Atualizar até</Label>
+                  <Input type="date" value={lateFeeForm.dataAtualizacao} onChange={(e) => setLateFeeForm({ ...lateFeeForm, dataAtualizacao: e.target.value })} className="mt-1" />
+                </div>
+              </div>
+
+              <div className="grid gap-2 rounded-lg border p-3 text-sm">
+                <div className="flex justify-between"><span>Dias em atraso</span><strong>{lateFeePreview.diasAtraso}</strong></div>
+                <div className="flex justify-between"><span>Multa 2%</span><strong>{formatCurrency(lateFeePreview.multa)}</strong></div>
+                <div className="flex justify-between"><span>Juros 1% ao mês</span><strong>{formatCurrency(lateFeePreview.juros)}</strong></div>
+                <div className="flex justify-between border-t pt-2 text-base"><span>Valor atualizado</span><strong className="text-green-600">{formatCurrency(lateFeePreview.valorAtualizado)}</strong></div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setLateFeeDialogOpen(false)}>Cancelar</Button>
+          <Button onClick={handleApplyLateFee}>Atualizar Valor a Receber</Button>
         </DialogFooter>
       </Dialog>
 

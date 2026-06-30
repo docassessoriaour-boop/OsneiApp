@@ -13,9 +13,30 @@ import { Select } from '@/components/ui/select'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Trash2, Printer, CheckCircle2, Loader2, FileText, Search, Receipt, Layers, Calendar, Pencil, ArrowUp, ArrowDown, Ban } from 'lucide-react'
+import { Plus, Trash2, Printer, CheckCircle2, Loader2, FileText, Search, Receipt, Layers, Calendar, Pencil, ArrowUp, ArrowDown, Ban, Percent } from 'lucide-react'
 
 const emptyItem: InvoiceItem = { description: '', quantity: 1, price: 0 }
+
+const FINE_RATE = 0.02
+const MONTHLY_INTEREST_RATE = 0.01
+
+function calculateLateFee(valorBase: number, vencimento: string, dataAtualizacao: string) {
+  const base = Number(valorBase) || 0
+  const dueDate = new Date(`${vencimento}T00:00:00`)
+  const updateDate = new Date(`${dataAtualizacao}T00:00:00`)
+  const diffMs = updateDate.getTime() - dueDate.getTime()
+  const diasAtraso = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)))
+  const multa = diasAtraso > 0 ? base * FINE_RATE : 0
+  const juros = diasAtraso > 0 ? base * MONTHLY_INTEREST_RATE * (diasAtraso / 30) : 0
+  const valorAtualizado = Number((base + multa + juros).toFixed(2))
+
+  return {
+    diasAtraso,
+    multa: Number(multa.toFixed(2)),
+    juros: Number(juros.toFixed(2)),
+    valorAtualizado
+  }
+}
 
 export default function Faturamento() {
   const { data: invoices, loading: loadingInvoices, insert: insertInvoice, update: updateInvoice } = useDb<Invoice>('invoices')
@@ -232,6 +253,12 @@ export default function Faturamento() {
   const [paidBy, setPaidBy] = useState({ name: '', phone: '', document: '' })
   const [invoiceToPay, setInvoiceToPay] = useState<Invoice | null>(null)
   const [payAmount, setPayAmount] = useState<number | string>('')
+  const [lateFeeDialogOpen, setLateFeeDialogOpen] = useState(false)
+  const [invoiceToUpdate, setInvoiceToUpdate] = useState<Invoice | null>(null)
+  const [lateFeeForm, setLateFeeForm] = useState({
+    valorBase: 0,
+    dataAtualizacao: new Date().toISOString().slice(0, 10)
+  })
 
   function openPayDialog(inv: Invoice) {
     setInvoiceToPay(inv)
@@ -249,6 +276,52 @@ export default function Faturamento() {
     setPayDate(inv.payment_date || new Date().toISOString().slice(0, 10))
     setSelectedBankId(inv.bank_account_id || '')
     setPayDialogOpen(true)
+  }
+
+  function openLateFeeDialog(inv: Invoice) {
+    setInvoiceToUpdate(inv)
+    setLateFeeForm({
+      valorBase: inv.total_amount,
+      dataAtualizacao: new Date().toISOString().slice(0, 10)
+    })
+    setLateFeeDialogOpen(true)
+  }
+
+  const lateFeePreview = invoiceToUpdate
+    ? calculateLateFee(lateFeeForm.valorBase, invoiceToUpdate.due_date, lateFeeForm.dataAtualizacao)
+    : null
+
+  async function handleApplyLateFee() {
+    if (!invoiceToUpdate || !lateFeePreview) return
+    if (lateFeePreview.diasAtraso <= 0) {
+      alert('Esta fatura ainda não está em atraso na data informada.')
+      return
+    }
+
+    try {
+      const currentTotal = invoiceToUpdate.total_amount || lateFeeForm.valorBase || 1
+      await updateInvoice(invoiceToUpdate.id, {
+        total_amount: lateFeePreview.valorAtualizado,
+        items: (invoiceToUpdate.items || []).map(item => ({
+          ...item,
+          price: Number(((item.price / currentTotal) * lateFeePreview.valorAtualizado).toFixed(2))
+        }))
+      })
+
+      if (invoiceToUpdate.income_id) {
+        const linkedIncome = incomes.find(inc => inc.id === invoiceToUpdate.income_id)
+        await updateIncome(invoiceToUpdate.income_id, {
+          ...(linkedIncome || {}),
+          valor: lateFeePreview.valorAtualizado
+        } as any)
+      }
+
+      setLateFeeDialogOpen(false)
+      alert('Valor da fatura atualizado com multa e juros.')
+    } catch (error: any) {
+      console.error('Erro ao aplicar multa e juros:', error)
+      alert(`Erro ao aplicar multa e juros: ${error.message || 'Erro desconhecido'}`)
+    }
   }
 
   async function handleMarkPaid() {
@@ -611,9 +684,14 @@ export default function Faturamento() {
                           </Button>
                         </>
                       ) : (
-                        <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv)} title="Dar Baixa (Marcar como Pago)" className="text-green-600">
-                          <CheckCircle2 className="h-4 w-4" />
-                        </Button>
+                        <>
+                          <Button variant="ghost" size="icon" onClick={() => openPayDialog(inv)} title="Dar Baixa (Marcar como Pago)" className="text-green-600">
+                            <CheckCircle2 className="h-4 w-4" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => openLateFeeDialog(inv)} title="Calcular Multa e Juros" className="text-orange-600">
+                            <Percent className="h-4 w-4" />
+                          </Button>
+                        </>
                       )}
                       <Button variant="ghost" size="icon" title="Ver Detalhes" onClick={() => handleOpenDetails(inv)}>
                         <FileText className="h-4 w-4" />
@@ -786,6 +864,44 @@ export default function Faturamento() {
             <Button onClick={handleMarkPaid} className="bg-green-600 hover:bg-green-700">
               {invoiceToPay?.status === 'pago' ? 'Salvar Alteração' : 'Confirmar Recebimento'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={lateFeeDialogOpen} onOpenChange={setLateFeeDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Calcular Multa e Juros</DialogTitle>
+          </DialogHeader>
+          {invoiceToUpdate && lateFeePreview && (
+            <div className="space-y-4 py-4">
+              <div className="bg-muted/50 p-3 rounded-lg text-sm">
+                <p><strong>Cliente:</strong> {invoiceToUpdate.client_name}</p>
+                <p><strong>Vencimento:</strong> {formatDate(invoiceToUpdate.due_date)}</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Valor Inicial</Label>
+                  <Input type="number" step="0.01" value={lateFeeForm.valorBase} onChange={(e) => setLateFeeForm({ ...lateFeeForm, valorBase: Number(e.target.value) })} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Atualizar até</Label>
+                  <Input type="date" value={lateFeeForm.dataAtualizacao} onChange={(e) => setLateFeeForm({ ...lateFeeForm, dataAtualizacao: e.target.value })} />
+                </div>
+              </div>
+
+              <div className="grid gap-2 rounded-lg border p-3 text-sm">
+                <div className="flex justify-between"><span>Dias em atraso</span><strong>{lateFeePreview.diasAtraso}</strong></div>
+                <div className="flex justify-between"><span>Multa 2%</span><strong>{formatCurrency(lateFeePreview.multa)}</strong></div>
+                <div className="flex justify-between"><span>Juros 1% ao mês</span><strong>{formatCurrency(lateFeePreview.juros)}</strong></div>
+                <div className="flex justify-between border-t pt-2 text-base"><span>Valor atualizado</span><strong className="text-primary">{formatCurrency(lateFeePreview.valorAtualizado)}</strong></div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLateFeeDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleApplyLateFee}>Atualizar Valor</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
