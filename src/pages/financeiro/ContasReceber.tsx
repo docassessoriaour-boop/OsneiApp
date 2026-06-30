@@ -439,15 +439,15 @@ export default function ContasReceber() {
   async function handleSave() {
     if (!form.descricao) return
     try {
+      const { source_bank_account_id: sourceBankAccountId, ...formData } = form as any
       const payload = { 
-        ...form,
+        ...formData,
         valor: Number(Number(form.valor).toFixed(2)),
         vencimento: form.vencimento || null,
         payment_date: form.payment_date || null,
         category_id: form.category_id || null,
         bank_account_id: form.bank_account_id || null,
-        bank_transaction_id: form.bank_transaction_id || null,
-        source_bank_account_id: (form as any).source_bank_account_id || null
+        bank_transaction_id: form.bank_transaction_id || null
       }
 
       if (isSplit) {
@@ -493,7 +493,7 @@ export default function ContasReceber() {
 
         // Se for Resgate de Aplicação e tiver conta origem, criar o lançamento de saída na outra conta
         const isResgate = payload.category_id === '372443ce-38f3-4cd4-9188-a2053a2cf150' || payload.categoria === 'Resgate Aplicação Financeira'
-        const srcId = (payload as any).source_bank_account_id
+        const srcId = sourceBankAccountId
         if (isResgate && srcId) {
            await insertBankTransaction({
              data: btData.data,
