@@ -17,9 +17,27 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Pencil, Trash2, FileText, Plus, X, CalendarClock, Loader2, Banknote, Printer, CheckCircle2 } from 'lucide-react'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInCalendarDays, getDaysInMonth } from 'date-fns'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInCalendarDays, getDaysInMonth, subMonths } from 'date-fns'
 
 const emptyAdicional: PayrollAdicional = { descricao: '', tipo: 'provento', valor: 0 }
+
+type PayrollDateFilter = 'current' | 'previous' | 'period'
+
+function monthBounds(month: string) {
+  const date = parseISO(`${month}-01`)
+  return {
+    start: format(startOfMonth(date), 'yyyy-MM-dd'),
+    end: format(endOfMonth(date), 'yyyy-MM-dd'),
+  }
+}
+
+function payrollMatchesPeriod(p: Payroll, start: string, end: string) {
+  const payrollStart = p.periodoInicio || (p.mesReferencia ? monthBounds(p.mesReferencia).start : '')
+  const payrollEnd = p.periodoFim || (p.mesReferencia ? monthBounds(p.mesReferencia).end : payrollStart)
+
+  if (!payrollStart || !payrollEnd) return false
+  return payrollStart <= end && payrollEnd >= start
+}
 
 export default function FolhaPagamento() {
   const { data: rawEmployees } = useDb<Employee>('employees')
@@ -45,6 +63,12 @@ export default function FolhaPagamento() {
   
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
+  const currentMonth = format(new Date(), 'yyyy-MM')
+  const previousMonth = format(subMonths(new Date(), 1), 'yyyy-MM')
+  const currentMonthBounds = monthBounds(currentMonth)
+  const [dateFilter, setDateFilter] = useState<PayrollDateFilter>('current')
+  const [periodStart, setPeriodStart] = useState(currentMonthBounds.start)
+  const [periodEnd, setPeriodEnd] = useState(currentMonthBounds.end)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [massDialogOpen, setMassDialogOpen] = useState(false)
   const [massMonth, setMassMonth] = useState(format(new Date(), 'yyyy-MM'))
@@ -70,9 +94,20 @@ export default function FolhaPagamento() {
   })
   const [adicionais, setAdicionais] = useState<PayrollAdicional[]>([])
 
-  const filtered = payrolls.filter(
-    (p) => (p.funcionarioNome || '').toLowerCase().includes((search || '').toLowerCase())
-  ).sort((a, b) => (a.funcionarioNome || '').localeCompare(b.funcionarioNome || ''))
+  const activeFilterBounds = dateFilter === 'previous'
+    ? monthBounds(previousMonth)
+    : dateFilter === 'period'
+      ? { start: periodStart, end: periodEnd }
+      : currentMonthBounds
+
+  const filtered = payrolls.filter((p) => {
+    const matchesSearch = (p.funcionarioNome || '').toLowerCase().includes((search || '').toLowerCase())
+    const matchesDate = activeFilterBounds.start && activeFilterBounds.end
+      ? payrollMatchesPeriod(p, activeFilterBounds.start, activeFilterBounds.end)
+      : true
+
+    return matchesSearch && matchesDate
+  }).sort((a, b) => (a.funcionarioNome || '').localeCompare(b.funcionarioNome || ''))
 
   // Computed totals
   const totalProventos = adicionais.filter(a => a.tipo === 'provento').reduce((s, a) => s + a.valor, 0)
@@ -582,7 +617,42 @@ export default function FolhaPagamento() {
       </PageHeader>
 
       <Card className="p-6">
-        <SearchBar value={search} onChange={setSearch} placeholder="Buscar..." />
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="w-full lg:max-w-md">
+            <SearchBar value={search} onChange={setSearch} placeholder="Buscar..." />
+          </div>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="flex h-10 rounded-md border border-input bg-background p-1">
+              <button
+                type="button"
+                onClick={() => setDateFilter('current')}
+                className={`rounded px-3 text-sm font-medium transition-colors ${dateFilter === 'current' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                Mês atual
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateFilter('previous')}
+                className={`rounded px-3 text-sm font-medium transition-colors ${dateFilter === 'previous' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                Mês anterior
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateFilter('period')}
+                className={`rounded px-3 text-sm font-medium transition-colors ${dateFilter === 'period' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+              >
+                Período
+              </button>
+            </div>
+            {dateFilter === 'period' && (
+              <div className="flex gap-2">
+                <Input type="date" value={periodStart} onChange={(e) => setPeriodStart(e.target.value)} className="h-10 w-[150px]" />
+                <Input type="date" value={periodEnd} onChange={(e) => setPeriodEnd(e.target.value)} className="h-10 w-[150px]" />
+              </div>
+            )}
+          </div>
+        </div>
         <div className="mt-4">
           <Table>
             <TableHeader>
