@@ -10,7 +10,19 @@
 --      Senha: informada diretamente ao setor de desenvolvimento
 --      Email confirmed: sim
 --
--- 2) Depois execute o SQL abaixo para vincular o usuário à empresa.
+-- 2) Depois execute o SQL abaixo para criar/confirmar a empresa e vincular o usuário.
+
+CREATE TABLE IF NOT EXISTS companies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL,
+  cnpj TEXT NOT NULL,
+  cnpj_digits TEXT NOT NULL UNIQUE,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE profiles
+  ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
 
 INSERT INTO companies (name, cnpj, cnpj_digits, active)
 VALUES ('Novo Horizonte', '56.956.061/0001-81', '56956061000181', TRUE)
