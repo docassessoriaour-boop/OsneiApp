@@ -12,7 +12,7 @@
 --
 -- 2) Depois execute o SQL abaixo para criar/confirmar a empresa e vincular o usuário.
 
-CREATE TABLE IF NOT EXISTS companies (
+CREATE TABLE IF NOT EXISTS public.companies (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   cnpj TEXT NOT NULL,
@@ -21,22 +21,22 @@ CREATE TABLE IF NOT EXISTS companies (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-ALTER TABLE profiles
-  ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES public.companies(id);
 
-INSERT INTO companies (name, cnpj, cnpj_digits, active)
+INSERT INTO public.companies (name, cnpj, cnpj_digits, active)
 VALUES ('Novo Horizonte', '56.956.061/0001-81', '56956061000181', TRUE)
 ON CONFLICT (cnpj_digits) DO UPDATE SET
   name = EXCLUDED.name,
   cnpj = EXCLUDED.cnpj,
   active = TRUE;
 
-UPDATE profiles
+UPDATE public.profiles
 SET
   full_name = COALESCE(NULLIF(full_name, ''), 'Novo Horizonte'),
   email = 'nhci@docconsultoria.com.br',
   role = 'admin',
-  company_id = (SELECT id FROM companies WHERE cnpj_digits = '56956061000181')
+  company_id = (SELECT id FROM public.companies WHERE cnpj_digits = '56956061000181')
 WHERE email = 'nhci@docconsultoria.com.br';
 
 -- Conferência final: deve retornar o usuário com role admin e a empresa Novo Horizonte.
@@ -46,5 +46,5 @@ SELECT
   c.name AS empresa,
   c.cnpj
 FROM profiles p
-JOIN companies c ON c.id = p.company_id
+JOIN public.companies c ON c.id = p.company_id
 WHERE p.email = 'nhci@docconsultoria.com.br';
