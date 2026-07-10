@@ -5,8 +5,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Lock, Mail } from 'lucide-react'
+import { formatCnpj, onlyDigits } from '@/lib/companies'
 
 export default function Login() {
+  const [cnpj, setCnpj] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -18,12 +20,42 @@ export default function Login() {
     setError(null)
 
     try {
+      const cnpjDigits = onlyDigits(cnpj)
+      if (cnpjDigits.length !== 14) {
+        throw new Error('Informe um CNPJ válido para acessar a empresa.')
+      }
+
+      const { data: company, error: companyError } = await supabase
+        .from('companies')
+        .select('id, name, active')
+        .eq('cnpj_digits', cnpjDigits)
+        .eq('active', true)
+        .single()
+
+      if (companyError || !company) {
+        throw new Error('Empresa não liberada. Solicite a liberação ao setor de desenvolvimento.')
+      }
+
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
       if (error) throw error
+
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('company_id')
+          .eq('id', user.id)
+          .single()
+
+        if (profile?.company_id !== company.id) {
+          await supabase.auth.signOut()
+          throw new Error('Usuário não pertence à empresa informada.')
+        }
+      }
     } catch (err: any) {
       setError(err.message || 'Erro ao fazer login. Verifique suas credenciais.')
     } finally {
@@ -55,6 +87,19 @@ export default function Login() {
                 {error}
               </div>
             )}
+
+            <div className="space-y-2">
+              <Label htmlFor="cnpj" className="text-slate-300">CNPJ da empresa</Label>
+              <Input
+                id="cnpj"
+                inputMode="numeric"
+                placeholder="00.000.000/0000-00"
+                className="bg-slate-800/50 border-slate-700 text-white placeholder:text-slate-600 focus:ring-primary"
+                value={cnpj}
+                onChange={(e) => setCnpj(formatCnpj(e.target.value))}
+                required
+              />
+            </div>
 
             <div className="space-y-2">
               <Label htmlFor="email" className="text-slate-300">Email</Label>

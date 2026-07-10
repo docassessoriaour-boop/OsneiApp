@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
+import { useAuth } from '@/hooks/useAuth'
 
 export function useDb<T>(table: string) {
+  const { profile } = useAuth()
   const [data, setData] = useState<T[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<any>(null)
@@ -10,6 +12,12 @@ export function useDb<T>(table: string) {
   const fetchData = useCallback(async () => {
     let isMounted = true
     try {
+      if (!profile?.company_id && table !== 'companies') {
+        setData([])
+        setLoading(false)
+        return
+      }
+
       // Stale-while-revalidate: só mostra spinner na primeira busca.
       // Em refetches mantém os dados antigos visíveis até a nova resposta.
       if (!hasFetchedOnce.current) {
@@ -20,11 +28,17 @@ export function useDb<T>(table: string) {
 
       const controller = new AbortController()
       
-      const fetchPromise = supabase
+      let query = supabase
         .from(table)
         .select('*')
         .order('created_at', { ascending: false })
         .abortSignal(controller.signal)
+
+      if (profile?.company_id && table !== 'companies') {
+        query = query.eq('company_id', profile.company_id)
+      }
+
+      const fetchPromise = query
 
       let timeoutId: any
       const timeoutPromise = new Promise<{data: null, error: any}>((_, reject) => {
@@ -84,7 +98,7 @@ export function useDb<T>(table: string) {
     }
     
     return () => { isMounted = false }
-  }, [table])
+  }, [table, profile?.company_id])
 
   useEffect(() => {
     const cleanup = fetchData()
@@ -96,9 +110,14 @@ export function useDb<T>(table: string) {
 
 
   const insert = async (item: Partial<T>) => {
+    const payload =
+      profile?.company_id && table !== 'companies'
+        ? { ...(item as any), company_id: profile.company_id }
+        : item
+
     const { data: result, error } = await supabase
       .from(table)
-      .insert(item as any)
+      .insert(payload as any)
       .select()
     if (error) throw error
     if (result && result.length > 0) {
@@ -106,23 +125,35 @@ export function useDb<T>(table: string) {
       return result[0]
     }
     // Caso o RLS não retorne a linha inserida
-    return item as T
+    return payload as T
   }
 
   const update = async (id: string | number, item: Partial<T>) => {
-    const { error } = await supabase
+    let query = supabase
       .from(table)
       .update(item as any)
       .eq('id', id)
+
+    if (profile?.company_id && table !== 'companies') {
+      query = query.eq('company_id', profile.company_id)
+    }
+
+    const { error } = await query
     if (error) throw error
     setData(prev => prev.map(i => ((i as any).id === id ? { ...i, ...item } : i)))
   }
 
   const remove = async (id: string | number) => {
-    const { error } = await supabase
+    let query = supabase
       .from(table)
       .delete()
       .eq('id', id)
+
+    if (profile?.company_id && table !== 'companies') {
+      query = query.eq('company_id', profile.company_id)
+    }
+
+    const { error } = await query
     if (error) throw error
     setData(prev => prev.filter(i => ((i as any).id !== id)))
   }

@@ -9,6 +9,14 @@ export interface Profile {
   full_name: string | null
   email: string | null
   role: UserRole
+  company_id: string | null
+  company?: {
+    id: string
+    name: string
+    cnpj: string
+    cnpj_digits: string
+    active: boolean
+  } | null
   created_at: string
 }
 
@@ -60,7 +68,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('*, company:companies(id, name, cnpj, cnpj_digits, active)')
         .eq('id', userId)
         .single()
 
@@ -121,6 +129,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               full_name: session.user.user_metadata?.full_name || 'Usuário',
               email: session.user.email || '',
               role: session.user.user_metadata?.role || 'user',
+              company_id: session.user.user_metadata?.company_id || null,
+              company: null,
               created_at: session.user.created_at || new Date().toISOString()
             })
             
@@ -181,6 +191,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                   full_name: currentUser.user_metadata?.full_name || 'Usuário',
                   email: currentUser.email || '',
                   role: currentUser.user_metadata?.role || 'user',
+                  company_id: currentUser.user_metadata?.company_id || null,
+                  company: null,
                   created_at: currentUser.created_at || new Date().toISOString()
                 })
                 

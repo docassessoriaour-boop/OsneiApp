@@ -22,21 +22,26 @@ import {
 } from "@/components/ui/select"
 
 export default function Usuarios() {
-  const { isAdmin, user: currentUser } = useAuth()
+  const { isAdmin, user: currentUser, profile } = useAuth()
   const [users, setUsers] = useState<Profile[]>([])
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState<string | null>(null)
 
   useEffect(() => {
-    fetchUsers()
-  }, [])
+    if (profile?.company_id) {
+      fetchUsers()
+    }
+  }, [profile?.company_id])
 
   async function fetchUsers() {
+    if (!profile?.company_id) return
+
     setLoading(true)
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('*, company:companies(id, name, cnpj, cnpj_digits, active)')
+        .eq('company_id', profile?.company_id)
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -91,11 +96,26 @@ export default function Usuarios() {
         email_confirm: true,
         user_metadata: {
           full_name: newUserInfo.fullName,
-          role: newUserInfo.role
+          role: newUserInfo.role,
+          company_id: profile?.company_id
         }
       })
 
       if (error) throw error
+
+      if (data.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: data.user.id,
+            full_name: newUserInfo.fullName,
+            email: newUserInfo.email,
+            role: newUserInfo.role,
+            company_id: profile?.company_id
+          })
+
+        if (profileError) throw profileError
+      }
 
       alert('Usuário criado com sucesso!')
       setIsAddModalOpen(false)
@@ -127,7 +147,9 @@ export default function Usuarios() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Gestão de Usuários</h1>
-          <p className="text-muted-foreground">Controle quem tem acesso ao sistema e suas permissões</p>
+          <p className="text-muted-foreground">
+            Controle quem tem acesso à empresa {profile?.company?.name || 'atual'} e suas permissões
+          </p>
         </div>
         <Button className="gap-2" onClick={() => setIsAddModalOpen(true)}>
           <UserPlus className="h-4 w-4" />
