@@ -122,6 +122,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setProfile(cachedProfile)
             profileFetchedRef.current = true
             lastUserIdRef.current = session.user.id
+            await fetchProfile(session.user.id)
           } else {
             // Sincroniza imediatamente usando os dados da sessão
             setProfile({
@@ -184,7 +185,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const syncTimer = setTimeout(async () => {
               const alreadyLoaded = profileFetchedRef.current && cachedProfile?.id === currentUser.id
 
-              if (!alreadyLoaded) {
+              if (alreadyLoaded) {
+                await fetchProfile(currentUser.id)
+              } else {
                 // Sincroniza imediatamente usando os dados da sessão
                 setProfile({
                   id: currentUser.id,

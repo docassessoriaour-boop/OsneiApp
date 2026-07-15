@@ -1,6 +1,21 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
+import { NOVO_HORIZONTE_CNPJ_DIGITS } from '@/lib/companies'
+
+function shouldIncludeLegacyCompanyRows(profile: ReturnType<typeof useAuth>['profile']) {
+  return profile?.company?.cnpj_digits === NOVO_HORIZONTE_CNPJ_DIGITS
+}
+
+function applyCompanyScope(query: any, profile: ReturnType<typeof useAuth>['profile']) {
+  if (!profile?.company_id) return query
+
+  if (shouldIncludeLegacyCompanyRows(profile)) {
+    return query.or(`company_id.eq.${profile.company_id},company_id.is.null`)
+  }
+
+  return query.eq('company_id', profile.company_id)
+}
 
 export function useDb<T>(table: string) {
   const { profile } = useAuth()
@@ -35,7 +50,7 @@ export function useDb<T>(table: string) {
         .abortSignal(controller.signal)
 
       if (profile?.company_id && table !== 'companies') {
-        query = query.eq('company_id', profile.company_id)
+        query = applyCompanyScope(query, profile)
       }
 
       const fetchPromise = query
@@ -98,7 +113,7 @@ export function useDb<T>(table: string) {
     }
     
     return () => { isMounted = false }
-  }, [table, profile?.company_id])
+  }, [table, profile?.company_id, profile?.company?.cnpj_digits])
 
   useEffect(() => {
     const cleanup = fetchData()
@@ -135,7 +150,7 @@ export function useDb<T>(table: string) {
       .eq('id', id)
 
     if (profile?.company_id && table !== 'companies') {
-      query = query.eq('company_id', profile.company_id)
+      query = applyCompanyScope(query, profile)
     }
 
     const { error } = await query
@@ -150,7 +165,7 @@ export function useDb<T>(table: string) {
       .eq('id', id)
 
     if (profile?.company_id && table !== 'companies') {
-      query = query.eq('company_id', profile.company_id)
+      query = applyCompanyScope(query, profile)
     }
 
     const { error } = await query
