@@ -1,5 +1,6 @@
 export const NOVO_HORIZONTE_CNPJ = '56.956.061/0001-81'
 export const NOVO_HORIZONTE_CNPJ_DIGITS = '56956061000181'
+export const SELECTED_COMPANY_CNPJ_DIGITS_KEY = 'gom-selected-company-cnpj-digits-v1'
 
 export function onlyDigits(value: string) {
   return value.replace(/\D/g, '')

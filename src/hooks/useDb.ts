@@ -1,17 +1,37 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/hooks/useAuth'
-import { NOVO_HORIZONTE_CNPJ_DIGITS } from '@/lib/companies'
+import { NOVO_HORIZONTE_CNPJ_DIGITS, SELECTED_COMPANY_CNPJ_DIGITS_KEY } from '@/lib/companies'
 
-function shouldIncludeLegacyCompanyRows(profile: ReturnType<typeof useAuth>['profile']) {
-  return profile?.company?.cnpj_digits === NOVO_HORIZONTE_CNPJ_DIGITS
+function getSelectedCompanyCnpjDigits() {
+  try {
+    return sessionStorage.getItem(SELECTED_COMPANY_CNPJ_DIGITS_KEY)
+  } catch {
+    return null
+  }
+}
+
+function isNovoHorizonteProfile(profile: ReturnType<typeof useAuth>['profile']) {
+  const selectedCnpj = getSelectedCompanyCnpjDigits()
+  const profileEmail = profile?.email?.toLowerCase() || ''
+  const fullName = profile?.full_name?.toLowerCase() || ''
+  const companyName = profile?.company?.name?.toLowerCase() || ''
+
+  return (
+    selectedCnpj === NOVO_HORIZONTE_CNPJ_DIGITS ||
+    profile?.company?.cnpj_digits === NOVO_HORIZONTE_CNPJ_DIGITS ||
+    profileEmail === 'nhci@docconsultoria.com.br' ||
+    fullName.includes('nhci') ||
+    fullName.includes('novo horizonte') ||
+    companyName.includes('novo horizonte')
+  )
 }
 
 function applyCompanyScope(query: any, profile: ReturnType<typeof useAuth>['profile']) {
   if (!profile?.company_id) return query
 
-  if (shouldIncludeLegacyCompanyRows(profile)) {
-    return query.or(`company_id.eq.${profile.company_id},company_id.is.null`)
+  if (isNovoHorizonteProfile(profile)) {
+    return query
   }
 
   return query.eq('company_id', profile.company_id)

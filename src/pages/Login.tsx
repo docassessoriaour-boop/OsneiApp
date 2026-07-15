@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Lock, Mail } from 'lucide-react'
-import { formatCnpj, onlyDigits } from '@/lib/companies'
+import { SELECTED_COMPANY_CNPJ_DIGITS_KEY, formatCnpj, onlyDigits } from '@/lib/companies'
 
 export default function Login() {
   const [cnpj, setCnpj] = useState('')
@@ -42,6 +42,8 @@ export default function Login() {
       })
 
       if (error) throw error
+
+      sessionStorage.setItem(SELECTED_COMPANY_CNPJ_DIGITS_KEY, cnpjDigits)
 
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {

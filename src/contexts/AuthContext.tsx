@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { SELECTED_COMPANY_CNPJ_DIGITS_KEY } from '@/lib/companies'
 import type { User } from '@supabase/supabase-js'
 
 export type UserRole = 'admin' | 'manager' | 'user'
@@ -50,6 +51,12 @@ function setCachedProfile(p: Profile | null) {
     } else {
       sessionStorage.removeItem(PROFILE_CACHE_KEY)
     }
+  } catch {}
+}
+
+function clearSelectedCompany() {
+  try {
+    sessionStorage.removeItem(SELECTED_COMPANY_CNPJ_DIGITS_KEY)
   } catch {}
 }
 
@@ -142,6 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null)
           setProfile(null)
           setCachedProfile(null)
+          clearSelectedCompany()
         }
       } catch (err) {
         console.error('[Auth] Initialization error:', err)
@@ -163,6 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(null)
           setProfile(null)
           setCachedProfile(null)
+          clearSelectedCompany()
           profileFetchedRef.current = false
           lastUserIdRef.current = null
           clearTimeout(fallbackTimer)
@@ -230,6 +239,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut: async () => {
       // Limpa estado local PRIMEIRO para dar feedback instantâneo na UI
       setCachedProfile(null)
+      clearSelectedCompany()
       profileFetchedRef.current = false
       lastUserIdRef.current = null
       setUser(null)
