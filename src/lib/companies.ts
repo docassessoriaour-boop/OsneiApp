@@ -1,5 +1,10 @@
-export const NOVO_HORIZONTE_CNPJ = '56.956.061/0001-81'
-export const NOVO_HORIZONTE_CNPJ_DIGITS = '56956061000181'
+export const DEMO_COMPANY_NAME = 'Residencial Vida Serena Demo'
+export const DEMO_COMPANY_LEGAL_NAME = 'RESIDENCIAL VIDA SERENA DEMO LTDA'
+export const DEMO_COMPANY_CNPJ = '00.000.000/0001-91'
+export const DEMO_COMPANY_CNPJ_DIGITS = '00000000000191'
+export const DEMO_COMPANY_ADDRESS = 'Rua das Flores, 100, Centro, Ourinhos, Sao Paulo, CEP 19.900-000'
+export const DEMO_COMPANY_REPRESENTATIVE = 'Maria Helena Souza'
+export const DEMO_COMPANY_REPRESENTATIVE_DOCS = 'RG 12.345.678-9 e CPF 123.456.789-09'
 export const SELECTED_COMPANY_CNPJ_DIGITS_KEY = 'gom-selected-company-cnpj-digits-v1'
 
 export function onlyDigits(value: string) {

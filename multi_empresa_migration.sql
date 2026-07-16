@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS companies (
 );
 
 INSERT INTO companies (name, cnpj, cnpj_digits, active)
-VALUES ('Novo Horizonte', '56.956.061/0001-81', '56956061000181', TRUE)
+VALUES ('Residencial Vida Serena Demo', '00.000.000/0001-91', '00000000000191', TRUE)
 ON CONFLICT (cnpj_digits) DO UPDATE SET
   name = EXCLUDED.name,
   cnpj = EXCLUDED.cnpj,
@@ -21,7 +21,7 @@ ALTER TABLE profiles
   ADD COLUMN IF NOT EXISTS company_id UUID REFERENCES companies(id);
 
 UPDATE profiles
-SET company_id = (SELECT id FROM companies WHERE cnpj_digits = '56956061000181')
+SET company_id = (SELECT id FROM companies WHERE cnpj_digits = '00000000000191')
 WHERE company_id IS NULL;
 
 ALTER TABLE profiles
@@ -68,7 +68,7 @@ BEGIN
       EXECUTE format(
         'UPDATE %I SET company_id = (SELECT id FROM companies WHERE cnpj_digits = %L) WHERE company_id IS NULL',
         table_name,
-        '56956061000181'
+        '00000000000191'
       );
       EXECUTE format('CREATE INDEX IF NOT EXISTS %I ON %I(company_id)', 'idx_' || table_name || '_company_id', table_name);
     END IF;

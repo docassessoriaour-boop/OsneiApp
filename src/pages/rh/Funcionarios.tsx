@@ -4,6 +4,14 @@ import { useCep } from '@/hooks/useCep'
 import { formatCurrency } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF, formatCurrencyPDF, formatDatePDF } from '@/lib/pdf'
+import {
+  DEMO_COMPANY_ADDRESS,
+  DEMO_COMPANY_CNPJ,
+  DEMO_COMPANY_LEGAL_NAME,
+  DEMO_COMPANY_NAME,
+  DEMO_COMPANY_REPRESENTATIVE,
+  DEMO_COMPANY_REPRESENTATIVE_DOCS,
+} from '@/lib/companies'
 import type { Employee } from '@/lib/types'
 
 import { SearchBar } from '@/components/shared/SearchBar'
@@ -170,6 +178,7 @@ export default function Funcionarios() {
     if (!selectedEmp) return
     const total = receiptItems.reduce((s, i) => s + i.val, 0)
     const today = new Date().toLocaleDateString('pt-BR')
+    const employerName = clinic?.nome_fantasia || (clinic as any)?.name || DEMO_COMPANY_NAME
     
     let rows = receiptItems.map(i => `
       <tr>
@@ -183,7 +192,7 @@ export default function Funcionarios() {
         <h2 style="border:none;">RECIBO DE PAGAMENTO</h2>
       </div>
       <div style="margin-bottom: 20px; font-size: 11pt;">
-        <p><strong>Empregador:</strong> ${clinic?.nome_fantasia || 'Novo Horizonte'}</p>
+        <p><strong>Empregador:</strong> ${employerName}</p>
         <p><strong>Funcionário:</strong> ${selectedEmp.nome}</p>
         <p><strong>CPF:</strong> ${selectedEmp.cpf}</p>
         <p><strong>Cargo:</strong> ${selectedEmp.cargo}</p>
@@ -204,7 +213,7 @@ export default function Funcionarios() {
         VALOR TOTAL: ${formatCurrencyPDF(total)}
       </div>
       <div style="margin-top: 20px; padding: 15px; border: 1px solid #eee; background: #fafafa; border-radius: 5px;">
-        <p style="margin: 0; text-indent: 0;">Recebi de <strong>${clinic?.nome_fantasia || 'Novo Horizonte'}</strong> a importância de <strong>${formatCurrencyPDF(total)}</strong> referente aos itens descritos acima.</p>
+        <p style="margin: 0; text-indent: 0;">Recebi de <strong>${employerName}</strong> a importância de <strong>${formatCurrencyPDF(total)}</strong> referente aos itens descritos acima.</p>
       </div>
       <div style="margin-top: 80px; display: grid; grid-template-columns: 1fr 1fr; gap: 50px;">
         <div style="text-align: center;">
@@ -241,6 +250,11 @@ export default function Funcionarios() {
     const amountStr = formatCurrencyPDF(emp.salario)
     const admissao = formatDatePDF(emp.dataAdmissao)
     const today = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })
+    const employerName = clinic?.razao_social || (clinic as any)?.name || clinic?.nome_fantasia || DEMO_COMPANY_LEGAL_NAME
+    const employerCnpj = clinic?.cnpj || DEMO_COMPANY_CNPJ
+    const employerAddress = clinic?.endereco || DEMO_COMPANY_ADDRESS
+    const employerRepresentative = (clinic as any)?.representante || DEMO_COMPANY_REPRESENTATIVE
+    const employerRepresentativeDocs = (clinic as any)?.representante_documentos || DEMO_COMPANY_REPRESENTATIVE_DOCS
 
     const html = `
       <div style="text-align: center; margin-bottom: 30px;">
@@ -250,7 +264,7 @@ export default function Funcionarios() {
        
        <div class="abnt-text" style="text-align: justify; line-height: 1.5; font-size: 12pt;">
         <p style="text-indent: 0;"><strong>CONTRATANTE:</strong></p>
-        <p><strong>NOVO HORIZONTE CASA DOS IDOSOS</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº <strong>56.956.061/0001-81</strong>, com sede na Rua Silva Jardim, 1012, Vila Moraes, Ourinhos, São Paulo, representada neste ato por <strong>JULIANA VIRGINIA DA SILVA</strong>, brasileira, casada, enfermeira, RG 34.171.146-9 e CPF 285.840.548-47, na função de Sócia-administradora.</p>
+        <p><strong>${employerName.toUpperCase()}</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº <strong>${employerCnpj}</strong>, com sede na ${employerAddress}, representada neste ato por <strong>${employerRepresentative}</strong>, ${employerRepresentativeDocs}, na função de representante legal.</p>
 
         <p style="text-indent: 0; margin-top: 20px;"><strong>CONTRATADO(A):</strong></p>
         <div style="margin-top: 10px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9;">
@@ -301,8 +315,8 @@ export default function Funcionarios() {
           <div style="text-align: center;">
             <div style="border-top: 1px solid #000; padding-top: 10px;">
               <p style="margin: 0; text-indent: 0;"><strong>CONTRATANTE:</strong></p>
-              <p style="margin: 0; text-indent: 0;">NOVO HORIZONTE CASA DOS IDOSOS</p>
-              <p style="margin: 0; text-indent: 0;">CNPJ 56.956.061/0001-81</p>
+              <p style="margin: 0; text-indent: 0;">${employerName.toUpperCase()}</p>
+              <p style="margin: 0; text-indent: 0;">CNPJ ${employerCnpj}</p>
             </div>
           </div>
           <div style="text-align: center;">
@@ -319,8 +333,8 @@ export default function Funcionarios() {
           <div style="margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 50px;">
             <div style="text-align: center;">
               <div style="border-top: 1px solid #777; padding-top: 5px; width: 80%; margin: 0 auto;"></div>
-              <p style="font-size: 10pt; margin: 0; text-indent: 0;">Nome: Osnei Luiz Vieira Vianna</p>
-              <p style="font-size: 10pt; margin: 0; text-indent: 0;">CPF: 191.429.158-13</p>
+              <p style="font-size: 10pt; margin: 0; text-indent: 0;">Nome: Testemunha Demo</p>
+              <p style="font-size: 10pt; margin: 0; text-indent: 0;">CPF: 000.000.000-00</p>
             </div>
             <div style="text-align: center;">
               <div style="border-top: 1px solid #777; padding-top: 5px; width: 80%; margin: 0 auto;"></div>

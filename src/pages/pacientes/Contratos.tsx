@@ -3,6 +3,14 @@ import { useDb } from '@/hooks/useDb'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF, formatCurrencyPDF, formatDatePDF } from '@/lib/pdf'
+import {
+  DEMO_COMPANY_ADDRESS,
+  DEMO_COMPANY_CNPJ,
+  DEMO_COMPANY_LEGAL_NAME,
+  DEMO_COMPANY_NAME,
+  DEMO_COMPANY_REPRESENTATIVE,
+  DEMO_COMPANY_REPRESENTATIVE_DOCS,
+} from '@/lib/companies'
 import type { Patient, Contract } from '@/lib/types'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SearchBar } from '@/components/shared/SearchBar'
@@ -285,6 +293,12 @@ export default function Contratos() {
 
     const fullAddress = `${p.resp_endereco || ''}, ${p.resp_cep || ''}, ${p.resp_cidade || ''}`
     const todayStr = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
+    const contractorName = clinic?.razao_social || (clinic as any)?.name || clinic?.nome_fantasia || DEMO_COMPANY_LEGAL_NAME
+    const contractorTradeName = clinic?.nome_fantasia || (clinic as any)?.name || DEMO_COMPANY_NAME
+    const contractorCnpj = clinic?.cnpj || DEMO_COMPANY_CNPJ
+    const contractorAddress = clinic?.endereco || DEMO_COMPANY_ADDRESS
+    const contractorRepresentative = (clinic as any)?.representante || DEMO_COMPANY_REPRESENTATIVE
+    const contractorRepresentativeDocs = (clinic as any)?.representante_documentos || DEMO_COMPANY_REPRESENTATIVE_DOCS
 
     const allResps = [
       { nome: p.responsavel, cpf: p.resp_cpf, rg: p.resp_rg, nac: p.resp_nacionalidade, civil: p.resp_estado_civil, prof: p.resp_profissao, end: fullAddress },
@@ -312,7 +326,7 @@ export default function Contratos() {
       </div>
 
       <div class="abnt-text" style="text-align: justify; line-height: 1.5;">
-        <p><strong>CONTRATADA: NOVO HORIZONTE CASA DOS IDOSOS</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº 56.956.061/0001-81, com sede na Rua Silva Jardim, 1012, Vila Moraes, Ourinhos, São Paulo, CEP 19.900-461, representada por sua diretora presidente, a Sra. <strong>JULIANA VIRGINIA DA SILVA</strong>, enfermeira, RG nº 34.171.146-9 SSP/SP e CPF nº 285.840.548-47.</p>
+        <p><strong>CONTRATADA: ${contractorName.toUpperCase()}</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${contractorCnpj}, com sede na ${contractorAddress}, representada por <strong>${contractorRepresentative}</strong>, ${contractorRepresentativeDocs}.</p>
         
         ${responsiblesText}
 
@@ -366,7 +380,7 @@ export default function Contratos() {
         <div style="margin-top: 60px; display: flex; justify-content: space-around;">
           <div style="text-align: center; width: 250px;">
             <div style="border-top: 1px solid #000; margin-bottom: 0.5rem;"></div>
-            <p style="text-indent: 0;"><strong>CONTRATADA (Novo Horizonte)</strong></p>
+            <p style="text-indent: 0;"><strong>CONTRATADA (${contractorTradeName})</strong></p>
           </div>
         </div>
         
