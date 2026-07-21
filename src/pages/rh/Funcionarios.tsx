@@ -333,7 +333,7 @@ export default function Funcionarios() {
           <div style="margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 50px;">
             <div style="text-align: center;">
               <div style="border-top: 1px solid #777; padding-top: 5px; width: 80%; margin: 0 auto;"></div>
-              <p style="font-size: 10pt; margin: 0; text-indent: 0;">Nome: Testemunha Demo</p>
+              <p style="font-size: 10pt; margin: 0; text-indent: 0;">Nome: Testemunha 1</p>
               <p style="font-size: 10pt; margin: 0; text-indent: 0;">CPF: 000.000.000-00</p>
             </div>
             <div style="text-align: center;">

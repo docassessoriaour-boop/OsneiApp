@@ -1,7 +1,8 @@
 import type { CompanySettings, Invoice, Patient } from './types'
+import { getCompanyLogoSrc } from './companies'
 
 export function getClinicLogoSrc(clinic?: Partial<CompanySettings> | null) {
-  return (clinic?.logotipo_url || (clinic as any)?.logo_url || '/logo.png').trim() || '/logo.png'
+  return getCompanyLogoSrc(clinic as any)
 }
 
 /**

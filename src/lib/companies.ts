@@ -5,6 +5,8 @@ export const DEMO_COMPANY_CNPJ_DIGITS = '00000000000191'
 export const DEMO_COMPANY_ADDRESS = 'Rua das Flores, 100, Centro, Ourinhos, Sao Paulo, CEP 19.900-000'
 export const DEMO_COMPANY_REPRESENTATIVE = 'Maria Helena Souza'
 export const DEMO_COMPANY_REPRESENTATIVE_DOCS = 'RG 12.345.678-9 e CPF 123.456.789-09'
+export const NOVO_HORIZONTE_CNPJ_DIGITS = '56956061000181'
+export const LAR_SABEDORIA_CNPJ_DIGITS = '52502750000165'
 export const SELECTED_COMPANY_CNPJ_DIGITS_KEY = 'gom-selected-company-cnpj-digits-v1'
 
 export function onlyDigits(value: string) {
@@ -18,4 +20,19 @@ export function formatCnpj(value: string) {
     .replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
     .replace(/\.(\d{3})(\d)/, '.$1/$2')
     .replace(/(\d{4})(\d)/, '$1-$2')
+}
+
+export function getCompanyLogoSrc(company?: { cnpj?: string | null, cnpj_digits?: string | null, logotipo_url?: string | null, logo_url?: string | null } | null) {
+  const configuredLogo = (company?.logotipo_url || company?.logo_url || '').trim()
+  if (configuredLogo) return configuredLogo
+
+  const cnpjDigits = onlyDigits(company?.cnpj_digits || company?.cnpj || '')
+  if (cnpjDigits === LAR_SABEDORIA_CNPJ_DIGITS) return '/logo-lar-sabedoria.png'
+  if (cnpjDigits === NOVO_HORIZONTE_CNPJ_DIGITS) return '/logo-novo-horizonte.png'
+
+  return '/logo.png'
+}
+
+export function isDemoCompany(company?: { cnpj?: string | null, cnpj_digits?: string | null } | null) {
+  return onlyDigits(company?.cnpj_digits || company?.cnpj || '') === DEMO_COMPANY_CNPJ_DIGITS
 }

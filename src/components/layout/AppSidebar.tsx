@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
-import { DEMO_COMPANY_NAME } from '@/lib/companies'
+import { DEMO_COMPANY_NAME, getCompanyLogoSrc, isDemoCompany } from '@/lib/companies'
 import {
   LayoutDashboard,
   Users,
@@ -38,6 +38,8 @@ interface SidebarProps {
 export function AppSidebar({ open, onClose }: SidebarProps) {
   const location = useLocation()
   const { profile, isAdmin, signOut } = useAuth()
+  const companyLogoSrc = getCompanyLogoSrc(profile?.company)
+  const showDemoBadge = isDemoCompany(profile?.company)
 
   const navigation = [
     {
@@ -118,15 +120,17 @@ export function AppSidebar({ open, onClose }: SidebarProps) {
       <div className="flex items-center gap-3 px-6 py-5 border-b border-sidebar-border/50 bg-gradient-to-b from-white/5 to-transparent shadow-[inset_0_-1px_0_rgba(0,0,0,0.1)]">
         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-white to-blue-50 p-1 flex items-center justify-center shrink-0 shadow-lg border border-white/20 relative overflow-hidden">
           <div className="absolute inset-0 bg-blue-500/10 blur-md"></div>
-          <img src="/logo.png" alt={profile?.company?.name || DEMO_COMPANY_NAME} className="h-auto w-full object-contain relative z-10 drop-shadow-sm" />
+          <img src={companyLogoSrc} alt={profile?.company?.name || DEMO_COMPANY_NAME} className="h-auto w-full object-contain relative z-10 drop-shadow-sm" />
         </div>
         <div className="flex-1 min-w-0">
           <h1 className="text-sm font-extrabold text-white leading-tight tracking-wide uppercase drop-shadow-md">
             {profile?.company?.name || DEMO_COMPANY_NAME}
           </h1>
-          <p className="text-[10px] uppercase font-bold text-blue-300/80 tracking-widest mt-0.5">
-            Ambiente Demo
-          </p>
+          {showDemoBadge && (
+            <p className="text-[10px] uppercase font-bold text-blue-300/80 tracking-widest mt-0.5">
+              Ambiente Demo
+            </p>
+          )}
         </div>
         <button
           onClick={onClose}
