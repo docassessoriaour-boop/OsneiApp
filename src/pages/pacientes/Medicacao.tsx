@@ -14,7 +14,7 @@ import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
 import { useClinic } from '@/lib/clinicConfig'
-import { printPDF } from '@/lib/pdf'
+import { getClinicLogoSrc, printPDF } from '@/lib/pdf'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { Pencil, Trash2, Loader2, FileText, Plus, History, PackagePlus, RefreshCw } from 'lucide-react'
 import { recalcularTodosEstoques, sincronizarEstoqueProdutos, vincularMedicamentosAoProduto } from '@/lib/stockCalculator'
@@ -142,6 +142,7 @@ export default function Medicacao() {
   }
 
   function printReport() {
+    const logoSrc = getClinicLogoSrc(clinic)
     let targetPatients = patients
     
     if (selectedPatientId !== 'all') {
@@ -154,7 +155,7 @@ export default function Medicacao() {
 
     const getHeader = () => `
       <div style="text-align:center;margin-bottom:24px;border-bottom:2px solid #1a1f2e;padding-bottom:16px;">
-        <img src="/logo.png" alt="Logo" style="max-height:80px; width: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;" />
+        <img src="${logoSrc}" alt="Logo" style="max-height:80px; width: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;" />
         <h1 style="margin:0;font-size:20px;color:#1a1f2e;">${clinic.razao_social || (clinic as any).name || (clinic as any).nome_fantasia || ''}</h1>
         <p style="margin:4px 0 0;font-size:11px;color:#555;">CNPJ: ${clinic.cnpj || ''}</p>
         <p style="margin:2px 0 0;font-size:11px;color:#555;">${clinic.address || (clinic as any).endereco || ''}</p>
@@ -288,6 +289,7 @@ export default function Medicacao() {
   }
 
   function printTimeTableReport() {
+    const logoSrc = getClinicLogoSrc(clinic)
     // Identificar todos os horários únicos que possuem medicamentos (apenas para escala regular)
     const activeTimes = Array.from(new Set(
       filtered
@@ -311,7 +313,7 @@ export default function Medicacao() {
 
     const getHeader = (title: string) => `
       <div style="text-align:center;margin-bottom:24px;border-bottom:2px solid #1a1f2e;padding-bottom:16px;">
-        <img src="/logo.png" alt="Logo" style="max-height:80px; width: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;" />
+        <img src="${logoSrc}" alt="Logo" style="max-height:80px; width: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;" />
         <h1 style="margin:0;font-size:20px;color:#1a1f2e;">${clinic.razao_social || (clinic as any).name || (clinic as any).nome_fantasia || ''}</h1>
         <p style="margin:4px 0 0;font-size:11px;color:#555;">CNPJ: ${clinic.cnpj || ''}</p>
         <p style="margin:2px 0 0;font-size:11px;color:#555;">${clinic.address || (clinic as any).endereco || ''}</p>

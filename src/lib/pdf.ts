@@ -1,5 +1,9 @@
 import type { CompanySettings, Invoice, Patient } from './types'
 
+export function getClinicLogoSrc(clinic?: Partial<CompanySettings> | null) {
+  return (clinic?.logotipo_url || (clinic as any)?.logo_url || '/logo.png').trim() || '/logo.png'
+}
+
 /**
  * Opens a styled print window with the provided HTML content.
  * Works for both "Print" and "Save as PDF" via the browser's native dialog.
@@ -8,7 +12,8 @@ export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettin
   const win = window.open('', '_blank', 'width=900,height=700')
   if (!win) return
 
-  const logoHtml = options?.hideLogo ? '' : `<img src="/logo.png" alt="Logo" style="max-height:120px; width: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;" />`
+  const logoSrc = getClinicLogoSrc(clinic)
+  const logoHtml = options?.hideLogo ? '' : `<img src="${logoSrc}" alt="Logo" style="max-height:120px; width: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;" />`
 
   const clinicHeader = (clinic && !options?.hideClinicHeader)
     ? `
