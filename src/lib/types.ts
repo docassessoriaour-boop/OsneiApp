@@ -7,7 +7,7 @@ export interface Employee {
   escala: '12x36' | '40h' | 'Mensalista' | 'Manual' | 'Dobra'
   salario: number
   status: 'ativo' | 'inativo' | 'ferias' | 'contrato_cancelado'
-  unidade: 'Jardim Matilde' | 'Ambas'
+  unidade: 'Ouro Verde'
   turno: 'Diurno' | 'Noturno'
   dataAdmissao: string
   telefone: string
@@ -84,7 +84,7 @@ export interface Patient {
   resp_estado_civil?: string
   resp_profissao?: string
   status: 'ativo' | 'inativo'
-  unidade: 'Jardim Matilde'
+  unidade: 'Ouro Verde'
   data_entrada: string
   observacoes: string
   outros_responsaveis?: Responsible[]
@@ -444,3 +444,4 @@ export interface PersonalItemEntry {
   observacoes?: string
   created_at?: string
 }
+

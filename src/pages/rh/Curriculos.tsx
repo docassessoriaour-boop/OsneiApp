@@ -60,7 +60,7 @@ export default function Curriculos() {
   const [interviewForm, setInterviewForm] = useState({
     data: '',
     hora: '',
-    local: 'Unidade Jardim Matilde'
+    local: 'Unidade Ouro Verde'
   })
   const navigate = useNavigate()
 
@@ -97,7 +97,7 @@ export default function Curriculos() {
     setInterviewForm({
       data: curr.data_entrevista || '',
       hora: curr.hora_entrevista || '',
-      local: curr.local_entrevista || 'Unidade Jardim Matilde'
+      local: curr.local_entrevista || 'Unidade Ouro Verde'
     })
     setScheduleDialogOpen(true)
   }
@@ -228,7 +228,7 @@ export default function Curriculos() {
           cidade: curr.cidade,
           uf: curr.uf,
           cargo: curr.cargo_pretendido || '',
-          unidade: 'Jardim Matilde',
+          unidade: 'Ouro Verde',
           turno: 'Diurno',
           escala: '12x36',
           salario: 0,
@@ -457,7 +457,7 @@ export default function Curriculos() {
                   value={interviewForm.local} 
                   onChange={(e) => setInterviewForm({ ...interviewForm, local: e.target.value })} 
                   className="pl-9"
-                  placeholder="Ex: Unidade Jardim Matilde ou Link do Meet"
+                  placeholder="Ex: Unidade Ouro Verde ou Link do Meet"
                 />
               </div>
             </div>
@@ -474,3 +474,4 @@ export default function Curriculos() {
     </div>
   )
 }
+

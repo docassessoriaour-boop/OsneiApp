@@ -801,7 +801,7 @@ export default function Medicacao() {
             <div className="flex gap-2 flex-wrap">
               <Select value={selectedUnit} onChange={(e) => setSelectedUnit(e.target.value)} className="h-9 w-40 text-xs">
                 <option value="all">Todas Unidades</option>
-                <option value="Jardim Matilde">Jardim Matilde</option>
+                <option value="Ouro Verde">Ouro Verde</option>
               </Select>
 
               <Select value={selectedPatientId} onChange={(e) => setSelectedPatientId(e.target.value)} className="h-9 w-48 text-xs">
@@ -1124,3 +1124,4 @@ export default function Medicacao() {
     </div>
   )
 }
+
