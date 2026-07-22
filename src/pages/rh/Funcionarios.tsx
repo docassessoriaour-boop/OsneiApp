@@ -43,6 +43,13 @@ const emptyEmployee: Omit<Employee, 'id'> = {
   salario: 0,
   salario_tipo: 'mensal',
   tipo_contrato: 'autonomo',
+  mei_razao_social: '',
+  mei_cnpj: '',
+  mei_inscricao_municipal: '',
+  mei_endereco: '',
+  mei_responsavel_nome: '',
+  mei_responsavel_cpf: '',
+  mei_responsavel_rg: '',
   status: 'ativo',
   dataAdmissao: new Date().toISOString().slice(0, 10),
   telefone: '',
@@ -116,6 +123,11 @@ function getExperienceContractLabel(employee: Employee) {
   if (employee.contrato_experiencia === '30') return 'Sim, 30 dias'
   if (employee.contrato_experiencia === '45') return 'Sim, 45 dias'
   return 'Não'
+}
+
+function blankIfEmpty(value?: string) {
+  const text = (value || '').trim()
+  return text || '______________________________'
 }
 
 type EmployeeDb = Employee & { data_admissao?: string }
@@ -291,8 +303,17 @@ function buildLarSabedoriaMeiContractHtml(params: {
   today: string
 }) {
   const { emp, employerName, employerCnpj, amountStr, admissao, today } = params
-  const employeeName = emp.nome.toUpperCase()
   const role = (emp.cargo || 'CUIDADOR(A) DE IDOSOS').toUpperCase()
+  const meiCompanyName = blankIfEmpty(emp.mei_razao_social).toUpperCase()
+  const meiCnpj = blankIfEmpty(emp.mei_cnpj)
+  const meiMunicipalRegistration = (emp.mei_inscricao_municipal || '').trim()
+  const meiAddress = blankIfEmpty(emp.mei_endereco)
+  const meiResponsibleName = (emp.mei_responsavel_nome || emp.nome || '').trim().toUpperCase()
+  const meiResponsibleCpf = blankIfEmpty(emp.mei_responsavel_cpf || emp.cpf)
+  const meiResponsibleRg = blankIfEmpty(emp.mei_responsavel_rg || emp.rg)
+  const municipalRegistrationText = meiMunicipalRegistration
+    ? `, com inscrição municipal nº <strong>${meiMunicipalRegistration}</strong>`
+    : ''
   const contractEnd = formatDatePDF(addOneYear(emp.dataAdmissao))
   const transportClause = emp.tem_vt && emp.vt_valor > 0
     ? `<p style="margin-top: 10px;">1.5. A <strong>CONTRATANTE</strong> pagará à <strong>CONTRATADA</strong> o valor de <strong>${formatCurrencyPDF(emp.vt_valor)}</strong> ${emp.vt_tipo === 'diaria' ? 'por dia trabalhado' : 'por mês'} a título de ajuda de custo para transporte.</p>`
@@ -310,7 +331,7 @@ function buildLarSabedoriaMeiContractHtml(params: {
     <div class="abnt-text" style="text-align: justify; line-height: 1.5; font-size: 12pt;">
       <p style="text-indent: 0;"><strong>CONTRATANTE:</strong> <strong>${employerName.toUpperCase()}</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº <strong>${employerCnpj}</strong>, com sede na ${LAR_SABEDORIA_CONTRACT_ADDRESS}, neste ato representada por <strong>${LAR_SABEDORIA_REPRESENTATIVE}</strong>, ${LAR_SABEDORIA_REPRESENTATIVE_DOCS}, na qualidade de representante legal.</p>
 
-      <p style="text-indent: 0;"><strong>CONTRATADA:</strong> <strong>____________________________________________</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº <strong>______________________________</strong>, com sede na <strong>____________________________________________________________</strong>, representada neste ato por seu(ua) titular, <strong>${employeeName}</strong>, portador(a) da Cédula de Identidade RG nº <strong>${emp.rg || '______________________________'}</strong> e inscrito(a) no CPF sob o nº <strong>${emp.cpf}</strong>, profissão <strong>${role}</strong>.</p>
+      <p style="text-indent: 0;"><strong>CONTRATADA:</strong> <strong>${meiCompanyName}</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº <strong>${meiCnpj}</strong>${municipalRegistrationText}, com sede na <strong>${meiAddress}</strong>, representada neste ato por seu(ua) responsável legal, <strong>${meiResponsibleName}</strong>, portador(a) da Cédula de Identidade RG nº <strong>${meiResponsibleRg}</strong> e inscrito(a) no CPF sob o nº <strong>${meiResponsibleCpf}</strong>, profissão <strong>${role}</strong>.</p>
 
       <p>As partes acima qualificadas, por este instrumento particular, de comum acordo, celebram o presente contrato, que se regerá pelas seguintes cláusulas e condições:</p>
 
@@ -375,8 +396,8 @@ function buildLarSabedoriaMeiContractHtml(params: {
         <div style="text-align: center;">
           <div style="border-top: 1px solid #000; padding-top: 10px;">
             <p style="margin: 0; text-indent: 0;"><strong>CONTRATADA:</strong></p>
-            <p style="margin: 0; text-indent: 0;">${employeeName}</p>
-            <p style="margin: 0; text-indent: 0;">CNPJ: ___________________________</p>
+            <p style="margin: 0; text-indent: 0;">${meiCompanyName}</p>
+            <p style="margin: 0; text-indent: 0;">CNPJ: ${meiCnpj}</p>
           </div>
         </div>
       </div>
@@ -418,7 +439,14 @@ function isMissingRhMigrationError(error: unknown) {
     text.includes('quantidade_filhos_menores_14') ||
     text.includes('grau_escolaridade') ||
     text.includes('situacao_escolaridade') ||
-    text.includes('contrato_experiencia')
+    text.includes('contrato_experiencia') ||
+    text.includes('mei_razao_social') ||
+    text.includes('mei_cnpj') ||
+    text.includes('mei_inscricao_municipal') ||
+    text.includes('mei_endereco') ||
+    text.includes('mei_responsavel_nome') ||
+    text.includes('mei_responsavel_cpf') ||
+    text.includes('mei_responsavel_rg')
 }
 
 export default function Funcionarios() {
@@ -814,6 +842,21 @@ export default function Funcionarios() {
         </table>
       </div>
 
+      ${employee.tipo_contrato === 'mei' ? `
+        <div style="margin-bottom: 20px;">
+          <h3 style="background: #f4f4f4; padding: 5px 10px; font-size: 12pt; border-bottom: 2px solid #1a1f2e; margin-bottom: 10px;">DADOS DA EMPRESA MEI</h3>
+          <table style="width: 100%; border: none;">
+            <tr style="border:none;"><td style="border:none; padding: 4px; width: 30%;"><strong>Razão Social:</strong></td><td style="border:none; padding: 4px;">${employee.mei_razao_social || '—'}</td></tr>
+            <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>CNPJ:</strong></td><td style="border:none; padding: 4px;">${employee.mei_cnpj || '—'}</td></tr>
+            <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Inscrição Municipal:</strong></td><td style="border:none; padding: 4px;">${employee.mei_inscricao_municipal || '—'}</td></tr>
+            <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Endereço:</strong></td><td style="border:none; padding: 4px;">${employee.mei_endereco || '—'}</td></tr>
+            <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Responsável Legal:</strong></td><td style="border:none; padding: 4px;">${employee.mei_responsavel_nome || employee.nome || '—'}</td></tr>
+            <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>CPF do Responsável:</strong></td><td style="border:none; padding: 4px;">${employee.mei_responsavel_cpf || employee.cpf || '—'}</td></tr>
+            <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>RG do Responsável:</strong></td><td style="border:none; padding: 4px;">${employee.mei_responsavel_rg || employee.rg || '—'}</td></tr>
+          </table>
+        </div>
+      ` : ''}
+
       <div style="margin-bottom: 20px;">
         <h3 style="background: #f4f4f4; padding: 5px 10px; font-size: 12pt; border-bottom: 2px solid #1a1f2e; margin-bottom: 10px;">BENEFÍCIOS E PAGAMENTO</h3>
         <table style="width: 100%; border: none;">
@@ -1060,6 +1103,80 @@ export default function Funcionarios() {
                 <option value="45">45 dias</option>
               </Select>
             </div>
+
+            {form.tipo_contrato === 'mei' && (
+              <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                <div className="col-span-1 md:col-span-2">
+                  <h4 className="text-sm font-semibold text-primary">Dados da Empresa MEI Contratada</h4>
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Razão Social / Nome Empresarial</Label>
+                  <Input
+                    value={form.mei_razao_social || ''}
+                    onChange={(e) => setForm({ ...form, mei_razao_social: e.target.value })}
+                    placeholder="Ex: 62.426.426 GILDA DE OLIVEIRA DOS SANTOS"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>CNPJ do MEI</Label>
+                  <Input
+                    value={form.mei_cnpj || ''}
+                    onChange={(e) => setForm({ ...form, mei_cnpj: e.target.value })}
+                    placeholder="00.000.000/0000-00"
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>Inscrição Municipal</Label>
+                  <Input
+                    value={form.mei_inscricao_municipal || ''}
+                    onChange={(e) => setForm({ ...form, mei_inscricao_municipal: e.target.value })}
+                    placeholder="Opcional"
+                    className="mt-1"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <Label>Endereço da Empresa MEI</Label>
+                  <Input
+                    value={form.mei_endereco || ''}
+                    onChange={(e) => setForm({ ...form, mei_endereco: e.target.value })}
+                    placeholder="Rua, número, bairro, cidade/UF e CEP"
+                    className="mt-1"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <h4 className="text-sm font-semibold text-primary mt-2">Responsável Legal da Empresa MEI</h4>
+                </div>
+                <div>
+                  <Label>Nome do Responsável Legal</Label>
+                  <Input
+                    value={form.mei_responsavel_nome || ''}
+                    onChange={(e) => setForm({ ...form, mei_responsavel_nome: e.target.value })}
+                    placeholder={form.nome || 'Nome completo'}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>CPF do Responsável Legal</Label>
+                  <Input
+                    value={form.mei_responsavel_cpf || ''}
+                    onChange={(e) => setForm({ ...form, mei_responsavel_cpf: e.target.value })}
+                    placeholder={form.cpf || '000.000.000-00'}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>RG do Responsável Legal</Label>
+                  <Input
+                    value={form.mei_responsavel_rg || ''}
+                    onChange={(e) => setForm({ ...form, mei_responsavel_rg: e.target.value })}
+                    placeholder={form.rg || 'Opcional'}
+                    className="mt-1"
+                  />
+                </div>
+              </div>
+            )}
 
             <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
               <div className="col-span-1 md:col-span-2">

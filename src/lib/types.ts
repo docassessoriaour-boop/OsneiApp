@@ -20,6 +20,13 @@ export interface Employee {
   vt_valor: number
   salario_tipo?: 'mensal' | 'diaria'
   tipo_contrato?: 'autonomo' | 'mei'
+  mei_razao_social?: string
+  mei_cnpj?: string
+  mei_inscricao_municipal?: string
+  mei_endereco?: string
+  mei_responsavel_nome?: string
+  mei_responsavel_cpf?: string
+  mei_responsavel_rg?: string
   tem_insalubridade: boolean
   insalubridade_percentual: number
   cep?: string

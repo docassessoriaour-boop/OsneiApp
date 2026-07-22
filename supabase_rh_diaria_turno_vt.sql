@@ -12,7 +12,14 @@ ALTER TABLE employees
   ADD COLUMN IF NOT EXISTS quantidade_filhos_menores_14 INTEGER DEFAULT 0,
   ADD COLUMN IF NOT EXISTS grau_escolaridade TEXT,
   ADD COLUMN IF NOT EXISTS situacao_escolaridade TEXT,
-  ADD COLUMN IF NOT EXISTS contrato_experiencia TEXT DEFAULT 'nao';
+  ADD COLUMN IF NOT EXISTS contrato_experiencia TEXT DEFAULT 'nao',
+  ADD COLUMN IF NOT EXISTS mei_razao_social TEXT,
+  ADD COLUMN IF NOT EXISTS mei_cnpj TEXT,
+  ADD COLUMN IF NOT EXISTS mei_inscricao_municipal TEXT,
+  ADD COLUMN IF NOT EXISTS mei_endereco TEXT,
+  ADD COLUMN IF NOT EXISTS mei_responsavel_nome TEXT,
+  ADD COLUMN IF NOT EXISTS mei_responsavel_cpf TEXT,
+  ADD COLUMN IF NOT EXISTS mei_responsavel_rg TEXT;
 
 UPDATE employees
 SET salario_tipo = 'mensal'
