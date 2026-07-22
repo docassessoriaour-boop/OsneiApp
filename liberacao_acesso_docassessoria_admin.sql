@@ -63,11 +63,11 @@ BEGIN
     SET
       nome_fantasia = 'Lar de Convivencia da Sabedoria',
       razao_social = 'LAR DE CONVIVENCIA DA SABEDORIA LTDA',
-      endereco = 'Avenida Horacio Soares, 163, Jardim Ouro Verde, Ourinhos (SP)',
+      endereco = 'Avenida Horacio Soares, 163, Quadra XXXI, Jardim Ouro Verde, Ourinhos/SP',
       telefone = '',
       email = 'docassessoria.our@gmail.com',
       website = NULL,
-      cep = '19906-015',
+      cep = '19.906-015',
       company_id = target_company_id
     WHERE cnpj = '52.502.750/0001-65';
 
@@ -89,11 +89,11 @@ BEGIN
         'Lar de Convivencia da Sabedoria',
         'LAR DE CONVIVENCIA DA SABEDORIA LTDA',
         '52.502.750/0001-65',
-        'Avenida Horacio Soares, 163, Jardim Ouro Verde, Ourinhos (SP)',
+        'Avenida Horacio Soares, 163, Quadra XXXI, Jardim Ouro Verde, Ourinhos/SP',
         '',
         'docassessoria.our@gmail.com',
         NULL,
-        '19906-015',
+        '19.906-015',
         target_company_id
       );
     END IF;
