@@ -9,6 +9,8 @@ export interface Employee {
   status: 'ativo' | 'inativo' | 'ferias' | 'contrato_cancelado'
   unidade: 'Ouro Verde'
   turno: 'Diurno' | 'Noturno'
+  turno_inicio?: string
+  turno_fim?: string
   dataAdmissao: string
   telefone: string
   email: string
@@ -16,6 +18,7 @@ export interface Employee {
   tem_vt: boolean
   vt_tipo?: string
   vt_valor: number
+  salario_tipo?: 'mensal' | 'diaria'
   tem_insalubridade: boolean
   insalubridade_percentual: number
   cep?: string

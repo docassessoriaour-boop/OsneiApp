@@ -109,6 +109,44 @@ export default function FolhaPagamento() {
     return matchesSearch && matchesDate
   }).sort((a, b) => (a.funcionarioNome || '').localeCompare(b.funcionarioNome || ''))
 
+  function countWorkedDays(employee: Employee | undefined, start: string, end: string) {
+    if (!employee || !start || !end) return 0
+    const periodStartDate = parseISO(start)
+    const periodEndDate = parseISO(end)
+    const periodDays = eachDayOfInterval({ start: periodStartDate, end: periodEndDate })
+
+    return periodDays.reduce((total, day) => {
+      const dateStr = format(day, 'yyyy-MM-dd')
+      const exception = exceptions.find(ex => ex.employee_id === employee.id && ex.date === dateStr)
+
+      if (exception) return total + (exception.is_working ? 1 : 0)
+      if (employee.escala === '40h' || employee.escala === 'Mensalista') {
+        const dow = getDay(day)
+        return total + (dow >= 1 && dow <= 5 ? 1 : 0)
+      }
+      if (employee.escala === '12x36' && employee.dataAdmissao) {
+        const diff = differenceInCalendarDays(day, parseISO(employee.dataAdmissao))
+        return total + (diff % 2 === 0 ? 1 : 0)
+      }
+
+      return total
+    }, 0)
+  }
+
+  function calculateEmployeeSalary(employee: Employee | undefined, multiplier: number, start: string, end: string, tipoPeriodo: typeof form.tipo_periodo) {
+    const baseSalary = employee?.salario || 0
+    if (employee?.salario_tipo === 'diaria' && tipoPeriodo !== '13_salario') {
+      return Number((baseSalary * countWorkedDays(employee, start, end)).toFixed(2))
+    }
+    return Number((baseSalary * multiplier).toFixed(2))
+  }
+
+  function calculateVtValue(employee: Employee | undefined, multiplier: number, workedDays: number) {
+    if (!employee?.tem_vt) return 0
+    if (employee.vt_tipo === 'diaria') return Number(((employee.vt_valor || 0) * workedDays).toFixed(2))
+    return Number(((employee.vt_valor || 0) * multiplier).toFixed(2))
+  }
+
   // Computed totals
   const totalProventos = adicionais.filter(a => a.tipo === 'provento').reduce((s, a) => s + a.valor, 0)
   const totalDescontos = adicionais.filter(a => a.tipo === 'desconto').reduce((s, a) => s + a.valor, 0)
@@ -199,7 +237,9 @@ export default function FolhaPagamento() {
         if (workedDays > 0 || emp.escala === 'Mensalista' || emp.is_pro_labore) {
           let multiplier = 1
 
-          const baseSalary = Number(((emp.salario || 0) * multiplier).toFixed(2))
+          const baseSalary = emp.salario_tipo === 'diaria'
+            ? Number(((emp.salario || 0) * workedDays).toFixed(2))
+            : Number(((emp.salario || 0) * multiplier).toFixed(2))
           const fixedDiscounts = emp.descontos_fixos || 0
 
           const payloadAdicionais: PayrollAdicional[] = []
@@ -214,16 +254,18 @@ export default function FolhaPagamento() {
              payloadAdicionais.push({
                 descricao: 'Vale Transporte',
                 tipo: 'provento',
-                valor: Number(((emp.vt_valor || 0) * multiplier).toFixed(2))
+                valor: calculateVtValue(emp, multiplier, workedDays)
              })
           }
           if (emp.tem_insalubridade && emp.insalubridade_percentual) {
              payloadAdicionais.push({
                 descricao: `Adicional Insalubridade (${emp.insalubridade_percentual}%)`,
                 tipo: 'provento',
-                valor: Number(((emp.salario || 0) * (emp.insalubridade_percentual / 100) * multiplier).toFixed(2))
+                valor: Number((baseSalary * (emp.insalubridade_percentual / 100)).toFixed(2))
              })
           }
+          const totalProventosGerados = payloadAdicionais.filter(a => a.tipo === 'provento').reduce((s, a) => s + a.valor, 0)
+          const totalDescontosGerados = payloadAdicionais.filter(a => a.tipo === 'desconto').reduce((s, a) => s + a.valor, 0)
 
           const payrollResult = await insert({
             funcionario_id: emp.id,
@@ -231,12 +273,12 @@ export default function FolhaPagamento() {
             cargo: emp.cargo,
             salario_bruto: baseSalary,
             descontos: fixedDiscounts,
-            salario_liquido: baseSalary - fixedDiscounts,
+            salario_liquido: baseSalary + totalProventosGerados - fixedDiscounts - totalDescontosGerados,
             mes_referencia: massMonth,
             status: 'pendente',
             periodo_inicio: format(monthStart, 'yyyy-MM-dd'),
             periodo_fim: format(monthEnd, 'yyyy-MM-dd'),
-            observacoes: emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${dobrasCount > 0 ? `, incluindo ${dobrasCount} dobra(s)` : ''}.`,
+            observacoes: emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${emp.salario_tipo === 'diaria' ? ', salário calculado por diária' : ''}${emp.vt_tipo === 'diaria' ? ', VT por dia trabalhado' : ''}${dobrasCount > 0 ? `, incluindo ${dobrasCount} dobra(s)` : ''}.`,
             adicionais: payloadAdicionais
           } as any)
 
@@ -264,14 +306,19 @@ export default function FolhaPagamento() {
 
   function openNew() {
     const firstEmp = employees.filter(e => e.status === 'ativo')[0]
+    const start = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+    const end = format(endOfMonth(new Date()), 'yyyy-MM-dd')
+    const workedDays = countWorkedDays(firstEmp, start, end)
     setForm({
       funcionarioId: firstEmp?.id || '',
-      salarioBruto: firstEmp?.salario || 0,
+      salarioBruto: firstEmp?.salario_tipo === 'diaria'
+        ? Number(((firstEmp?.salario || 0) * workedDays).toFixed(2))
+        : firstEmp?.salario || 0,
       descontos: firstEmp?.descontos_fixos || 0,
       mesReferencia: new Date().toISOString().slice(0, 7),
       status: 'pendente',
-      periodoInicio: format(startOfMonth(new Date()), 'yyyy-MM-dd'),
-      periodoFim: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
+      periodoInicio: start,
+      periodoFim: end,
       tipo_periodo: 'mes' as 'mes' | 'periodo' | '13_salario',
       observacoes: '',
     })
@@ -282,11 +329,14 @@ export default function FolhaPagamento() {
         initialAdicionais.push({
           descricao: 'Vale Transporte',
           tipo: 'provento',
-          valor: Number((firstEmp.vt_valor || 0).toFixed(2))
+          valor: calculateVtValue(firstEmp, 1, workedDays)
         })
       }
       if (firstEmp.tem_insalubridade && firstEmp.insalubridade_percentual) {
-        const fullInsalubridade = (firstEmp.salario || 0) * (firstEmp.insalubridade_percentual / 100)
+        const salaryBase = firstEmp.salario_tipo === 'diaria'
+          ? Number(((firstEmp.salario || 0) * workedDays).toFixed(2))
+          : firstEmp.salario || 0
+        const fullInsalubridade = salaryBase * (firstEmp.insalubridade_percentual / 100)
         initialAdicionais.push({
           descricao: `Adicional Insalubridade (${firstEmp.insalubridade_percentual}%)`,
           tipo: 'provento',
@@ -336,12 +386,13 @@ export default function FolhaPagamento() {
       let baseSalario = emp?.salario || 0
       let novoSalario = baseSalario
       let multiplier = 1
+      let workedDays = countWorkedDays(emp, start, end)
 
       if (val === 'periodo' && start && end) {
         const dias = differenceInCalendarDays(parseISO(end), parseISO(start)) + 1
         if (dias > 0) {
           multiplier = dias / 30
-          novoSalario = Number((baseSalario * multiplier).toFixed(2))
+          novoSalario = calculateEmployeeSalary(emp, multiplier, start, end, val)
         }
       } else if (val === '13_salario') {
         const year = parseInt(month.split('-')[0], 10) || new Date().getFullYear();
@@ -380,17 +431,18 @@ export default function FolhaPagamento() {
             multiplier = meses / 12;
           }
         }
-        novoSalario = Number((baseSalario * multiplier).toFixed(2));
+        novoSalario = calculateEmployeeSalary(emp, multiplier, start, end, val);
+      } else {
+        novoSalario = calculateEmployeeSalary(emp, multiplier, start, end, val)
       }
 
       setAdicionais(prevAdics => {
         let updated = prevAdics.map(a => {
           if (a.descricao === 'Vale Transporte' && emp?.tem_vt) {
-            return { ...a, valor: Number(((emp.vt_valor || 0) * multiplier).toFixed(2)) }
+            return { ...a, valor: calculateVtValue(emp, multiplier, workedDays) }
           }
           if (a.descricao.startsWith('Adicional Insalubridade') && emp?.tem_insalubridade) {
-            const fullInsalubridade = baseSalario * (emp.insalubridade_percentual / 100)
-            return { ...a, valor: Number((fullInsalubridade * multiplier).toFixed(2)) }
+            return { ...a, valor: Number((novoSalario * (emp.insalubridade_percentual / 100)).toFixed(2)) }
           }
           return a
         })
@@ -745,6 +797,7 @@ export default function FolhaPagamento() {
                 onChange={(e) => {
                   const emp = employees.find(x => x.id === e.target.value)
                   let multiplier = 1
+                  let workedDays = countWorkedDays(emp, form.periodoInicio, form.periodoFim)
                   if (form.tipo_periodo === 'periodo' && form.periodoInicio && form.periodoFim) {
                     const dias = differenceInCalendarDays(parseISO(form.periodoFim), parseISO(form.periodoInicio)) + 1
                     if (dias > 0) multiplier = dias / 30
@@ -787,22 +840,22 @@ export default function FolhaPagamento() {
                     }
                   }
                   
-                  setForm({ ...form, funcionarioId: e.target.value, salarioBruto: Number(((emp?.salario || 0) * multiplier).toFixed(2)), descontos: emp?.descontos_fixos || 0 })
+                  const salarioBruto = calculateEmployeeSalary(emp, multiplier, form.periodoInicio, form.periodoFim, form.tipo_periodo)
+                  setForm({ ...form, funcionarioId: e.target.value, salarioBruto, descontos: emp?.descontos_fixos || 0 })
                   
                   const newAdicionais: PayrollAdicional[] = []
                   if (emp?.tem_vt && form.tipo_periodo !== '13_salario') {
                     newAdicionais.push({
                       descricao: 'Vale Transporte',
                       tipo: 'provento',
-                      valor: Number(((emp.vt_valor || 0) * multiplier).toFixed(2))
+                      valor: calculateVtValue(emp, multiplier, workedDays)
                     })
                   }
                   if (emp?.tem_insalubridade && emp.insalubridade_percentual) {
-                    const fullInsalubridade = (emp.salario || 0) * (emp.insalubridade_percentual / 100)
                     newAdicionais.push({
                       descricao: `Adicional Insalubridade (${emp.insalubridade_percentual}%)`,
                       tipo: 'provento',
-                      valor: Number((fullInsalubridade * multiplier).toFixed(2))
+                      valor: Number((salarioBruto * (emp.insalubridade_percentual / 100)).toFixed(2))
                     })
                   }
                   setAdicionais(newAdicionais)

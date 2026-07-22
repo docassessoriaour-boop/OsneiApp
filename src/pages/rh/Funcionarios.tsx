@@ -35,8 +35,11 @@ const emptyEmployee: Omit<Employee, 'id'> = {
   cargo: '',
   unidade: 'Ouro Verde',
   turno: 'Diurno',
+  turno_inicio: '07:00',
+  turno_fim: '19:00',
   escala: '40h',
   salario: 0,
+  salario_tipo: 'mensal',
   status: 'ativo',
   dataAdmissao: new Date().toISOString().slice(0, 10),
   telefone: '',
@@ -55,6 +58,39 @@ const emptyEmployee: Omit<Employee, 'id'> = {
   cep: '',
   cidade: '',
   uf: '',
+}
+
+function getDefaultShiftTimes(turno: Employee['turno'], escala: Employee['escala']) {
+  if (turno === 'Noturno') return { turno_inicio: '19:00', turno_fim: '07:00' }
+  if (escala === '40h' || escala === 'Mensalista') return { turno_inicio: '06:30', turno_fim: '14:30' }
+  return { turno_inicio: '07:00', turno_fim: '19:00' }
+}
+
+function normalizeTime(value?: string) {
+  return value ? value.slice(0, 5) : ''
+}
+
+function getEmployeeShiftLabel(employee: Employee) {
+  const defaults = getDefaultShiftTimes(employee.turno || 'Diurno', employee.escala)
+  const start = normalizeTime(employee.turno_inicio) || defaults.turno_inicio
+  const end = normalizeTime(employee.turno_fim) || defaults.turno_fim
+  return start && end ? ` (${start}-${end})` : ''
+}
+
+function getEmployeeSalaryLabel(employee: Employee) {
+  const tipo = employee.salario_tipo === 'diaria' ? ' / dia' : ''
+  return `${formatCurrency(employee.salario)}${tipo}`
+}
+
+function getEmployeeSalaryLabelPDF(employee: Employee) {
+  const tipo = employee.salario_tipo === 'diaria' ? ' por dia' : ' por mês'
+  return `${formatCurrencyPDF(employee.salario)}${tipo}`
+}
+
+function getVtDescription(employee: Employee) {
+  if (!employee.tem_vt) return 'NÃO'
+  const periodicity = employee.vt_tipo === 'diaria' ? 'por dia trabalhado' : 'por mês'
+  return `SIM (${employee.vt_tipo || 'Padrão'} - ${formatCurrencyPDF(employee.vt_valor)} ${periodicity})`
 }
 
 export default function Funcionarios() {
@@ -119,7 +155,14 @@ export default function Funcionarios() {
   function openEdit(employee: Employee) {
     // DB returns data_admissao (snake_case), form uses dataAdmissao (camelCase)
     const { data_admissao, ...rest } = employee as any
-    setForm({ ...rest, dataAdmissao: data_admissao || employee.dataAdmissao || '' })
+    const defaultTimes = getDefaultShiftTimes(employee.turno || 'Diurno', employee.escala)
+    setForm({
+      ...rest,
+      salario_tipo: employee.salario_tipo || 'mensal',
+      turno_inicio: normalizeTime(employee.turno_inicio) || defaultTimes.turno_inicio,
+      turno_fim: normalizeTime(employee.turno_fim) || defaultTimes.turno_fim,
+      dataAdmissao: data_admissao || employee.dataAdmissao || ''
+    })
     setEditingId(employee.id)
     setDialogOpen(true)
   }
@@ -167,8 +210,8 @@ export default function Funcionarios() {
   function openReceipt(emp: Employee) {
     setSelectedEmp(emp)
     setReceiptItems([
-      { desc: 'Salário Base', val: emp.salario },
-      ...(emp.tem_vt ? [{ desc: 'Vale Transporte', val: emp.vt_valor }] : []),
+      { desc: emp.salario_tipo === 'diaria' ? 'Diária' : 'Salário Base', val: emp.salario },
+      ...(emp.tem_vt ? [{ desc: emp.vt_tipo === 'diaria' ? 'Vale Transporte (por dia trabalhado)' : 'Vale Transporte', val: emp.vt_valor }] : []),
       ...(emp.tem_insalubridade ? [{ desc: 'Adicional Insalubridade', val: (emp.salario * (emp.insalubridade_percentual / 100)) }] : [])
     ])
     setReceiptDialogOpen(true)
@@ -236,7 +279,7 @@ export default function Funcionarios() {
 
   function printReport() {
     const statusLabel = statusFilter === 'todos' ? 'Todos' : statusFilter === 'ativo' ? 'Ativos' : statusFilter === 'ferias' ? 'Em Férias' : statusFilter === 'contrato_cancelado' ? 'Contrato Cancelado' : 'Inativos'
-    const rows = filtered.map(e => `<tr><td>${e.nome}</td><td>${e.cpf}</td><td>${e.cargo}<br/><small>${e.unidade || 'Ouro Verde'} - ${e.turno || 'Diurno'}</small></td><td>${e.escala}</td><td>${formatDatePDF(e.dataAdmissao)}</td><td class="text-right">${formatCurrencyPDF(e.salario)}</td><td>${e.status}</td></tr>`).join('')
+    const rows = filtered.map(e => `<tr><td>${e.nome}</td><td>${e.cpf}</td><td>${e.cargo}<br/><small>${e.unidade || 'Ouro Verde'} - ${e.turno || 'Diurno'}${getEmployeeShiftLabel(e)}</small></td><td>${e.escala}</td><td>${formatDatePDF(e.dataAdmissao)}</td><td class="text-right">${getEmployeeSalaryLabelPDF(e)}</td><td>${e.status}</td></tr>`).join('')
     const totalSalario = filtered.reduce((s, e) => s + e.salario, 0)
     printPDF(`Relatório de Funcionários - ${statusLabel}`, `
       <table><thead><tr><th>Nome</th><th>CPF</th><th>Cargo / Unidade / Turno</th><th>Escala</th><th>Admissão</th><th class="text-right">Salário</th><th>Status</th></tr></thead>
@@ -247,7 +290,7 @@ export default function Funcionarios() {
   }
 
   function printEmployeeContract(emp: Employee) {
-    const amountStr = formatCurrencyPDF(emp.salario)
+    const amountStr = getEmployeeSalaryLabelPDF(emp)
     const admissao = formatDatePDF(emp.dataAdmissao)
     const today = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })
     const employerName = clinic?.razao_social || (clinic as any)?.name || clinic?.nome_fantasia || DEMO_COMPANY_LEGAL_NAME
@@ -289,11 +332,11 @@ export default function Funcionarios() {
         <p style="margin-top: 10px;">1.2. Pagar ao(à) <strong>CONTRATADO(A)</strong> a remuneração estipulada na Cláusula Quarta, nas datas e condições acordadas.</p>
 
         <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA QUARTA – DO PREÇO E DA FORMA DE PAGAMENTO</h3>
-        <p>1.1. O(A) <strong>CONTRATANTE</strong> pagará ao(à) <strong>CONTRATADO(A)</strong> o valor de <strong>${amountStr}</strong> por mês.</p>
+        <p>1.1. O(A) <strong>CONTRATANTE</strong> pagará ao(à) <strong>CONTRATADO(A)</strong> o valor de <strong>${amountStr}</strong>.</p>
         <p style="margin-top: 10px;">1.2. O pagamento será realizado via Pix, para conta bancária estipulada pela <strong>CONTRATADA</strong>, até o <strong>5º dia útil</strong> de cada mês, mediante a apresentação do correspondente Recibo de Pagamento.</p>
         <p style="margin-top: 10px;">1.3. Em caso de atraso no pagamento, o valor devido será acrescido de multa de 2% e juros de 2% ao mês, calculados sobre o valor total em atraso.</p>
         <p style="margin-top: 10px;">1.4. A CONTRATANTE fará à CONTRATADA um pagamento de <strong>BONIFICAÇÃO</strong> no mês de dezembro do ano vigente no valor de uma mensalidade do contrato, sendo o cálculo baseado proporcionalmente aos meses do contrato em vigência.</p>
-        ${emp.tem_vt ? `<p style="margin-top: 10px;">1.5. O(A) <strong>CONTRATANTE</strong> pagará ao(à) <strong>CONTRATADO(A)</strong> o valor de <strong>${formatCurrencyPDF(emp.vt_valor)}</strong> por mês a título de vale-transporte.</p>` : ''}
+        ${emp.tem_vt ? `<p style="margin-top: 10px;">1.5. O(A) <strong>CONTRATANTE</strong> pagará ao(à) <strong>CONTRATADO(A)</strong> o valor de <strong>${formatCurrencyPDF(emp.vt_valor)}</strong> ${emp.vt_tipo === 'diaria' ? 'por dia trabalhado' : 'por mês'} a título de vale-transporte.</p>` : ''}
         ${emp.tem_insalubridade ? `<p style="margin-top: 10px;">${emp.tem_vt ? '1.6' : '1.5'}. O(A) <strong>CONTRATANTE</strong> pagará ao(à) <strong>CONTRATADO(A)</strong> o adicional de insalubridade no percentual de <strong>${emp.insalubridade_percentual}%</strong> sobre o salário base.</p>` : ''}
 
         <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA QUINTA – DO PRAZO</h3>
@@ -373,10 +416,10 @@ export default function Funcionarios() {
         <table style="width: 100%; border: none;">
           <tr style="border:none;"><td style="border:none; padding: 4px; width: 30%;"><strong>Cargo:</strong></td><td style="border:none; padding: 4px;">${employee.cargo}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Unidade:</strong></td><td style="border:none; padding: 4px;">${employee.unidade || 'Ouro Verde'}</td></tr>
-          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Turno:</strong></td><td style="border:none; padding: 4px;">${employee.turno || 'Diurno'}</td></tr>
+          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Turno:</strong></td><td style="border:none; padding: 4px;">${employee.turno || 'Diurno'}${getEmployeeShiftLabel(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Escala:</strong></td><td style="border:none; padding: 4px;">${employee.escala}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Data de Admissão:</strong></td><td style="border:none; padding: 4px;">${formatDatePDF(employee.dataAdmissao)}</td></tr>
-          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Salário Base:</strong></td><td style="border:none; padding: 4px;">${formatCurrencyPDF(employee.salario)}</td></tr>
+          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Salário Base:</strong></td><td style="border:none; padding: 4px;">${getEmployeeSalaryLabelPDF(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Status Atual:</strong></td><td style="border:none; padding: 4px;">${employee.status.toUpperCase()}</td></tr>
         </table>
       </div>
@@ -384,7 +427,7 @@ export default function Funcionarios() {
       <div style="margin-bottom: 20px;">
         <h3 style="background: #f4f4f4; padding: 5px 10px; font-size: 12pt; border-bottom: 2px solid #1a1f2e; margin-bottom: 10px;">BENEFÍCIOS E PAGAMENTO</h3>
         <table style="width: 100%; border: none;">
-          <tr style="border:none;"><td style="border:none; padding: 4px; width: 30%;"><strong>Vale Transporte:</strong></td><td style="border:none; padding: 4px;">${employee.tem_vt ? `SIM (${employee.vt_tipo || 'Padrão'} - ${formatCurrencyPDF(employee.vt_valor)})` : 'NÃO'}</td></tr>
+          <tr style="border:none;"><td style="border:none; padding: 4px; width: 30%;"><strong>Vale Transporte:</strong></td><td style="border:none; padding: 4px;">${getVtDescription(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Insalubridade:</strong></td><td style="border:none; padding: 4px;">${employee.tem_insalubridade ? `SIM (${employee.insalubridade_percentual}%)` : 'NÃO'}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Dados Bancários:</strong></td><td style="border:none; padding: 4px;">${employee.dados_bancarios || '—'}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Chave PIX:</strong></td><td style="border:none; padding: 4px;">${employee.chave_pix || '—'}</td></tr>
@@ -461,10 +504,7 @@ export default function Funcionarios() {
                       <div className="flex gap-1 mt-1">
                         <Badge variant="outline" className="text-[10px]">{employee.unidade || 'Ouro Verde'}</Badge>
                         <Badge variant="outline" className="text-[10px] bg-blue-50/50">
-                          {employee.turno || 'Diurno'} 
-                          {employee.escala === '12x36' 
-                            ? (employee.turno === 'Noturno' ? ' (19h-07h)' : ' (07h-19h)')
-                            : (employee.escala === 'Mensalista' || employee.escala === '40h' ? ' (06:30-14:30)' : '')}
+                          {employee.turno || 'Diurno'}{getEmployeeShiftLabel(employee)}
                         </Badge>
                       </div>
                     </TableCell>
@@ -472,7 +512,7 @@ export default function Funcionarios() {
                       {calculateAge(employee.data_nascimento) ? `${calculateAge(employee.data_nascimento)} anos` : '—'}
                     </TableCell>
                     <TableCell>{employee.escala}</TableCell>
-                    <TableCell>{formatCurrency(employee.salario)}</TableCell>
+                    <TableCell>{getEmployeeSalaryLabel(employee)}</TableCell>
                     <TableCell>
                       <div className="flex gap-1">
                         {employee.tem_vt && <Badge variant="secondary" className="text-[10px]">VT</Badge>}
@@ -559,14 +599,31 @@ export default function Funcionarios() {
             </div>
             <div>
               <Label>Turno</Label>
-              <Select value={form.turno || 'Diurno'} onChange={(e) => setForm({ ...form, turno: e.target.value as Employee['turno'] })} className="mt-1">
+              <Select value={form.turno || 'Diurno'} onChange={(e) => {
+                const turno = e.target.value as Employee['turno']
+                setForm({ ...form, turno, ...getDefaultShiftTimes(turno, form.escala) })
+              }} className="mt-1">
                 <option value="Diurno">Diurno (07:00/19:00)</option>
                 <option value="Noturno">Noturno (19:00/07:00)</option>
               </Select>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Entrada do Turno</Label>
+                <Input type="time" value={normalizeTime(form.turno_inicio)} onChange={(e) => setForm({ ...form, turno_inicio: e.target.value })} className="mt-1" />
+              </div>
+              <div>
+                <Label>Saída do Turno</Label>
+                <Input type="time" value={normalizeTime(form.turno_fim)} onChange={(e) => setForm({ ...form, turno_fim: e.target.value })} className="mt-1" />
+              </div>
+            </div>
             <div>
               <Label>Escala</Label>
-              <Select value={form.escala} onChange={(e) => setForm({ ...form, escala: e.target.value as Employee['escala'] })} className="mt-1">
+              <Select value={form.escala} onChange={(e) => {
+                const escala = e.target.value as Employee['escala']
+                const shouldApplyDefault = !form.turno_inicio || !form.turno_fim
+                setForm({ ...form, escala, ...(shouldApplyDefault ? getDefaultShiftTimes(form.turno || 'Diurno', escala) : {}) })
+              }} className="mt-1">
                 <option value="12x36">12x36</option>
                 <option value="Mensalista">Mensalista (Seg-Sex 06:30-14:30)</option>
                 <option value="40h">40h (Padrão 40h/Semana)</option>
@@ -575,8 +632,15 @@ export default function Funcionarios() {
               </Select>
             </div>
             <div>
-              <Label>Salário Base</Label>
+              <Label>{form.salario_tipo === 'diaria' ? 'Valor da Diária' : 'Salário Base Mensal'}</Label>
               <Input type="number" value={form.salario} onChange={(e) => setForm({ ...form, salario: Number(e.target.value) })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Tipo de Salário</Label>
+              <Select value={form.salario_tipo || 'mensal'} onChange={(e) => setForm({ ...form, salario_tipo: e.target.value as Employee['salario_tipo'] })} className="mt-1">
+                <option value="mensal">Mensal</option>
+                <option value="diaria">Diária</option>
+              </Select>
             </div>
             <div>
               <Label>Descontos Fixos (Mensais)</Label>
@@ -632,6 +696,8 @@ export default function Funcionarios() {
                         setForm({ ...form, tem_vt: true, vt_valor: 130, vt_tipo: 'municipal' });
                       } else if (val === 'combustivel') {
                         setForm({ ...form, tem_vt: true, vt_valor: 150, vt_tipo: 'combustivel' });
+                      } else if (val === 'diaria') {
+                        setForm({ ...form, tem_vt: true, vt_tipo: 'diaria' });
                       } else {
                         setForm({ ...form, tem_vt: true, vt_tipo: 'personalizado' });
                       }
@@ -641,12 +707,15 @@ export default function Funcionarios() {
                     <option value="não">Não utiliza VT</option>
                     <option value="municipal">Transporte Municipal (R$ 130,00)</option>
                     <option value="combustivel">Ajuda Combustível (R$ 150,00)</option>
+                    <option value="diaria">Por Dia Trabalhado</option>
                     <option value="personalizado">Valor Personalizado...</option>
                   </Select>
                 </div>
                 {form.tem_vt && (
                   <div className="pl-4 border-l-2 border-primary/20 animate-in slide-in-from-left-2 duration-200">
-                    <Label className="text-xs text-muted-foreground">Confirmar Valor Mensal (R$)</Label>
+                    <Label className="text-xs text-muted-foreground">
+                      {form.vt_tipo === 'diaria' ? 'Confirmar Valor por Dia Trabalhado (R$)' : 'Confirmar Valor Mensal (R$)'}
+                    </Label>
                     <Input 
                       type="number" 
                       value={form.vt_valor} 

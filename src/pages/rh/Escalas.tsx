@@ -14,6 +14,23 @@ import { ChevronLeft, ChevronRight, Loader2, FileText, History, Save } from 'luc
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth, differenceInCalendarDays, parseISO } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
+function getDefaultShiftTimes(employee: Employee) {
+  if (employee.turno === 'Noturno') return { start: '19:00', end: '07:00' }
+  if (employee.escala === '40h' || employee.escala === 'Mensalista') return { start: '06:30', end: '14:30' }
+  return { start: '07:00', end: '19:00' }
+}
+
+function normalizeTime(value?: string) {
+  return value ? value.slice(0, 5) : ''
+}
+
+function getEmployeeShiftTime(employee: Employee) {
+  const defaults = getDefaultShiftTimes(employee)
+  const start = normalizeTime(employee.turno_inicio) || defaults.start
+  const end = normalizeTime(employee.turno_fim) || defaults.end
+  return start && end ? `${start}h/${end}h` : ''
+}
+
 export default function Escalas() {
   const { data: rawEmployees, loading: loadingEmployees } = useDb<Employee>('employees')
   // Normaliza: DB retorna data_admissao (snake_case), código usa dataAdmissao (camelCase)
@@ -317,9 +334,7 @@ export default function Escalas() {
     
     // Employee rows
     const rows = activeEmployees.map(employee => {
-      const shiftTime = employee.escala === '12x36' 
-        ? (employee.turno === 'Noturno' ? '19:00h/07:00h' : '07:00h/19:00h')
-        : (employee.escala === 'Mensalista' || employee.escala === '40h' ? '06:30/14:30' : '')
+      const shiftTime = getEmployeeShiftTime(employee)
 
       const scheduleCells = days.map(day => {
         const { working, dobra, start_time, end_time } = getSchedule(employee, day) as any
@@ -455,9 +470,7 @@ export default function Escalas() {
                             {employee.turno === 'Noturno' ? 'NOT' : 'DIU'}
                           </span>
                           <span className="text-[9px] text-primary/70 font-semibold border px-1 rounded bg-primary/5">
-                            {employee.escala === '12x36' 
-                              ? (employee.turno === 'Noturno' ? '19h-07h' : '07h-19h')
-                              : (employee.escala === 'Mensalista' || employee.escala === '40h' ? '06:30-14:30' : '')}
+                            {getEmployeeShiftTime(employee).replace('h/', '-').replace(/h$/, '')}
                           </span>
                           {employee.is_pro_labore && (
                             <span className="text-[9px] text-emerald-600 font-bold border border-emerald-200 px-1 rounded bg-emerald-50">PRO-LABORE</span>
