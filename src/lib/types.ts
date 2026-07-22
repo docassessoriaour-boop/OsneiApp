@@ -19,6 +19,7 @@ export interface Employee {
   vt_tipo?: string
   vt_valor: number
   salario_tipo?: 'mensal' | 'diaria'
+  tipo_contrato?: 'autonomo' | 'mei'
   tem_insalubridade: boolean
   insalubridade_percentual: number
   cep?: string

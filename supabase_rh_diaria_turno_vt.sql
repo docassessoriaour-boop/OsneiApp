@@ -3,9 +3,14 @@
 
 ALTER TABLE employees
   ADD COLUMN IF NOT EXISTS salario_tipo TEXT DEFAULT 'mensal',
+  ADD COLUMN IF NOT EXISTS tipo_contrato TEXT DEFAULT 'autonomo',
   ADD COLUMN IF NOT EXISTS turno_inicio TIME,
   ADD COLUMN IF NOT EXISTS turno_fim TIME;
 
 UPDATE employees
 SET salario_tipo = 'mensal'
 WHERE salario_tipo IS NULL;
+
+UPDATE employees
+SET tipo_contrato = 'autonomo'
+WHERE tipo_contrato IS NULL;

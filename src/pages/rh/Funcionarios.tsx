@@ -40,6 +40,7 @@ const emptyEmployee: Omit<Employee, 'id'> = {
   escala: '40h',
   salario: 0,
   salario_tipo: 'mensal',
+  tipo_contrato: 'autonomo',
   status: 'ativo',
   dataAdmissao: new Date().toISOString().slice(0, 10),
   telefone: '',
@@ -93,13 +94,17 @@ function getVtDescription(employee: Employee) {
   return `SIM (${employee.vt_tipo || 'Padrão'} - ${formatCurrencyPDF(employee.vt_valor)} ${periodicity})`
 }
 
+function getContractTypeLabel(employee: Employee) {
+  return employee.tipo_contrato === 'mei' ? 'MEI' : 'Autônomo'
+}
+
 function isMissingRhMigrationError(error: unknown) {
   if (!error || typeof error !== 'object') return false
   const message = 'message' in error ? String((error as { message?: unknown }).message || '') : ''
   const details = 'details' in error ? String((error as { details?: unknown }).details || '') : ''
   const text = `${message} ${details}`.toLowerCase()
 
-  return text.includes('salario_tipo') || text.includes('turno_inicio') || text.includes('turno_fim')
+  return text.includes('salario_tipo') || text.includes('turno_inicio') || text.includes('turno_fim') || text.includes('tipo_contrato')
 }
 
 export default function Funcionarios() {
@@ -168,6 +173,7 @@ export default function Funcionarios() {
     setForm({
       ...rest,
       salario_tipo: employee.salario_tipo || 'mensal',
+      tipo_contrato: employee.tipo_contrato || 'autonomo',
       turno_inicio: normalizeTime(employee.turno_inicio) || defaultTimes.turno_inicio,
       turno_fim: normalizeTime(employee.turno_fim) || defaultTimes.turno_fim,
       dataAdmissao: data_admissao || employee.dataAdmissao || ''
@@ -309,22 +315,40 @@ export default function Funcionarios() {
     const employerAddress = clinic?.endereco || DEMO_COMPANY_ADDRESS
     const employerRepresentative = (clinic as any)?.representante || DEMO_COMPANY_REPRESENTATIVE
     const employerRepresentativeDocs = (clinic as any)?.representante_documentos || DEMO_COMPANY_REPRESENTATIVE_DOCS
+    const isMeiContract = emp.tipo_contrato === 'mei'
+    const contractTitle = isMeiContract ? 'CONTRATO DE PRESTAÇÃO DE SERVIÇOS MEI' : 'CONTRATO DE PRESTAÇÃO DE SERVIÇOS AUTÔNOMO'
+    const contractorLabel = isMeiContract ? 'PRESTADOR(A) MEI' : 'CONTRATADO(A) AUTÔNOMO(A)'
+    const contractorDocs = isMeiContract
+      ? `
+          <p style="margin: 0; text-indent: 0;"><strong>CPF:</strong> ${emp.cpf}</p>
+          <p style="margin: 0; text-indent: 0;"><strong>RG:</strong> ${emp.rg || '—'}</p>
+          <p style="margin: 0; text-indent: 0;"><strong>MEI/CNPJ:</strong> ______________________________</p>
+        `
+      : `
+          <p style="margin: 0; text-indent: 0;"><strong>CPF:</strong> ${emp.cpf}</p>
+          <p style="margin: 0; text-indent: 0;"><strong>RG:</strong> ${emp.rg || '—'}</p>
+        `
+    const autonomyClause = isMeiContract
+      ? 'O(A) PRESTADOR(A) MEI declara atuar por conta própria, com autonomia técnica e administrativa, assumindo integral responsabilidade por suas obrigações fiscais, previdenciárias, tributárias e pela emissão dos documentos fiscais aplicáveis.'
+      : 'O(A) CONTRATADO(A) AUTÔNOMO(A) declara atuar por conta própria, sem subordinação, habitualidade empregatícia ou vínculo trabalhista, assumindo integral responsabilidade por suas obrigações fiscais, previdenciárias e trabalhistas.'
+    const paymentDocumentClause = isMeiContract
+      ? 'O pagamento será realizado via Pix ou conta bancária indicada pelo(a) PRESTADOR(A) MEI, mediante emissão da respectiva nota fiscal ou documento fiscal equivalente.'
+      : 'O pagamento será realizado via Pix ou conta bancária indicada pelo(a) CONTRATADO(A), mediante a apresentação do correspondente recibo de pagamento.'
 
     const html = `
       <div style="text-align: center; margin-bottom: 30px;">
-        <h2 style="margin-bottom: 5px; text-transform: uppercase;">CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h2>
-        <h3 style="margin-top: 0; text-transform: uppercase; border:none;">CUIDADOR AUTÔNOMO DE IDOSOS</h3>
+        <h2 style="margin-bottom: 5px; text-transform: uppercase;">${contractTitle}</h2>
+        <h3 style="margin-top: 0; text-transform: uppercase; border:none;">${emp.cargo || 'PRESTAÇÃO DE SERVIÇOS'}</h3>
        </div>
        
        <div class="abnt-text" style="text-align: justify; line-height: 1.5; font-size: 12pt;">
         <p style="text-indent: 0;"><strong>CONTRATANTE:</strong></p>
         <p><strong>${employerName.toUpperCase()}</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº <strong>${employerCnpj}</strong>, com sede na ${employerAddress}, representada neste ato por <strong>${employerRepresentative}</strong>, ${employerRepresentativeDocs}, na função de representante legal.</p>
 
-        <p style="text-indent: 0; margin-top: 20px;"><strong>CONTRATADO(A):</strong></p>
+        <p style="text-indent: 0; margin-top: 20px;"><strong>${contractorLabel}:</strong></p>
         <div style="margin-top: 10px; padding: 15px; border: 1px solid #ddd; border-radius: 4px; background-color: #f9f9f9;">
           <p style="margin: 0; text-indent: 0;"><strong>NOME:</strong> ${emp.nome.toUpperCase()}</p>
-          <p style="margin: 0; text-indent: 0;"><strong>CPF:</strong> ${emp.cpf}</p>
-          <p style="margin: 0; text-indent: 0;"><strong>RG:</strong> ${emp.rg || '—'}</p>
+          ${contractorDocs}
           <p style="margin: 0; text-indent: 0;"><strong>ENDEREÇO:</strong> ${emp.endereco || '—'}</p>
           <p style="margin: 0; text-indent: 0;"><strong>PROFISSÃO:</strong> ${emp.cargo.toUpperCase()}</p>
         </div>
@@ -335,7 +359,7 @@ export default function Funcionarios() {
         <p>O objeto do presente contrato é a prestação de serviços de <strong>${emp.cargo.toUpperCase()}</strong> a ser realizada pelo(a) <strong>CONTRATADO(A)</strong>, que deverá zelar pelo bem-estar físico e mental, segurança e qualidade de vida dos idosos, residentes na clínica do(a) <strong>CONTRATANTE</strong>.</p>
 
         <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA SEGUNDA – DAS OBRIGAÇÕES DO(A) CONTRATADO(A)</h3>
-        <p>1.1. O(A) <strong>CONTRATADO(A)</strong> compromete-se a executar os serviços de forma autônoma, sem subordinação ou vínculo empregatício com o(a) <strong>CONTRATANTE</strong>.</p>
+        <p>1.1. ${autonomyClause}</p>
         <p style="margin-top: 10px;">1.2. Entre as atividades a serem desempenhadas, incluem-se, mas não se limitam a: acompanhamento em atividades diárias (higiene, alimentação, locomoção), administração de medicamentos conforme orientação médica, monitoramento da saúde e bem-estar, auxílio em tarefas de organização do ambiente do idoso, e respeito à confidencialidade das informações.</p>
 
         <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA TERCEIRA – DAS OBRIGAÇÕES DO(A) CONTRATANTE</h3>
@@ -344,7 +368,7 @@ export default function Funcionarios() {
 
         <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA QUARTA – DO PREÇO E DA FORMA DE PAGAMENTO</h3>
         <p>1.1. O(A) <strong>CONTRATANTE</strong> pagará ao(à) <strong>CONTRATADO(A)</strong> o valor de <strong>${amountStr}</strong>.</p>
-        <p style="margin-top: 10px;">1.2. O pagamento será realizado via Pix, para conta bancária estipulada pela <strong>CONTRATADA</strong>, até o <strong>5º dia útil</strong> de cada mês, mediante a apresentação do correspondente Recibo de Pagamento.</p>
+        <p style="margin-top: 10px;">1.2. ${paymentDocumentClause}</p>
         <p style="margin-top: 10px;">1.3. Em caso de atraso no pagamento, o valor devido será acrescido de multa de 2% e juros de 2% ao mês, calculados sobre o valor total em atraso.</p>
         <p style="margin-top: 10px;">1.4. A CONTRATANTE fará à CONTRATADA um pagamento de <strong>BONIFICAÇÃO</strong> no mês de dezembro do ano vigente no valor de uma mensalidade do contrato, sendo o cálculo baseado proporcionalmente aos meses do contrato em vigência.</p>
         ${emp.tem_vt ? `<p style="margin-top: 10px;">1.5. O(A) <strong>CONTRATANTE</strong> pagará ao(à) <strong>CONTRATADO(A)</strong> o valor de <strong>${formatCurrencyPDF(emp.vt_valor)}</strong> ${emp.vt_tipo === 'diaria' ? 'por dia trabalhado' : 'por mês'} a título de vale-transporte.</p>` : ''}
@@ -358,7 +382,7 @@ export default function Funcionarios() {
         <p style="margin-top: 10px;">1.2. O contrato será automaticamente rescindido por justa causa em caso de descumprimento de qualquer de suas cláusulas ou condições, sujeitando a parte infratora ao pagamento de multa de <strong>25% sobre o valor total do contrato</strong>, sem prejuízo das perdas e danos.</p>
 
         <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA SÉTIMA – DA INDEPENDÊNCIA DAS PARTES</h3>
-        <p>As partes declaram que a relação jurídica estabelecida neste contrato é de natureza civil, e não trabalhista, não havendo subordinação hierárquica, vínculo empregatício ou qualquer outra relação de trabalho entre o(a) <strong>CONTRATADO(A)</strong> e o(a) <strong>CONTRATANTE</strong>. O(A) <strong>CONTRATADO(A)</strong> é responsável por todas as suas obrigações fiscais, previdenciárias e trabalhistas.</p>
+        <p>As partes declaram que a relação jurídica estabelecida neste contrato é de natureza civil, e não trabalhista, não havendo subordinação hierárquica, vínculo empregatício ou qualquer outra relação de trabalho entre o(a) <strong>${contractorLabel}</strong> e o(a) <strong>CONTRATANTE</strong>. ${autonomyClause}</p>
 
         <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA OITAVA – DO FORO</h3>
         <p>As partes elegem o Foro da Comarca de <strong>Ourinhos/SP</strong> para dirimir quaisquer dúvidas oriundas do presente contrato, renunciando a qualquer outro, por mais privilegiado que seja.</p>
@@ -375,7 +399,7 @@ export default function Funcionarios() {
           </div>
           <div style="text-align: center;">
             <div style="border-top: 1px solid #000; padding-top: 10px;">
-              <p style="margin: 0; text-indent: 0;"><strong>CONTRATADO(A):</strong></p>
+              <p style="margin: 0; text-indent: 0;"><strong>${contractorLabel}:</strong></p>
               <p style="margin: 0; text-indent: 0;">${emp.nome.toUpperCase()}</p>
               <p style="margin: 0; text-indent: 0;">CPF: ${emp.cpf}</p>
             </div>
@@ -429,6 +453,7 @@ export default function Funcionarios() {
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Unidade:</strong></td><td style="border:none; padding: 4px;">${employee.unidade || 'Ouro Verde'}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Turno:</strong></td><td style="border:none; padding: 4px;">${employee.turno || 'Diurno'}${getEmployeeShiftLabel(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Escala:</strong></td><td style="border:none; padding: 4px;">${employee.escala}</td></tr>
+          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Tipo de Contrato:</strong></td><td style="border:none; padding: 4px;">${getContractTypeLabel(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Data de Admissão:</strong></td><td style="border:none; padding: 4px;">${formatDatePDF(employee.dataAdmissao)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Salário Base:</strong></td><td style="border:none; padding: 4px;">${getEmployeeSalaryLabelPDF(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Status Atual:</strong></td><td style="border:none; padding: 4px;">${employee.status.toUpperCase()}</td></tr>
@@ -664,6 +689,13 @@ export default function Funcionarios() {
                 <option value="inativo">Inativo</option>
                 <option value="ferias">Férias</option>
                 <option value="contrato_cancelado">Contrato Cancelado</option>
+              </Select>
+            </div>
+            <div>
+              <Label>Tipo de Contrato</Label>
+              <Select value={form.tipo_contrato || 'autonomo'} onChange={(e) => setForm({ ...form, tipo_contrato: e.target.value as Employee['tipo_contrato'] })} className="mt-1">
+                <option value="autonomo">Autônomo</option>
+                <option value="mei">MEI</option>
               </Select>
             </div>
 
