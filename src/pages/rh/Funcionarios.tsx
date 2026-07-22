@@ -93,6 +93,15 @@ function getVtDescription(employee: Employee) {
   return `SIM (${employee.vt_tipo || 'Padrão'} - ${formatCurrencyPDF(employee.vt_valor)} ${periodicity})`
 }
 
+function isMissingRhMigrationError(error: unknown) {
+  if (!error || typeof error !== 'object') return false
+  const message = 'message' in error ? String((error as { message?: unknown }).message || '') : ''
+  const details = 'details' in error ? String((error as { details?: unknown }).details || '') : ''
+  const text = `${message} ${details}`.toLowerCase()
+
+  return text.includes('salario_tipo') || text.includes('turno_inicio') || text.includes('turno_fim')
+}
+
 export default function Funcionarios() {
   const { data: rawEmployees, loading, insert, update, remove } = useDb<Employee>('employees')
   const { fetchCep } = useCep()
@@ -190,6 +199,8 @@ export default function Funcionarios() {
       console.error('Erro ao salvar:', error)
       if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
         alert('Este CPF já está cadastrado para outro funcionário.')
+      } else if (isMissingRhMigrationError(error)) {
+        alert('Atualização necessária no banco de dados: aplique o arquivo supabase_rh_diaria_turno_vt.sql no Supabase e tente salvar novamente.')
       } else {
         alert('Erro ao salvar funcionário. Verifique os dados e tente novamente.')
       }
