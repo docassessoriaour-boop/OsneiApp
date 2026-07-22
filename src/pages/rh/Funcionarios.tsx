@@ -128,6 +128,10 @@ type ClinicWithRhFields = Partial<CompanySettings> & {
   representante_documentos?: string
 }
 
+const LAR_SABEDORIA_CONTRACT_ADDRESS = 'Rua Akemi Morita, 22 - Nova Ourinhos - Cep. 19.907-490 - Ourinhos/SP'
+const LAR_SABEDORIA_REPRESENTATIVE = 'Érika Teodoro de Araújo'
+const LAR_SABEDORIA_REPRESENTATIVE_DOCS = 'CPF 516.578.641/20'
+
 function buildLarSabedoriaAutonomoContractHtml(params: {
   emp: Employee
   employerName: string
@@ -509,9 +513,9 @@ export default function Funcionarios() {
         emp,
         employerName,
         employerCnpj,
-        employerAddress,
-        employerRepresentative,
-        employerRepresentativeDocs,
+        employerAddress: LAR_SABEDORIA_CONTRACT_ADDRESS,
+        employerRepresentative: LAR_SABEDORIA_REPRESENTATIVE,
+        employerRepresentativeDocs: LAR_SABEDORIA_REPRESENTATIVE_DOCS,
         amountStr,
         admissao,
         today,
