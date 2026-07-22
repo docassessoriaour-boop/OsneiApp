@@ -316,7 +316,10 @@ export default function Funcionarios() {
   const [receiptItems, setReceiptItems] = useState<{ desc: string, val: number }[]>([])
 
   const filtered = employees.filter((e) => {
-    const matchesSearch = e.nome.toLowerCase().includes(search.toLowerCase()) || e.cpf.includes(search)
+    const employeeName = String(e.nome || '')
+    const employeeCpf = String(e.cpf || '')
+    const query = search.toLowerCase()
+    const matchesSearch = employeeName.toLowerCase().includes(query) || employeeCpf.includes(search)
     const matchesStatus = statusFilter === 'todos' || e.status === statusFilter
     return matchesSearch && matchesStatus
   })
