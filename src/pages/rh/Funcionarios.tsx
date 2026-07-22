@@ -274,6 +274,134 @@ function buildLarSabedoriaAutonomoContractHtml(params: {
   `
 }
 
+function addOneYear(date?: string) {
+  if (!date) return ''
+  const d = date.includes('T') ? new Date(date) : new Date(`${date}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return ''
+  d.setFullYear(d.getFullYear() + 1)
+  return d.toISOString().slice(0, 10)
+}
+
+function buildLarSabedoriaMeiContractHtml(params: {
+  emp: Employee
+  employerName: string
+  employerCnpj: string
+  amountStr: string
+  admissao: string
+  today: string
+}) {
+  const { emp, employerName, employerCnpj, amountStr, admissao, today } = params
+  const employeeName = emp.nome.toUpperCase()
+  const role = (emp.cargo || 'CUIDADOR(A) DE IDOSOS').toUpperCase()
+  const contractEnd = formatDatePDF(addOneYear(emp.dataAdmissao))
+  const transportClause = emp.tem_vt && emp.vt_valor > 0
+    ? `<p style="margin-top: 10px;">1.5. A <strong>CONTRATANTE</strong> pagará à <strong>CONTRATADA</strong> o valor de <strong>${formatCurrencyPDF(emp.vt_valor)}</strong> ${emp.vt_tipo === 'diaria' ? 'por dia trabalhado' : 'por mês'} a título de ajuda de custo para transporte.</p>`
+    : ''
+  const unhealthyWorkClause = emp.tem_insalubridade && emp.insalubridade_percentual > 0
+    ? `<p style="margin-top: 10px;">${emp.tem_vt ? '1.6' : '1.5'}. A <strong>CONTRATANTE</strong> pagará à <strong>CONTRATADA</strong> adicional contratual de insalubridade no percentual de <strong>${emp.insalubridade_percentual}%</strong>, calculado sobre a remuneração-base mensal prevista nesta cláusula.</p>`
+    : ''
+
+  return `
+    <div style="text-align: center; margin-bottom: 30px;">
+      <h2 style="margin-bottom: 5px; text-transform: uppercase;">CONTRATO DE PRESTAÇÃO DE SERVIÇOS</h2>
+      <h3 style="margin-top: 0; text-transform: uppercase; border:none;">CUIDADOR(A) DE IDOSOS - MEI</h3>
+    </div>
+
+    <div class="abnt-text" style="text-align: justify; line-height: 1.5; font-size: 12pt;">
+      <p style="text-indent: 0;"><strong>CONTRATANTE:</strong> <strong>${employerName.toUpperCase()}</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº <strong>${employerCnpj}</strong>, com sede na ${LAR_SABEDORIA_CONTRACT_ADDRESS}, neste ato representada por <strong>${LAR_SABEDORIA_REPRESENTATIVE}</strong>, ${LAR_SABEDORIA_REPRESENTATIVE_DOCS}, na qualidade de representante legal.</p>
+
+      <p style="text-indent: 0;"><strong>CONTRATADA:</strong> <strong>____________________________________________</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº <strong>______________________________</strong>, com sede na <strong>____________________________________________________________</strong>, representada neste ato por seu(ua) titular, <strong>${employeeName}</strong>, portador(a) da Cédula de Identidade RG nº <strong>${emp.rg || '______________________________'}</strong> e inscrito(a) no CPF sob o nº <strong>${emp.cpf}</strong>, profissão <strong>${role}</strong>.</p>
+
+      <p>As partes acima qualificadas, por este instrumento particular, de comum acordo, celebram o presente contrato, que se regerá pelas seguintes cláusulas e condições:</p>
+
+      <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA PRIMEIRA - DO OBJETO</h3>
+      <p>O objeto do presente contrato é a prestação de serviços de <strong>${role}</strong> a ser realizada pela <strong>CONTRATADA</strong>, que deverá zelar pelo bem-estar físico e mental, segurança, dignidade e qualidade de vida dos idosos residentes na clínica da <strong>CONTRATANTE</strong>.</p>
+      <p>Entre as atividades a serem desempenhadas, incluem-se, mas não se limitam a: acompanhamento e auxílio em atividades diárias, higiene, alimentação e locomoção; administração ou acompanhamento de medicamentos conforme orientação médica e de enfermagem; monitoramento da saúde e bem-estar do idoso; comunicação de alterações à equipe da clínica; acompanhamento em consultas médicas e atividades recreativas, quando necessário; auxílio na organização do ambiente do idoso; e manutenção de sigilo sobre informações dos idosos e da clínica.</p>
+
+      <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA SEGUNDA - DAS OBRIGAÇÕES DA CONTRATADA</h3>
+      <p>1.1. A <strong>CONTRATADA</strong> compromete-se a executar os serviços de forma autônoma, sem subordinação ou vínculo empregatício com a <strong>CONTRATANTE</strong>, com responsabilidade, urbanidade, diligência e observância às orientações assistenciais formalmente repassadas.</p>
+      <p style="margin-top: 10px;">1.2. A <strong>CONTRATADA</strong> deverá comunicar imediatamente qualquer intercorrência, alteração relevante de saúde, risco, queda, recusa alimentar, alteração comportamental ou necessidade observada.</p>
+      <p style="margin-top: 10px;">1.3. A <strong>CONTRATADA</strong> deverá apresentar nota fiscal de serviço eletrônica (NFS-e), recibo ou documento equivalente quando solicitado, assumindo integral responsabilidade por suas obrigações fiscais, previdenciárias, tributárias e profissionais como MEI.</p>
+      <p style="margin-top: 10px;">1.4. A <strong>CONTRATADA</strong> responderá por prejuízos comprovadamente causados por dolo, culpa, negligência, imprudência, imperícia, uso inadequado de materiais ou conduta incompatível com a prestação dos serviços contratados.</p>
+
+      <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA TERCEIRA - DAS OBRIGAÇÕES DA CONTRATANTE</h3>
+      <p>1.1. A <strong>CONTRATANTE</strong> compromete-se a fornecer todas as informações e orientações necessárias para a correta execução dos serviços.</p>
+      <p style="margin-top: 10px;">1.2. A <strong>CONTRATANTE</strong> deverá pagar à <strong>CONTRATADA</strong> a remuneração estipulada na Cláusula Quarta, nas datas e condições acordadas.</p>
+      <p style="margin-top: 10px;">1.3. A <strong>CONTRATANTE</strong> deverá garantir ambiente seguro e adequado para a prestação dos serviços e fornecer materiais e equipamentos essenciais à execução do cuidado, tais como luvas descartáveis, álcool, gaze, algodão, termômetro, materiais de higiene, equipamentos de proteção individual e demais insumos necessários, desde que previamente autorizados ou devidamente comprovados por nota fiscal, recibo ou documento equivalente.</p>
+      <p style="margin-top: 10px;">1.4. A responsabilidade prevista no item anterior não se aplica às despesas ou reposições decorrentes de conduta inadequada, mau uso, perda injustificada ou dano causado pela <strong>CONTRATADA</strong>, hipótese em que esta deverá ressarcir a <strong>CONTRATANTE</strong> pelos prejuízos comprovados.</p>
+
+      <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA QUARTA - DO PREÇO E DA FORMA DE PAGAMENTO</h3>
+      <p>1.1. A <strong>CONTRATANTE</strong> pagará à <strong>CONTRATADA</strong> o valor de <strong>${amountStr}</strong>.</p>
+      <p style="margin-top: 10px;">1.2. O pagamento será efetuado via Pix ou conta bancária indicada pela <strong>CONTRATADA</strong>, até o 5º (quinto) dia útil de cada mês, mediante apresentação da respectiva nota fiscal de serviço eletrônica (NFS-e), recibo ou documento equivalente.</p>
+      <p style="margin-top: 10px;">1.3. Em caso de atraso no pagamento, o valor devido será acrescido de multa de 2% (dois por cento) e juros de mora de 1% (um por cento) ao mês, calculados proporcionalmente sobre o valor total em atraso.</p>
+      <p style="margin-top: 10px;">1.4. A <strong>CONTRATANTE</strong> pagará à <strong>CONTRATADA</strong>, no mês de dezembro de cada ano, bonificação contratual anual equivalente a uma mensalidade, calculada proporcionalmente aos meses de efetiva vigência do contrato no respectivo ano.</p>
+      ${transportClause}
+      ${unhealthyWorkClause}
+      <p style="margin-top: 10px;">Os valores poderão ser revistos por acordo escrito entre as partes, especialmente em caso de alteração relevante da carga de serviços, prorrogação de condições inicialmente ajustadas, aumento de custos operacionais ou necessidade superveniente relacionada à execução do objeto contratual.</p>
+
+      <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA QUINTA - DO PRAZO</h3>
+      <p>O presente contrato terá vigência de 12 (doze) meses, com início em <strong>${admissao}</strong>${contractEnd !== '—' ? ` e término em <strong>${contractEnd}</strong>` : ''}, podendo ser renovado por acordo escrito entre as partes.</p>
+
+      <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA SEXTA - DA RESCISÃO</h3>
+      <p>1.1. O presente contrato poderá ser rescindido por qualquer das partes, a qualquer tempo, mediante aviso prévio escrito de 30 (trinta) dias, sem necessidade de justificativa e sem direito a indenização, ressalvadas as obrigações já vencidas ou assumidas antes do encerramento.</p>
+      <p style="margin-top: 10px;">1.2. A rescisão não extingue direitos e obrigações já assumidos pelas partes antes do término do contrato, inclusive valores proporcionais devidos pelos serviços efetivamente prestados, reembolsos aprovados, prestação de contas e devolução de documentos ou materiais.</p>
+      <p style="margin-top: 10px;">1.3. Caso haja pagamento antecipado por serviço não prestado em razão de rescisão solicitada pela <strong>CONTRATANTE</strong>, a apuração será feita proporcionalmente ao período efetivamente trabalhado, podendo haver compensação ou restituição do valor correspondente, quando aplicável.</p>
+      <p style="margin-top: 10px;">1.4. O contrato poderá ser rescindido imediatamente por justa causa em caso de descumprimento grave de obrigação contratual, conduta incompatível com o cuidado de idosos, quebra de sigilo, abandono injustificado da prestação dos serviços, ato de violência, negligência grave, fraude, dano intencional ou qualquer prática que comprometa a segurança, dignidade ou integridade dos idosos.</p>
+      <p style="margin-top: 10px;">1.5. A parte que der causa à rescisão por descumprimento contratual ficará sujeita ao pagamento de multa equivalente a 25% (vinte e cinco por cento) de uma remuneração mensal vigente, sem prejuízo da apuração de perdas e danos efetivamente comprovados.</p>
+
+      <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA SÉTIMA - DA INDEPENDÊNCIA DAS PARTES</h3>
+      <p>As partes declaram que a relação jurídica estabelecida neste contrato é de natureza civil, e não trabalhista, não havendo subordinação hierárquica, vínculo empregatício, controle de jornada típico de relação de emprego ou qualquer outra relação de trabalho entre a <strong>CONTRATADA</strong> e a <strong>CONTRATANTE</strong>.</p>
+      <p>A <strong>CONTRATADA</strong> declara atuar por conta própria, com autonomia técnica e administrativa, assumindo integral responsabilidade por suas obrigações fiscais, previdenciárias, tributárias e trabalhistas como MEI.</p>
+
+      <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA OITAVA - DAS CONDIÇÕES GERAIS</h3>
+      <p>Este contrato obriga as partes, seus herdeiros e sucessores, no limite das obrigações aqui assumidas.</p>
+      <p>Qualquer tolerância, concessão ou não exercício imediato de direito previsto neste contrato será considerado mera liberalidade, não implicando renúncia, alteração contratual ou novação.</p>
+      <p>Alterações deste contrato somente terão validade se realizadas por escrito e assinadas pelas partes.</p>
+
+      <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA NONA - DO FORO</h3>
+      <p>As partes elegem o Foro da Comarca de Ourinhos/SP para dirimir quaisquer dúvidas oriundas do presente contrato, renunciando a qualquer outro, por mais privilegiado que seja.</p>
+      <p>E, por estarem justas e contratadas, assinam o presente instrumento em 2 (duas) vias de igual teor e forma, juntamente com as testemunhas abaixo.</p>
+
+      <p style="margin-top: 50px; text-align: right; text-indent: 0;">Ourinhos (SP), ${today}.</p>
+
+      <div style="margin-top: 70px; display: grid; grid-template-columns: 1fr 1fr; gap: 50px;">
+        <div style="text-align: center;">
+          <div style="border-top: 1px solid #000; padding-top: 10px;">
+            <p style="margin: 0; text-indent: 0;"><strong>CONTRATANTE:</strong></p>
+            <p style="margin: 0; text-indent: 0;">${employerName.toUpperCase()}</p>
+            <p style="margin: 0; text-indent: 0;">CNPJ ${employerCnpj}</p>
+          </div>
+        </div>
+        <div style="text-align: center;">
+          <div style="border-top: 1px solid #000; padding-top: 10px;">
+            <p style="margin: 0; text-indent: 0;"><strong>CONTRATADA:</strong></p>
+            <p style="margin: 0; text-indent: 0;">${employeeName}</p>
+            <p style="margin: 0; text-indent: 0;">CNPJ: ___________________________</p>
+          </div>
+        </div>
+      </div>
+
+      <div style="margin-top: 80px;">
+        <p style="margin: 0; text-indent: 0;"><strong>Testemunhas:</strong></p>
+        <div style="margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 50px;">
+          <div style="text-align: center;">
+            <div style="border-top: 1px solid #777; padding-top: 5px; width: 80%; margin: 0 auto;"></div>
+            <p style="font-size: 10pt; margin: 0; text-indent: 0;">Nome: __________________________</p>
+            <p style="font-size: 10pt; margin: 0; text-indent: 0;">RG: ____________________________</p>
+            <p style="font-size: 10pt; margin: 0; text-indent: 0;">CPF: ___________________________</p>
+          </div>
+          <div style="text-align: center;">
+            <div style="border-top: 1px solid #777; padding-top: 5px; width: 80%; margin: 0 auto;"></div>
+            <p style="font-size: 10pt; margin: 0; text-indent: 0;">Nome: __________________________</p>
+            <p style="font-size: 10pt; margin: 0; text-indent: 0;">RG: ____________________________</p>
+            <p style="font-size: 10pt; margin: 0; text-indent: 0;">CPF: ___________________________</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  `
+}
+
 function isMissingRhMigrationError(error: unknown) {
   if (!error || typeof error !== 'object') return false
   const message = 'message' in error ? String((error as { message?: unknown }).message || '') : ''
@@ -511,18 +639,27 @@ export default function Funcionarios() {
     const isMeiContract = emp.tipo_contrato === 'mei'
     const employerCnpjDigits = onlyDigits(clinicConfig?.cnpj_digits || employerCnpj)
 
-    if (!isMeiContract && employerCnpjDigits === LAR_SABEDORIA_CNPJ_DIGITS) {
-      const html = buildLarSabedoriaAutonomoContractHtml({
-        emp,
-        employerName,
-        employerCnpj,
-        employerAddress: LAR_SABEDORIA_CONTRACT_ADDRESS,
-        employerRepresentative: LAR_SABEDORIA_REPRESENTATIVE,
-        employerRepresentativeDocs: LAR_SABEDORIA_REPRESENTATIVE_DOCS,
-        amountStr,
-        admissao,
-        today,
-      })
+    if (employerCnpjDigits === LAR_SABEDORIA_CNPJ_DIGITS) {
+      const html = isMeiContract
+        ? buildLarSabedoriaMeiContractHtml({
+            emp,
+            employerName,
+            employerCnpj,
+            amountStr,
+            admissao,
+            today,
+          })
+        : buildLarSabedoriaAutonomoContractHtml({
+            emp,
+            employerName,
+            employerCnpj,
+            employerAddress: LAR_SABEDORIA_CONTRACT_ADDRESS,
+            employerRepresentative: LAR_SABEDORIA_REPRESENTATIVE,
+            employerRepresentativeDocs: LAR_SABEDORIA_REPRESENTATIVE_DOCS,
+            amountStr,
+            admissao,
+            today,
+          })
 
       printPDF(`Contrato - ${emp.nome}`, html, clinic)
       return
