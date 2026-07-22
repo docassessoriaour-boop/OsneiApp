@@ -26,6 +26,13 @@ export interface Employee {
   cidade?: string
   uf?: string
   data_nascimento?: string
+  estado_civil?: string
+  nome_conjuge?: string
+  possui_filhos_menores_14?: boolean
+  quantidade_filhos_menores_14?: number
+  grau_escolaridade?: string
+  situacao_escolaridade?: string
+  contrato_experiencia?: 'nao' | '30' | '45'
   dados_bancarios?: string
   chave_pix?: string
   is_pro_labore?: boolean

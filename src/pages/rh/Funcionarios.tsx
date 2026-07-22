@@ -52,6 +52,13 @@ const emptyEmployee: Omit<Employee, 'id'> = {
   tem_insalubridade: false,
   insalubridade_percentual: 20, // Common default
   data_nascimento: undefined,
+  estado_civil: '',
+  nome_conjuge: '',
+  possui_filhos_menores_14: false,
+  quantidade_filhos_menores_14: 0,
+  grau_escolaridade: '',
+  situacao_escolaridade: '',
+  contrato_experiencia: 'nao',
   dados_bancarios: '',
   chave_pix: '',
   is_pro_labore: false,
@@ -98,13 +105,34 @@ function getContractTypeLabel(employee: Employee) {
   return employee.tipo_contrato === 'mei' ? 'MEI' : 'Autônomo'
 }
 
+function getChildrenUnder14Label(employee: Employee) {
+  if (!employee.possui_filhos_menores_14) return 'Não'
+  return `Sim (${employee.quantidade_filhos_menores_14 || 0})`
+}
+
+function getExperienceContractLabel(employee: Employee) {
+  if (employee.contrato_experiencia === '30') return 'Sim, 30 dias'
+  if (employee.contrato_experiencia === '45') return 'Sim, 45 dias'
+  return 'Não'
+}
+
 function isMissingRhMigrationError(error: unknown) {
   if (!error || typeof error !== 'object') return false
   const message = 'message' in error ? String((error as { message?: unknown }).message || '') : ''
   const details = 'details' in error ? String((error as { details?: unknown }).details || '') : ''
   const text = `${message} ${details}`.toLowerCase()
 
-  return text.includes('salario_tipo') || text.includes('turno_inicio') || text.includes('turno_fim') || text.includes('tipo_contrato')
+  return text.includes('salario_tipo') ||
+    text.includes('turno_inicio') ||
+    text.includes('turno_fim') ||
+    text.includes('tipo_contrato') ||
+    text.includes('estado_civil') ||
+    text.includes('nome_conjuge') ||
+    text.includes('possui_filhos_menores_14') ||
+    text.includes('quantidade_filhos_menores_14') ||
+    text.includes('grau_escolaridade') ||
+    text.includes('situacao_escolaridade') ||
+    text.includes('contrato_experiencia')
 }
 
 export default function Funcionarios() {
@@ -174,6 +202,9 @@ export default function Funcionarios() {
       ...rest,
       salario_tipo: employee.salario_tipo || 'mensal',
       tipo_contrato: employee.tipo_contrato || 'autonomo',
+      possui_filhos_menores_14: !!employee.possui_filhos_menores_14,
+      quantidade_filhos_menores_14: employee.quantidade_filhos_menores_14 || 0,
+      contrato_experiencia: employee.contrato_experiencia || 'nao',
       turno_inicio: normalizeTime(employee.turno_inicio) || defaultTimes.turno_inicio,
       turno_fim: normalizeTime(employee.turno_fim) || defaultTimes.turno_fim,
       dataAdmissao: data_admissao || employee.dataAdmissao || ''
@@ -440,6 +471,10 @@ export default function Funcionarios() {
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>CPF:</strong></td><td style="border:none; padding: 4px;">${employee.cpf}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>RG:</strong></td><td style="border:none; padding: 4px;">${employee.rg || '—'}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Data de Nascimento:</strong></td><td style="border:none; padding: 4px;">${formatDatePDF(employee.data_nascimento || '')}</td></tr>
+          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Estado Civil:</strong></td><td style="border:none; padding: 4px;">${employee.estado_civil || '—'}</td></tr>
+          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Nome do Cônjuge:</strong></td><td style="border:none; padding: 4px;">${employee.nome_conjuge || '—'}</td></tr>
+          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Filhos menores de 14 anos:</strong></td><td style="border:none; padding: 4px;">${getChildrenUnder14Label(employee)}</td></tr>
+          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Escolaridade:</strong></td><td style="border:none; padding: 4px;">${employee.grau_escolaridade || '—'}${employee.situacao_escolaridade ? ` (${employee.situacao_escolaridade})` : ''}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Telefone:</strong></td><td style="border:none; padding: 4px;">${employee.telefone || '—'}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>E-mail:</strong></td><td style="border:none; padding: 4px;">${employee.email || '—'}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Endereço:</strong></td><td style="border:none; padding: 4px;">${employee.endereco || '—'}</td></tr>
@@ -454,6 +489,7 @@ export default function Funcionarios() {
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Turno:</strong></td><td style="border:none; padding: 4px;">${employee.turno || 'Diurno'}${getEmployeeShiftLabel(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Escala:</strong></td><td style="border:none; padding: 4px;">${employee.escala}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Tipo de Contrato:</strong></td><td style="border:none; padding: 4px;">${getContractTypeLabel(employee)}</td></tr>
+          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Contrato de Experiência:</strong></td><td style="border:none; padding: 4px;">${getExperienceContractLabel(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Data de Admissão:</strong></td><td style="border:none; padding: 4px;">${formatDatePDF(employee.dataAdmissao)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Salário Base:</strong></td><td style="border:none; padding: 4px;">${getEmployeeSalaryLabelPDF(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Status Atual:</strong></td><td style="border:none; padding: 4px;">${employee.status.toUpperCase()}</td></tr>
@@ -698,6 +734,14 @@ export default function Funcionarios() {
                 <option value="mei">MEI</option>
               </Select>
             </div>
+            <div>
+              <Label>Contrato de Experiência</Label>
+              <Select value={form.contrato_experiencia || 'nao'} onChange={(e) => setForm({ ...form, contrato_experiencia: e.target.value as Employee['contrato_experiencia'] })} className="mt-1">
+                <option value="nao">Não</option>
+                <option value="30">30 dias</option>
+                <option value="45">45 dias</option>
+              </Select>
+            </div>
 
             <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
               <div className="col-span-1 md:col-span-2">
@@ -836,6 +880,73 @@ export default function Funcionarios() {
             <div>
               <Label>Data de Admissão</Label>
               <Input type="date" value={form.dataAdmissao} onChange={(e) => setForm({ ...form, dataAdmissao: e.target.value })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Estado Civil</Label>
+              <Select value={form.estado_civil || ''} onChange={(e) => setForm({ ...form, estado_civil: e.target.value })} className="mt-1">
+                <option value="">Selecionar...</option>
+                <option value="Solteiro(a)">Solteiro(a)</option>
+                <option value="Casado(a)">Casado(a)</option>
+                <option value="União Estável">União Estável</option>
+                <option value="Divorciado(a)">Divorciado(a)</option>
+                <option value="Viúvo(a)">Viúvo(a)</option>
+              </Select>
+            </div>
+            <div>
+              <Label>Nome do Cônjuge</Label>
+              <Input value={form.nome_conjuge || ''} onChange={(e) => setForm({ ...form, nome_conjuge: e.target.value })} className="mt-1" />
+            </div>
+            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-lg border">
+                <input
+                  type="checkbox"
+                  id="possui_filhos_menores_14"
+                  checked={!!form.possui_filhos_menores_14}
+                  onChange={(e) => setForm({
+                    ...form,
+                    possui_filhos_menores_14: e.target.checked,
+                    quantidade_filhos_menores_14: e.target.checked ? form.quantidade_filhos_menores_14 || 1 : 0
+                  })}
+                  className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
+                />
+                <Label htmlFor="possui_filhos_menores_14" className="text-sm font-medium cursor-pointer">
+                  Possui filhos menores de 14 anos?
+                </Label>
+              </div>
+              {form.possui_filhos_menores_14 && (
+                <div>
+                  <Label>Quantidade de Filhos</Label>
+                  <Input
+                    type="number"
+                    min={1}
+                    value={form.quantidade_filhos_menores_14 || 1}
+                    onChange={(e) => setForm({ ...form, quantidade_filhos_menores_14: Number(e.target.value) })}
+                    className="mt-1"
+                  />
+                </div>
+              )}
+            </div>
+            <div>
+              <Label>Grau de Escolaridade</Label>
+              <Select value={form.grau_escolaridade || ''} onChange={(e) => setForm({ ...form, grau_escolaridade: e.target.value })} className="mt-1">
+                <option value="">Selecionar...</option>
+                <option value="Ensino Fundamental">Ensino Fundamental</option>
+                <option value="Ensino Médio">Ensino Médio</option>
+                <option value="Ensino Técnico">Ensino Técnico</option>
+                <option value="Ensino Superior">Ensino Superior</option>
+                <option value="Pós-graduação">Pós-graduação</option>
+                <option value="Mestrado">Mestrado</option>
+                <option value="Doutorado">Doutorado</option>
+              </Select>
+            </div>
+            <div>
+              <Label>Situação da Escolaridade</Label>
+              <Select value={form.situacao_escolaridade || ''} onChange={(e) => setForm({ ...form, situacao_escolaridade: e.target.value })} className="mt-1">
+                <option value="">Selecionar...</option>
+                <option value="Completo">Completo</option>
+                <option value="Incompleto">Incompleto</option>
+                <option value="Cursando">Cursando</option>
+              </Select>
             </div>
             <div>
               <Label>Telefone</Label>
