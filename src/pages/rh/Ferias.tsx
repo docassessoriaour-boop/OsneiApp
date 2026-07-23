@@ -18,10 +18,76 @@ import { Separator } from '@/components/ui/separator'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
 
+type VacationDb = Vacation & {
+  funcionario_id?: string
+  funcionario_nome?: string
+  data_inicio?: string
+  data_fim?: string
+  salario_base?: number
+  dias_ferias?: number
+  dias_abono?: number
+  valor_ferias?: number
+  valor_terco_constitucional?: number
+  valor_abono_pecuniario?: number
+  valor_terco_abono?: number
+  descontos_inss?: number
+  descontos_irrf?: number
+  valor_liquido?: number
+}
+
+function parseLocalDate(date?: string) {
+  if (!date) return null
+  const parsed = new Date(date.includes('T') ? date : `${date}T12:00:00`)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function diffDays(start: Date, end: Date) {
+  const msPerDay = 1000 * 60 * 60 * 24
+  return Math.ceil((end.getTime() - start.getTime()) / msPerDay)
+}
+
+function addYears(date: Date, years: number) {
+  const next = new Date(date)
+  next.setFullYear(next.getFullYear() + years)
+  return next
+}
+
+function completedYearsSince(start: Date, end: Date) {
+  let years = end.getFullYear() - start.getFullYear()
+  const anniversary = addYears(start, years)
+  if (anniversary > end) years--
+  return Math.max(0, years)
+}
+
+function vacationDays(vacation: Vacation) {
+  if (vacation.diasFerias && vacation.diasFerias > 0) return vacation.diasFerias
+  const start = parseLocalDate(vacation.dataInicio)
+  const end = parseLocalDate(vacation.dataFim)
+  if (!start || !end) return 0
+  return Math.max(0, diffDays(start, end) + 1)
+}
+
 export default function Ferias() {
   const [clinic] = useClinic()
   const { data: employees } = useDb<Employee>('employees')
-  const { data: vacations, loading, insert, update, remove } = useDb<Vacation>('vacations')
+  const { data: rawVacations, loading, insert, update, remove } = useDb<Vacation>('vacations')
+  const vacations = rawVacations.map((v: VacationDb) => ({
+    ...v,
+    funcionarioId: v.funcionarioId || v.funcionario_id || '',
+    funcionarioNome: v.funcionarioNome || v.funcionario_nome || '',
+    dataInicio: v.dataInicio || v.data_inicio || '',
+    dataFim: v.dataFim || v.data_fim || '',
+    salarioBase: v.salarioBase ?? v.salario_base,
+    diasFerias: v.diasFerias ?? v.dias_ferias,
+    diasAbono: v.diasAbono ?? v.dias_abono,
+    valorFerias: v.valorFerias ?? v.valor_ferias,
+    valorTercoConstitucional: v.valorTercoConstitucional ?? v.valor_terco_constitucional,
+    valorAbonoPecuniario: v.valorAbonoPecuniario ?? v.valor_abono_pecuniario,
+    valorTercoAbono: v.valorTercoAbono ?? v.valor_terco_abono,
+    descontosInss: v.descontosInss ?? v.descontos_inss,
+    descontosIrrf: v.descontosIrrf ?? v.descontos_irrf,
+    valorLiquido: v.valorLiquido ?? v.valor_liquido,
+  })) as Vacation[]
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -40,6 +106,66 @@ export default function Ferias() {
   const filtered = vacations.filter(v =>
     (v.funcionarioNome || '').toLowerCase().includes(search.toLowerCase())
   )
+
+  const vacationOverview = useMemo(() => {
+    const today = new Date()
+    const activeEmployees = employees
+      .filter(e => e.status === 'ativo')
+      .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
+
+    return activeEmployees.map(employee => {
+      const admissionDate = parseLocalDate((employee as any).dataAdmissao || (employee as any).data_admissao)
+      const employeeVacations = vacations.filter(v => v.funcionarioId === employee.id)
+      const completedVacations = employeeVacations.filter(v => v.status === 'concluida')
+      const takenDays = completedVacations.reduce((sum, vacation) => sum + vacationDays(vacation), 0)
+      const lastVacation = [...completedVacations]
+        .sort((a, b) => (b.dataFim || '').localeCompare(a.dataFim || ''))[0]
+
+      if (!admissionDate) {
+        return {
+          employee,
+          admissionDate: null,
+          earnedPeriods: 0,
+          takenDays,
+          availableDays: 0,
+          nextDate: null,
+          daysToNext: null,
+          statusText: 'Sem data de admissão',
+          statusTone: 'muted' as const,
+          lastVacation,
+        }
+      }
+
+      const earnedPeriods = completedYearsSince(admissionDate, today)
+      const earnedDays = earnedPeriods * 30
+      const availableDays = Math.max(0, earnedDays - takenDays)
+      const nextDate = addYears(admissionDate, earnedPeriods + 1)
+      const daysToNext = Math.max(0, diffDays(today, nextDate))
+      const statusText = availableDays > 0
+        ? `Possui ${availableDays} ${availableDays === 1 ? 'dia disponível' : 'dias disponíveis'}`
+        : daysToNext === 0
+          ? 'Novo período disponível'
+          : `Faltam ${daysToNext} dia${daysToNext === 1 ? '' : 's'}`
+      const statusTone = availableDays > 0 || daysToNext === 0
+        ? 'success' as const
+        : daysToNext <= 60
+          ? 'warning' as const
+          : 'muted' as const
+
+      return {
+        employee,
+        admissionDate,
+        earnedPeriods,
+        takenDays,
+        availableDays,
+        nextDate,
+        daysToNext,
+        statusText,
+        statusTone,
+        lastVacation,
+      }
+    })
+  }, [employees, vacations])
 
   // Calculate vacation values
   const results = useMemo(() => {
@@ -112,6 +238,21 @@ export default function Ferias() {
       dataFim: '', 
       status: 'agendada',
       salarioBase: 0,
+      diasFerias: 30,
+      diasAbono: 10,
+      venderFerias: false,
+    })
+    setEditingId(null)
+    setDialogOpen(true)
+  }
+
+  function openNewForEmployee(employee: Employee) {
+    setForm({
+      funcionarioId: employee.id,
+      dataInicio: '',
+      dataFim: '',
+      status: 'agendada',
+      salarioBase: employee.salario || 0,
       diasFerias: 30,
       diasAbono: 10,
       venderFerias: false,
@@ -248,6 +389,79 @@ export default function Ferias() {
       />
 
       <Card className="p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">Controle de Períodos Aquisitivos</h3>
+            <p className="text-sm text-muted-foreground">
+              Baseado na data de admissão e nas férias concluídas de cada funcionário.
+            </p>
+          </div>
+          <Badge variant="outline">{vacationOverview.length} funcionários</Badge>
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Funcionário</TableHead>
+                <TableHead>Admissão</TableHead>
+                <TableHead>Períodos</TableHead>
+                <TableHead>Férias Tiradas</TableHead>
+                <TableHead>Saldo</TableHead>
+                <TableHead>Próximo Período</TableHead>
+                <TableHead>Situação</TableHead>
+                <TableHead className="text-right">Ação</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {vacationOverview.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8}><EmptyState message="Nenhum funcionário ativo encontrado" /></TableCell>
+                </TableRow>
+              ) : (
+                vacationOverview.map(item => (
+                  <TableRow key={item.employee.id}>
+                    <TableCell className="font-medium">
+                      <div>{item.employee.nome}</div>
+                      <div className="text-xs text-muted-foreground">{item.employee.cargo || 'Cargo não informado'}</div>
+                    </TableCell>
+                    <TableCell>{item.admissionDate ? formatDate(item.admissionDate.toISOString().slice(0, 10)) : '--'}</TableCell>
+                    <TableCell>{item.earnedPeriods}</TableCell>
+                    <TableCell>
+                      <div>{item.takenDays}d</div>
+                      {item.lastVacation && (
+                        <div className="text-xs text-muted-foreground">
+                          Última: {formatDate(item.lastVacation.dataInicio)} a {formatDate(item.lastVacation.dataFim)}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className={item.availableDays > 0 ? 'font-semibold text-primary' : ''}>
+                      {item.availableDays}d
+                    </TableCell>
+                    <TableCell>{item.nextDate ? formatDate(item.nextDate.toISOString().slice(0, 10)) : '--'}</TableCell>
+                    <TableCell>
+                      <Badge variant={item.statusTone === 'success' ? 'success' : item.statusTone === 'warning' ? 'warning' : 'outline'}>
+                        {item.statusText}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button variant="ghost" size="sm" onClick={() => openNewForEmployee(item.employee)}>
+                        Lançar
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </Card>
+
+      <Card className="p-6">
+        <div className="mb-4">
+          <h3 className="text-lg font-semibold text-foreground">Férias Lançadas</h3>
+          <p className="text-sm text-muted-foreground">Histórico, cálculo e recibos de férias.</p>
+        </div>
         <SearchBar value={search} onChange={setSearch} placeholder="Buscar por funcionário..." />
         <div className="mt-4 overflow-x-auto">
           <Table>
@@ -450,4 +664,3 @@ export default function Ferias() {
     </div>
   )
 }
-
