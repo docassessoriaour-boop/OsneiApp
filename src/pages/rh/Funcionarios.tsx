@@ -26,7 +26,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, Loader2, ReceiptText, Plus, X, User } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, ReceiptText, Plus, X } from 'lucide-react'
 
 
 
@@ -1041,8 +1041,8 @@ export default function Funcionarios() {
                             <FileText className="h-4 w-4 text-violet-600" />
                           </Button>
                         )}
-                        <Button variant="ghost" size="icon" onClick={() => printEmployeeRegistrationForm(employee)} title="Ficha Cadastral">
-                          <User className="h-4 w-4 text-orange-600" />
+                        <Button variant="ghost" size="icon" onClick={() => printEmployeeRegistrationForm(employee)} title="Gerar PDF da Ficha Cadastral">
+                          <FileText className="h-4 w-4 text-orange-600" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => printEmployeeContract(employee)} title="Imprimir Contrato">
                           <FileText className="h-4 w-4 text-blue-600" />
