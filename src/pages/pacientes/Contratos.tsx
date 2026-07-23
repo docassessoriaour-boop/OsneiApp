@@ -10,6 +10,8 @@ import {
   DEMO_COMPANY_NAME,
   DEMO_COMPANY_REPRESENTATIVE,
   DEMO_COMPANY_REPRESENTATIVE_DOCS,
+  LAR_SABEDORIA_CNPJ_DIGITS,
+  onlyDigits,
 } from '@/lib/companies'
 import type { Patient, Contract } from '@/lib/types'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -299,6 +301,7 @@ export default function Contratos() {
     const contractorAddress = clinic?.endereco || DEMO_COMPANY_ADDRESS
     const contractorRepresentative = (clinic as any)?.representante || DEMO_COMPANY_REPRESENTATIVE
     const contractorRepresentativeDocs = (clinic as any)?.representante_documentos || DEMO_COMPANY_REPRESENTATIVE_DOCS
+    const isLarSabedoriaContract = onlyDigits((clinic as any)?.cnpj_digits || contractorCnpj) === LAR_SABEDORIA_CNPJ_DIGITS
 
     const allResps = [
       { nome: p.responsavel, cpf: p.resp_cpf, rg: p.resp_rg, nac: p.resp_nacionalidade, civil: p.resp_estado_civil, prof: p.resp_profissao, end: fullAddress },
@@ -317,6 +320,59 @@ export default function Contratos() {
     const valor = c.valor
     const valorExtra = c.valorExtra || (c as any).valor_extra
     const descricaoExtra = c.descricaoExtra || (c as any).descricao_extra
+    const larResidentQualification = isLarSabedoriaContract ? `
+      <p><strong>RESIDENTE ASSISTIDO(A): ${p.nome}</strong>, portador(a) do RG nº ${p.rg || '---'} e CPF nº ${p.cpf || '---'}, ${p.idade ? `${p.idade} anos, ` : ''}doravante identificado(a) como residente para fins de acolhimento e cuidados.</p>
+    ` : ''
+    const larObjectComplement = isLarSabedoriaContract ? `
+        <p>1.4. A prestação de serviços observará, no que couber, as normas aplicáveis às Instituições de Longa Permanência para Idosos, especialmente a Lei nº 10.741/2003 (Estatuto do Idoso) e normas sanitárias pertinentes, incluindo padrões de moradia, higiene, alimentação, convivência, segurança e preservação da dignidade do idoso.</p>
+    ` : ''
+    const larContractorObligations = isLarSabedoriaContract ? `
+        <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA QUARTA - DAS OBRIGAÇÕES DA CONTRATADA</h3>
+        <p>4.1. Manter padrões de habitação compatíveis com as necessidades dos idosos atendidos, provendo alimentação regular, higiene, ambiente seguro e condições condizentes com as normas sanitárias aplicáveis.</p>
+        <p>4.2. Estabelecer atendimento de moradia digna, adotando os princípios previstos nos artigos 49 e 50 do Estatuto do Idoso, incluindo preservação dos vínculos familiares, atendimento personalizado, participação em atividades internas, respeito à identidade, privacidade, dignidade, crenças e direitos do residente.</p>
+        <p>4.3. Propiciar cuidados à saúde conforme necessidade do residente e comunicar aos responsáveis intercorrências relevantes, alterações de saúde, necessidade de atendimento externo ou situações que ultrapassem a capacidade assistencial da instituição.</p>
+        <p>4.4. Manter arquivo de informações essenciais do residente, responsáveis, contatos, documentos, pertences e demais dados necessários à individualização do atendimento.</p>
+        <p>4.5. A CONTRATADA poderá contar com profissionais prestadores de serviços independentes, tais como nutricionista, fisioterapeuta ou outros profissionais habilitados, conforme necessidade e disponibilidade. Tais profissionais não mantêm vínculo empregatício direto com a CONTRATADA, prestando serviços de forma autônoma ou eventual, sem gerar custo adicional fixo ao CONTRATANTE, salvo quando solicitados atendimentos particulares, que serão previamente informados e cobrados à parte.</p>
+    ` : `
+        <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA QUARTA - SERVIÇOS NÃO INCLUÍDOS</h3>
+        <p>4.1. Não estão inclusos: Consultas externas, acompanhamento hospitalar, fraldas descartáveis, medicamentos pessoais, materiais para curativos específicos, roupas de uso pessoal e cobertores.</p>
+    `
+    const larValidityAndTermination = isLarSabedoriaContract ? `
+        <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA SEXTA - DA VIGÊNCIA DO CONTRATO</h3>
+        <p>6.1. O presente contrato terá vigência por prazo indeterminado, com início em <strong>${formatDatePDF(dInicio)}</strong>, permanecendo em vigor até falecimento do residente, rescisão contratual por qualquer das partes ou substituição por termo aditivo firmado entre as partes.</p>
+        <p>6.2. Por se tratar de contrato de prazo indeterminado, não há término automático por decurso de prazo, aplicando-se para rescisão as regras da cláusula sétima deste instrumento.</p>
+
+        <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA SÉTIMA - DA RESCISÃO</h3>
+        <p>7.1. O presente contrato poderá ser rescindido, a qualquer tempo e por qualquer das partes, independentemente de motivação e sem direito a indenização, mediante notificação expressa à outra parte com antecedência mínima de 7 (sete) dias. Em caso de rescisão sem a antecedência pactuada, poderá ser cobrado valor indenizatório equivalente à mensalidade proporcional ou integral, conforme apuração dos serviços e custos assumidos.</p>
+        <p>7.2. Caberá rescisão unilateral imediata em caso de atraso superior a 30 (trinta) dias no pagamento das parcelas ajustadas ou descumprimento de quaisquer cláusulas contratuais.</p>
+        <p>7.3. Em caso de falecimento do residente, o contrato será rescindido de pleno direito, ficando acordado o pagamento do mês relativo ao falecimento, referente aos serviços prestados e custos assumidos no período.</p>
+        <p>7.4. O contrato poderá ser rescindido caso o residente passe a necessitar de cuidados que ultrapassem a capacidade assistencial da instituição, incluindo procedimentos contínuos ou especializados incompatíveis com a estrutura disponível, como aspiração de traqueostomia ou outros cuidados de maior complexidade, sem prejuízo da comunicação aos responsáveis para providências necessárias.</p>
+    ` : `
+        <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA QUINTA - VIGÊNCIA E RESCISÃO</h3>
+        <p>5.1. O contrato entra em vigor em <strong>${formatDatePDF(dInicio)}</strong> com término em <strong>${formatDatePDF(dFim)}</strong>.</p>
+        <p>5.2. A rescisão pode ocorrer por qualquer parte com aviso prévio de <strong>30 dias</strong>. Caso o Contratante rescinda sem aviso, será cobrada multa de 50% da mensalidade.</p>
+        <p>5.3. Em caso de falecimento do idoso, o contrato será automaticamente rescindido de pleno direito, sendo devido apenas o pagamento proporcional aos serviços efetivamente prestados no mês em curso. Fica estabelecido que não haverá qualquer devolução de valores já pagos à clínica, seja a título de mensalidade, taxa de adesão ou outros encargos, considerando que tais quantias correspondem a serviços disponibilizados e/ou custos administrativos já assumidos.</p>
+    `
+    const larGeneralAndSignature = isLarSabedoriaContract ? `
+        <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA OITAVA - DAS DISPOSIÇÕES GERAIS</h3>
+        <p>8.1. As cláusulas e disposições deste instrumento permanecerão válidas até que ocorra a rescisão por uma das formas previstas neste contrato.</p>
+        <p>8.2. Qualquer tolerância por uma das partes quanto ao cumprimento de obrigações da outra não constituirá novação, renúncia, alteração contratual ou precedente obrigatório.</p>
+        <p>8.3. Fica pactuada entre CONTRATADA, CONTRATANTE e responsáveis anuentes a ausência de qualquer relação de subordinação, vínculo empregatício ou obrigação estranha à prestação civil de serviços ora contratada.</p>
+        <p>8.4. A CONTRATADA fornecerá ao CONTRATANTE ou responsável anuente cópia do presente instrumento contendo as especificidades da prestação de serviços.</p>
+
+        <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA NONA - DO FORO</h3>
+        <p>9.1. Fica eleito o foro da Comarca de <strong>Ourinhos/SP</strong> para dirimir quaisquer questões oriundas deste contrato, renunciando as partes a qualquer outro, por mais privilegiado que seja.</p>
+
+        <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA DÉCIMA - DA ASSINATURA DIGITAL VIA GOV.BR</h3>
+        <p>10.1. As partes declaram que o presente contrato poderá ser assinado por meio de assinatura eletrônica disponibilizada pelo sistema gov.br, nos termos do Decreto nº 10.543/2020 e da Lei nº 14.063/2020.</p>
+        <p>10.2. A assinatura poderá ser realizada por intermédio da plataforma Assinador GOV.BR ou de qualquer outra plataforma de assinatura eletrônica que utilize identidade digital válida como fator de autenticação.</p>
+        <p>10.3. Para todos os fins de direito, as partes reconhecem a plena validade jurídica e eficácia probatória das assinaturas eletrônicas, inclusive para comprovação de vontade, autenticidade e integridade do documento.</p>
+        <p>10.4. Os logs de auditoria gerados pela plataforma de assinatura farão prova da autenticidade, data, hora da assinatura e identidade dos signatários.</p>
+        <p>10.5. O contrato assinado eletronicamente dispensa a presença física das partes e possui o mesmo valor jurídico da versão impressa e fisicamente assinada.</p>
+    ` : `
+        <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA SEXTA - REGRAS GERAIS</h3>
+        <p>6.1. <strong>Foro:</strong> Fica eleito o foro da Comarca de <strong>Ourinhos/SP</strong> para dirimir quaisquer dúvidas oriundas deste contrato.</p>
+    `
 
     const html = `
       <div style="text-align: center; margin-bottom: 30px;">
@@ -328,6 +384,7 @@ export default function Contratos() {
       <div class="abnt-text" style="text-align: justify; line-height: 1.5;">
         <p><strong>CONTRATADA: ${contractorName.toUpperCase()}</strong>, pessoa jurídica de direito privado, inscrita no CNPJ sob o nº ${contractorCnpj}, com sede na ${contractorAddress}, representada por <strong>${contractorRepresentative}</strong>, ${contractorRepresentativeDocs}.</p>
         
+        ${larResidentQualification}
         ${responsiblesText}
 
         <p>Pelo presente instrumento particular, as partes acima qualificadas, doravante denominadas CONTRATANTE e CONTRATADA, na melhor forma de direito, ajustam e contratam a prestação de serviços profissionais destinados a moradia definitiva, temporária e/ou provisória de idosos nos termos da <strong>Lei 10.741/2003 (Estatuto do Idoso)</strong>, segundo as cláusulas e condições adiante arroladas.</p>
@@ -347,6 +404,7 @@ export default function Contratos() {
         </ul>
 
         <p style="margin-top: 15px;"><strong>1.3. DA AUTONOMIA DOS SERVIÇOS:</strong> Os serviços serão prestados pela CONTRATADA de forma autônoma e independente, sem qualquer vínculo empregatício com o(a) CONTRATANTE.</p>
+        ${larObjectComplement}
 
         <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA SEGUNDA - DOS VALORES E TAXAS</h3>
         <p>2.1. O valor mensal é de <strong>${formatCurrencyPDF(valor)}</strong>, a ser pago todo <strong>5º dia útil</strong> de cada mês.</p>
@@ -358,20 +416,29 @@ export default function Contratos() {
         <p>2.4. <strong>Reajustes:</strong> O valor será corrigido anualmente em 15% (automaticamente) ou em caso de mudança no grau de dependência do idoso.</p>
 
         <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA TERCEIRA - DAS OBRIGAÇÕES DO CONTRATANTE</h3>
+        ${isLarSabedoriaContract ? `
+        <p>3.1. Fornecer, no prazo máximo de 48 (quarenta e oito) horas contadas do início da vigência contratual, dados cadastrais e telefones de profissionais que atendam necessidades particulares do residente, tais como médicos, fisioterapeutas, dentistas, nutricionistas e outros, para contato em caso de necessidade.</p>
+        <p>3.2. Informar no ato da assinatura a relação de medicamentos controlados ou não utilizados pelo residente, com receituário médico atualizado, dosagem e posologia, bem como apresentar laudo médico com informações necessárias ao cuidado, incluindo grau de dependência quando aplicável.</p>
+        <p>3.3. Ressarcir a CONTRATADA por gastos extras antecipados, tais como medicamentos, fraldas, materiais de higiene, curativos, manicure, cabeleireiro, transporte, consultas ou demais despesas particulares, mediante apresentação de notas fiscais, recibos ou comprovantes.</p>
+        <p>3.4. Caso laudo médico indique que o residente não consegue responder por si, caberá à família ou responsável promover as medidas legais cabíveis, incluindo ação de curatela quando necessária, no prazo de até 30 (trinta) dias, sob pena de reavaliação ou rescisão contratual.</p>
+        <p>3.5. Caso não haja adaptação entre as partes ou exista motivo de ordem física, psicológica, comportamental ou assistencial que prejudique o bom andamento da instituição ou a tranquilidade dos demais residentes, a CONTRATADA poderá solicitar a retirada do residente mediante aviso mínimo de 15 (quinze) dias.</p>
+        <p>3.6. O CONTRATANTE e responsáveis anuentes deverão respeitar as normas internas, horários, regulamentos, orientações assistenciais e regras de convivência da instituição.</p>
+        ` : `
         <p>3.1. Fornecer dados de profissionais particulares (médicos, dentistas) e relação de medicamentos com receituário atualizado.</p>
         <p>3.2. Ressarcir a CONTRATADA por gastos extras antecipados (medicamentos, fraldas, higiene, etc.) mediante comprovante.</p>
         <p>3.3. Providenciar ação de curatela em até 30 dias caso o idoso perca a capacidade de responder por si.</p>
+        `}
 
-        <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA QUARTA - SERVIÇOS NÃO INCLUÍDOS</h3>
-        <p>4.1. Não estão inclusos: Consultas externas, acompanhamento hospitalar, fraldas descartáveis, medicamentos pessoais, materiais para curativos específicos, roupas de uso pessoal e cobertores.</p>
+        ${larContractorObligations}
 
-        <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA QUINTA - VIGÊNCIA E RESCISÃO</h3>
-        <p>5.1. O contrato entra em vigor em <strong>${formatDatePDF(dInicio)}</strong> com término em <strong>${formatDatePDF(dFim)}</strong>.</p>
-        <p>5.2. A rescisão pode ocorrer por qualquer parte com aviso prévio de <strong>30 dias</strong>. Caso o Contratante rescinda sem aviso, será cobrada multa de 50% da mensalidade.</p>
-        <p>5.3. Em caso de falecimento do idoso, o contrato será automaticamente rescindido de pleno direito, sendo devido apenas o pagamento proporcional aos serviços efetivamente prestados no mês em curso. Fica estabelecido que não haverá qualquer devolução de valores já pagos à clínica, seja a título de mensalidade, taxa de adesão ou outros encargos, considerando que tais quantias correspondem a serviços disponibilizados e/ou custos administrativos já assumidos.</p>
+        ${isLarSabedoriaContract ? `
+        <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA QUINTA - DOS SERVIÇOS NÃO INCLUÍDOS</h3>
+        <p>5.1. Não estão incluídos no objeto deste contrato: disponibilização de profissionais para serviços externos do residente, acompanhamento hospitalar, consultas externas, fraldas descartáveis, materiais para curativos, sondas e similares, alimentação por sonda, medicamentos de uso particular, produtos de higiene pessoal, vestuário, roupas de cama e banho, cobertores e demais itens de uso individual, salvo contratação expressa ou cobrança à parte.</p>
+        ` : ''}
 
-        <h3 style="border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 25px;">CLÁUSULA SEXTA - REGRAS GERAIS</h3>
-        <p>6.1. <strong>Foro:</strong> Fica eleito o foro da Comarca de <strong>Ourinhos/SP</strong> para dirimir quaisquer dúvidas oriundas deste contrato.</p>
+        ${larValidityAndTermination}
+
+        ${larGeneralAndSignature}
 
         <div style="margin-top: 50px;">
           <p style="text-indent: 0;">Ourinhos, ${todayStr}.</p>
