@@ -826,6 +826,60 @@ export default function Funcionarios() {
     printPDF(`Contrato - ${emp.nome}`, html, clinic)
   }
 
+  function printAutonomoDeclaration(employee: Employee) {
+    const companyName = clinicConfig?.razao_social || clinicConfig?.name || clinicConfig?.nome_fantasia || DEMO_COMPANY_LEGAL_NAME
+    const city = employee.cidade || clinicConfig?.city || 'Ourinhos'
+    const state = employee.uf || 'SP'
+    const today = new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })
+    const startDate = formatDatePDF(employee.dataAdmissao)
+    const incomeText = employee.salario > 0 ? formatCurrencyPDF(employee.salario) : '______________________________'
+    const role = employee.cargo || 'profissional autônomo'
+
+    const html = `
+      <div style="max-width: 680px; margin: 0 auto; font-size: 12pt; line-height: 1.5; text-align: left;">
+        <h2 style="border:none; margin: 0 0 42px; color: #000; text-align: center; text-transform: none;">Declaração de Autônomo</h2>
+
+        <p style="font-weight: bold; margin-bottom: 14px;">Declarante:</p>
+        <p>${employee.nome || '______________________________'}</p>
+        <p>${employee.endereco || '______________________________'}</p>
+        <p>${employee.telefone || '______________________________'}</p>
+        <p>${employee.email || '______________________________'}</p>
+
+        <p style="font-weight: bold; margin: 18px 0 14px;">Atuação:</p>
+        <p>${role}</p>
+        <p>CPF: ${employee.cpf || '______________________________'}</p>
+
+        <p style="font-weight: bold; margin: 18px 0 14px;">Introdução:</p>
+        <p style="text-align: justify;">A presente Declaração visa formalizar a atuação do(a) declarante como profissional autônomo, detalhando as informações pertinentes à sua atividade.</p>
+
+        <p style="font-weight: bold; margin: 18px 0 14px;">Informações Adicionais:</p>
+        <p style="text-align: justify;">O(a) declarante atua como ${role} desde ${startDate}, prestando serviços a ${companyName}.</p>
+
+        <p style="font-weight: bold; margin: 18px 0 14px;">Renda:</p>
+        <p style="text-align: justify;">A renda mensal estimada é de ${incomeText} e pode variar conforme a demanda de serviços prestados.</p>
+
+        <p style="font-weight: bold; margin: 18px 0 14px;">Responsabilidades:</p>
+        <p style="text-align: justify;">O(a) declarante assume a responsabilidade por suas obrigações fiscais e tributárias decorrentes da atividade autônoma.</p>
+
+        <p style="font-weight: bold; margin: 18px 0 14px;">Data e Assinatura:</p>
+        <p style="text-align: justify;">Declara que as informações aqui prestadas são verdadeiras e estão de acordo com a legislação vigente.</p>
+
+        <p style="margin-top: 46px;">${city}/${state}, ${today}.</p>
+
+        <div style="margin-top: 78px;">
+          <div style="border-top: 1px solid #000; width: 300px;"></div>
+          <p style="margin-top: 12px;">${employee.nome || 'Assinatura do Declarante'}</p>
+          <p style="font-size: 10pt;">Assinatura do Declarante</p>
+        </div>
+      </div>
+    `
+
+    printPDF(`Declaração de Autônomo - ${employee.nome}`, html, clinic, {
+      hideClinicHeader: true,
+      hideTitle: true,
+    })
+  }
+
   function printEmployeeRegistrationForm(employee: Employee) {
     const html = `
       <div style="text-align: center; margin-bottom: 30px;">
@@ -982,6 +1036,11 @@ export default function Funcionarios() {
                         <Button variant="ghost" size="icon" onClick={() => openReceipt(employee)} title="Gerar Recibo">
                           <ReceiptText className="h-4 w-4 text-emerald-600" />
                         </Button>
+                        {isLarSabedoriaCompany && employee.tipo_contrato === 'autonomo' && (
+                          <Button variant="ghost" size="icon" onClick={() => printAutonomoDeclaration(employee)} title="Gerar Declaração de Autônomo">
+                            <FileText className="h-4 w-4 text-violet-600" />
+                          </Button>
+                        )}
                         <Button variant="ghost" size="icon" onClick={() => printEmployeeRegistrationForm(employee)} title="Ficha Cadastral">
                           <User className="h-4 w-4 text-orange-600" />
                         </Button>
