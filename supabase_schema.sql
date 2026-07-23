@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS employees (
   salario NUMERIC,
   status TEXT DEFAULT 'ativo',
   tipo_contrato TEXT DEFAULT 'autonomo',
+  possui_beneficio_governamental BOOLEAN DEFAULT FALSE,
   mei_razao_social TEXT,
   mei_cnpj TEXT,
   mei_inscricao_municipal TEXT,

@@ -20,6 +20,7 @@ export interface Employee {
   vt_valor: number
   salario_tipo?: 'mensal' | 'diaria'
   tipo_contrato?: 'autonomo' | 'mei'
+  possui_beneficio_governamental?: boolean
   mei_razao_social?: string
   mei_cnpj?: string
   mei_inscricao_municipal?: string

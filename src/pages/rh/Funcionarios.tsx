@@ -43,6 +43,7 @@ const emptyEmployee: Omit<Employee, 'id'> = {
   salario: 0,
   salario_tipo: 'mensal',
   tipo_contrato: 'autonomo',
+  possui_beneficio_governamental: false,
   mei_razao_social: '',
   mei_cnpj: '',
   mei_inscricao_municipal: '',
@@ -183,6 +184,23 @@ function buildLarSabedoriaAutonomoContractHtml(params: {
   const startDateText = emp.dataAdmissao
     ? `, com início em <strong>${admissao}</strong>,`
     : ''
+  const governmentBenefitsClause = emp.possui_beneficio_governamental
+    ? `
+      <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA NONA - DOS BENEFÍCIOS GOVERNAMENTAIS E DA AUSÊNCIA DE VÍNCULO TRABALHISTA</h3>
+      <p>A <strong>CONTRATADA</strong> declara, para todos os fins de direito, que é beneficiária de programas sociais e/ou benefícios governamentais, tais como Bolsa Família ou outros de natureza municipal, estadual ou federal, cuja manutenção exige a inexistência de vínculo empregatício formal.</p>
+      <p>As partes reconhecem e acordam que o presente contrato estabelece exclusivamente uma relação de prestação de serviços autônomos, sem qualquer vínculo empregatício entre a <strong>CONTRATANTE</strong> e a <strong>CONTRATADA</strong>, nos termos da legislação vigente.</p>
+      <p>A <strong>CONTRATADA</strong> não fará jus a direitos típicos da relação de emprego, tais como férias, 13º salário, FGTS, aviso prévio, horas extras ou quaisquer outros previstos na Consolidação das Leis do Trabalho (CLT), sendo responsável pela sua própria contribuição previdenciária e tributária, quando aplicável.</p>
+      <p>A <strong>CONTRATADA</strong> declara estar ciente de que a caracterização de vínculo trabalhista poderá acarretar a perda de seus benefícios governamentais, bem como a obrigação de devolução de valores eventualmente recebidos indevidamente junto aos órgãos públicos competentes.</p>
+      <p>A <strong>CONTRATANTE</strong> não poderá ser responsabilizada por eventual suspensão, cancelamento ou devolução de benefícios governamentais da <strong>CONTRATADA</strong>, cabendo exclusivamente a esta última a responsabilidade por manter sua situação regular perante os programas sociais de que participa.</p>
+      <p>Ambas as partes reconhecem e concordam que a presente contratação tem caráter estritamente autônomo, sendo a <strong>CONTRATADA</strong> livre para organizar sua forma de trabalho, horários e métodos de execução, sem subordinação hierárquica ou pessoalidade típica da relação de emprego.</p>
+    `
+    : ''
+  const generalClauseTitle = emp.possui_beneficio_governamental
+    ? 'CLÁUSULA DÉCIMA - DAS CONDIÇÕES GERAIS'
+    : 'CLÁUSULA NONA - DAS CONDIÇÕES GERAIS'
+  const venueClauseTitle = emp.possui_beneficio_governamental
+    ? 'CLÁUSULA DÉCIMA PRIMEIRA - DO FORO'
+    : 'CLÁUSULA DÉCIMA - DO FORO'
 
   return `
     <div style="text-align: center; margin-bottom: 30px;">
@@ -238,13 +256,15 @@ function buildLarSabedoriaAutonomoContractHtml(params: {
       <p>As partes declaram expressamente que a relação estabelecida por este instrumento é de prestação de serviços autônomos, de natureza civil, inexistindo vínculo empregatício, subordinação jurídica, controle de jornada típico de relação de emprego ou dependência trabalhista.</p>
       <p>A <strong>CONTRATADA</strong> é responsável por suas obrigações fiscais, previdenciárias, tributárias e profissionais decorrentes de sua atuação autônoma, quando aplicáveis, sem prejuízo dos pagamentos expressamente assumidos pela <strong>CONTRATANTE</strong> neste contrato.</p>
 
-      <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA NONA - DAS CONDIÇÕES GERAIS</h3>
+      ${governmentBenefitsClause}
+
+      <h3 style="margin-top: 30px; text-transform: uppercase;">${generalClauseTitle}</h3>
       <p>Este contrato obriga as partes, seus herdeiros e sucessores, no limite das obrigações aqui assumidas.</p>
       <p>Qualquer tolerância, concessão ou não exercício imediato de direito previsto neste contrato será considerado mera liberalidade, não implicando renúncia, alteração contratual ou novação.</p>
       <p>Alterações deste contrato somente terão validade se realizadas por escrito e assinadas pelas partes.</p>
       <p>O presente contrato poderá, a critério das partes, ser registrado em cartório para fins de conservação, publicidade e autenticidade, devendo a <strong>CONTRATANTE</strong> fornecer cópia à <strong>CONTRATADA</strong>.</p>
 
-      <h3 style="margin-top: 30px; text-transform: uppercase;">CLÁUSULA DÉCIMA - DO FORO</h3>
+      <h3 style="margin-top: 30px; text-transform: uppercase;">${venueClauseTitle}</h3>
       <p>As partes elegem o Foro da Comarca de Ourinhos/SP para dirimir quaisquer controvérsias oriundas deste contrato, com renúncia expressa a qualquer outro, por mais privilegiado que seja.</p>
       <p>E, por estarem justas e contratadas, as partes assinam o presente instrumento em 2 (duas) vias de igual teor e forma, juntamente com as testemunhas abaixo.</p>
 
@@ -433,6 +453,7 @@ function isMissingRhMigrationError(error: unknown) {
     text.includes('turno_inicio') ||
     text.includes('turno_fim') ||
     text.includes('tipo_contrato') ||
+    text.includes('possui_beneficio_governamental') ||
     text.includes('estado_civil') ||
     text.includes('nome_conjuge') ||
     text.includes('possui_filhos_menores_14') ||
@@ -470,6 +491,7 @@ export default function Funcionarios() {
   const [receiptDialogOpen, setReceiptDialogOpen] = useState(false)
   const [selectedEmp, setSelectedEmp] = useState<Employee | null>(null)
   const [receiptItems, setReceiptItems] = useState<{ desc: string, val: number }[]>([])
+  const isLarSabedoriaCompany = onlyDigits(clinicConfig?.cnpj_digits || clinicConfig?.cnpj || '') === LAR_SABEDORIA_CNPJ_DIGITS
 
   const filtered = employees.filter((e) => {
     const employeeName = String(e.nome || '')
@@ -520,6 +542,7 @@ export default function Funcionarios() {
       ...rest,
       salario_tipo: employee.salario_tipo || 'mensal',
       tipo_contrato: employee.tipo_contrato || 'autonomo',
+      possui_beneficio_governamental: !!employee.possui_beneficio_governamental,
       possui_filhos_menores_14: !!employee.possui_filhos_menores_14,
       quantidade_filhos_menores_14: employee.quantidade_filhos_menores_14 || 0,
       contrato_experiencia: employee.contrato_experiencia || 'nao',
@@ -835,6 +858,7 @@ export default function Funcionarios() {
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Turno:</strong></td><td style="border:none; padding: 4px;">${employee.turno || 'Diurno'}${getEmployeeShiftLabel(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Escala:</strong></td><td style="border:none; padding: 4px;">${employee.escala}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Tipo de Contrato:</strong></td><td style="border:none; padding: 4px;">${getContractTypeLabel(employee)}</td></tr>
+          ${isLarSabedoriaCompany && employee.tipo_contrato === 'autonomo' ? `<tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Benefício Governamental:</strong></td><td style="border:none; padding: 4px;">${employee.possui_beneficio_governamental ? 'SIM' : 'NÃO'}</td></tr>` : ''}
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Contrato de Experiência:</strong></td><td style="border:none; padding: 4px;">${getExperienceContractLabel(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Data de Admissão:</strong></td><td style="border:none; padding: 4px;">${formatDatePDF(employee.dataAdmissao)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Salário Base:</strong></td><td style="border:none; padding: 4px;">${getEmployeeSalaryLabelPDF(employee)}</td></tr>
@@ -986,6 +1010,9 @@ export default function Funcionarios() {
         </DialogHeader>
         <DialogContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2 border-b pb-2">
+              <h4 className="text-sm font-semibold text-primary">Identificação e Contato</h4>
+            </div>
             <div className="md:col-span-2">
               <Label>Nome Completo</Label>
               <Input value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} className="mt-1" />
@@ -1021,8 +1048,97 @@ export default function Funcionarios() {
               </div>
             </div>
             <div>
+              <Label>Telefone</Label>
+              <Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Email</Label>
+              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1" />
+            </div>
+
+            <div className="md:col-span-2 border-b pb-2 pt-2">
+              <h4 className="text-sm font-semibold text-primary">Dados Pessoais e Familiares</h4>
+            </div>
+            <div>
+              <Label>Data de Nascimento</Label>
+              <Input type="date" value={form.data_nascimento || ''} onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Estado Civil</Label>
+              <Select value={form.estado_civil || ''} onChange={(e) => setForm({ ...form, estado_civil: e.target.value })} className="mt-1">
+                <option value="">Selecionar...</option>
+                <option value="Solteiro(a)">Solteiro(a)</option>
+                <option value="Casado(a)">Casado(a)</option>
+                <option value="União Estável">União Estável</option>
+                <option value="Divorciado(a)">Divorciado(a)</option>
+                <option value="Viúvo(a)">Viúvo(a)</option>
+              </Select>
+            </div>
+            <div>
+              <Label>Nome do Cônjuge</Label>
+              <Input value={form.nome_conjuge || ''} onChange={(e) => setForm({ ...form, nome_conjuge: e.target.value })} className="mt-1" />
+            </div>
+            <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-lg border">
+              <input
+                type="checkbox"
+                id="possui_filhos_menores_14"
+                checked={!!form.possui_filhos_menores_14}
+                onChange={(e) => setForm({
+                  ...form,
+                  possui_filhos_menores_14: e.target.checked,
+                  quantidade_filhos_menores_14: e.target.checked ? form.quantidade_filhos_menores_14 || 1 : 0
+                })}
+                className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
+              />
+              <Label htmlFor="possui_filhos_menores_14" className="text-sm font-medium cursor-pointer">
+                Possui filhos menores de 14 anos?
+              </Label>
+            </div>
+            {form.possui_filhos_menores_14 && (
+              <div>
+                <Label>Quantidade de Filhos</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={form.quantidade_filhos_menores_14 || 1}
+                  onChange={(e) => setForm({ ...form, quantidade_filhos_menores_14: Number(e.target.value) })}
+                  className="mt-1"
+                />
+              </div>
+            )}
+            <div>
+              <Label>Grau de Escolaridade</Label>
+              <Select value={form.grau_escolaridade || ''} onChange={(e) => setForm({ ...form, grau_escolaridade: e.target.value })} className="mt-1">
+                <option value="">Selecionar...</option>
+                <option value="Ensino Fundamental">Ensino Fundamental</option>
+                <option value="Ensino Médio">Ensino Médio</option>
+                <option value="Ensino Técnico">Ensino Técnico</option>
+                <option value="Ensino Superior">Ensino Superior</option>
+                <option value="Pós-graduação">Pós-graduação</option>
+                <option value="Mestrado">Mestrado</option>
+                <option value="Doutorado">Doutorado</option>
+              </Select>
+            </div>
+            <div>
+              <Label>Situação da Escolaridade</Label>
+              <Select value={form.situacao_escolaridade || ''} onChange={(e) => setForm({ ...form, situacao_escolaridade: e.target.value })} className="mt-1">
+                <option value="">Selecionar...</option>
+                <option value="Completo">Completo</option>
+                <option value="Incompleto">Incompleto</option>
+                <option value="Cursando">Cursando</option>
+              </Select>
+            </div>
+
+            <div className="md:col-span-2 border-b pb-2 pt-2">
+              <h4 className="text-sm font-semibold text-primary">Contrato e Trabalho</h4>
+            </div>
+            <div>
               <Label>Cargo</Label>
               <Input value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Data de Admissão</Label>
+              <Input type="date" value={form.dataAdmissao} onChange={(e) => setForm({ ...form, dataAdmissao: e.target.value })} className="mt-1" />
             </div>
             <div>
               <Label>Unidade de Trabalho</Label>
@@ -1090,11 +1206,32 @@ export default function Funcionarios() {
             </div>
             <div>
               <Label>Tipo de Contrato</Label>
-              <Select value={form.tipo_contrato || 'autonomo'} onChange={(e) => setForm({ ...form, tipo_contrato: e.target.value as Employee['tipo_contrato'] })} className="mt-1">
+              <Select value={form.tipo_contrato || 'autonomo'} onChange={(e) => {
+                const tipoContrato = e.target.value as Employee['tipo_contrato']
+                setForm({
+                  ...form,
+                  tipo_contrato: tipoContrato,
+                  possui_beneficio_governamental: tipoContrato === 'autonomo' ? form.possui_beneficio_governamental : false
+                })
+              }} className="mt-1">
                 <option value="autonomo">Autônomo</option>
                 <option value="mei">MEI</option>
               </Select>
             </div>
+            {isLarSabedoriaCompany && form.tipo_contrato === 'autonomo' && (
+              <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg border border-primary/10">
+                <input
+                  type="checkbox"
+                  id="possui_beneficio_governamental"
+                  checked={!!form.possui_beneficio_governamental}
+                  onChange={(e) => setForm({ ...form, possui_beneficio_governamental: e.target.checked })}
+                  className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
+                />
+                <Label htmlFor="possui_beneficio_governamental" className="text-sm font-medium cursor-pointer">
+                  Possui Bolsa Família ou outro benefício governamental?
+                </Label>
+              </div>
+            )}
             <div>
               <Label>Contrato de Experiência</Label>
               <Select value={form.contrato_experiencia || 'nao'} onChange={(e) => setForm({ ...form, contrato_experiencia: e.target.value as Employee['contrato_experiencia'] })} className="mt-1">
@@ -1308,89 +1445,6 @@ export default function Funcionarios() {
               </div>
             </div>
 
-            <div>
-              <Label>Data de Nascimento</Label>
-              <Input type="date" value={form.data_nascimento || ''} onChange={(e) => setForm({ ...form, data_nascimento: e.target.value })} className="mt-1" />
-            </div>
-            <div>
-              <Label>Data de Admissão</Label>
-              <Input type="date" value={form.dataAdmissao} onChange={(e) => setForm({ ...form, dataAdmissao: e.target.value })} className="mt-1" />
-            </div>
-            <div>
-              <Label>Estado Civil</Label>
-              <Select value={form.estado_civil || ''} onChange={(e) => setForm({ ...form, estado_civil: e.target.value })} className="mt-1">
-                <option value="">Selecionar...</option>
-                <option value="Solteiro(a)">Solteiro(a)</option>
-                <option value="Casado(a)">Casado(a)</option>
-                <option value="União Estável">União Estável</option>
-                <option value="Divorciado(a)">Divorciado(a)</option>
-                <option value="Viúvo(a)">Viúvo(a)</option>
-              </Select>
-            </div>
-            <div>
-              <Label>Nome do Cônjuge</Label>
-              <Input value={form.nome_conjuge || ''} onChange={(e) => setForm({ ...form, nome_conjuge: e.target.value })} className="mt-1" />
-            </div>
-            <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-lg border">
-                <input
-                  type="checkbox"
-                  id="possui_filhos_menores_14"
-                  checked={!!form.possui_filhos_menores_14}
-                  onChange={(e) => setForm({
-                    ...form,
-                    possui_filhos_menores_14: e.target.checked,
-                    quantidade_filhos_menores_14: e.target.checked ? form.quantidade_filhos_menores_14 || 1 : 0
-                  })}
-                  className="h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
-                />
-                <Label htmlFor="possui_filhos_menores_14" className="text-sm font-medium cursor-pointer">
-                  Possui filhos menores de 14 anos?
-                </Label>
-              </div>
-              {form.possui_filhos_menores_14 && (
-                <div>
-                  <Label>Quantidade de Filhos</Label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={form.quantidade_filhos_menores_14 || 1}
-                    onChange={(e) => setForm({ ...form, quantidade_filhos_menores_14: Number(e.target.value) })}
-                    className="mt-1"
-                  />
-                </div>
-              )}
-            </div>
-            <div>
-              <Label>Grau de Escolaridade</Label>
-              <Select value={form.grau_escolaridade || ''} onChange={(e) => setForm({ ...form, grau_escolaridade: e.target.value })} className="mt-1">
-                <option value="">Selecionar...</option>
-                <option value="Ensino Fundamental">Ensino Fundamental</option>
-                <option value="Ensino Médio">Ensino Médio</option>
-                <option value="Ensino Técnico">Ensino Técnico</option>
-                <option value="Ensino Superior">Ensino Superior</option>
-                <option value="Pós-graduação">Pós-graduação</option>
-                <option value="Mestrado">Mestrado</option>
-                <option value="Doutorado">Doutorado</option>
-              </Select>
-            </div>
-            <div>
-              <Label>Situação da Escolaridade</Label>
-              <Select value={form.situacao_escolaridade || ''} onChange={(e) => setForm({ ...form, situacao_escolaridade: e.target.value })} className="mt-1">
-                <option value="">Selecionar...</option>
-                <option value="Completo">Completo</option>
-                <option value="Incompleto">Incompleto</option>
-                <option value="Cursando">Cursando</option>
-              </Select>
-            </div>
-            <div>
-              <Label>Telefone</Label>
-              <Input value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} className="mt-1" />
-            </div>
-            <div className="md:col-span-2">
-              <Label>Email</Label>
-              <Input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className="mt-1" />
-            </div>
             <div className="md:col-span-2 flex items-center gap-2 p-3 bg-primary/5 rounded-lg border border-primary/10 mt-2">
               <input 
                 type="checkbox" 
