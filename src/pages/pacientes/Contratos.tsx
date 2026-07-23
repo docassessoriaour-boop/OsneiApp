@@ -299,9 +299,13 @@ export default function Contratos() {
     const contractorTradeName = clinic?.nome_fantasia || (clinic as any)?.name || DEMO_COMPANY_NAME
     const contractorCnpj = clinic?.cnpj || DEMO_COMPANY_CNPJ
     const contractorAddress = clinic?.endereco || DEMO_COMPANY_ADDRESS
-    const contractorRepresentative = (clinic as any)?.representante || DEMO_COMPANY_REPRESENTATIVE
-    const contractorRepresentativeDocs = (clinic as any)?.representante_documentos || DEMO_COMPANY_REPRESENTATIVE_DOCS
     const isLarSabedoriaContract = onlyDigits((clinic as any)?.cnpj_digits || contractorCnpj) === LAR_SABEDORIA_CNPJ_DIGITS
+    const contractorRepresentative = isLarSabedoriaContract
+      ? 'Érika Teodoro de Araújo'
+      : (clinic as any)?.representante || DEMO_COMPANY_REPRESENTATIVE
+    const contractorRepresentativeDocs = isLarSabedoriaContract
+      ? 'RG nº 27.746.831-0 e CPF nº 516.578.641/20'
+      : (clinic as any)?.representante_documentos || DEMO_COMPANY_REPRESENTATIVE_DOCS
 
     const allResps = [
       { nome: p.responsavel, cpf: p.resp_cpf, rg: p.resp_rg, nac: p.resp_nacionalidade, civil: p.resp_estado_civil, prof: p.resp_profissao, end: fullAddress },
