@@ -3,6 +3,7 @@ import { useDb } from '@/hooks/useDb'
 import { formatCurrency } from '@/lib/utils'
 import type { Employee, Payroll, PayrollAdicional, ScheduleException, Bill, BankAccount } from '@/lib/types'
 import { useClinic } from '@/lib/clinicConfig'
+import { LAR_SABEDORIA_CNPJ_DIGITS, onlyDigits } from '@/lib/companies'
 import { printPDF, formatCurrencyPDF, formatDatePDF } from '@/lib/pdf'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SearchBar } from '@/components/shared/SearchBar'
@@ -17,7 +18,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Pencil, Trash2, FileText, Plus, X, CalendarClock, Loader2, Banknote, Printer, CheckCircle2 } from 'lucide-react'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInCalendarDays, getDaysInMonth, subMonths } from 'date-fns'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInCalendarDays, getDaysInMonth, subMonths, startOfWeek, endOfWeek } from 'date-fns'
 
 const emptyAdicional: PayrollAdicional = { descricao: '', tipo: 'provento', valor: 0 }
 
@@ -62,6 +63,7 @@ export default function FolhaPagamento() {
   const { insert: insertBankTx } = useDb<any>('bank_transactions')
   
   const [clinic] = useClinic()
+  const isLarSabedoriaCompany = onlyDigits((clinic as any)?.cnpj_digits || clinic?.cnpj || '') === LAR_SABEDORIA_CNPJ_DIGITS
   const [search, setSearch] = useState('')
   const currentMonth = format(new Date(), 'yyyy-MM')
   const previousMonth = format(subMonths(new Date(), 1), 'yyyy-MM')
@@ -73,6 +75,19 @@ export default function FolhaPagamento() {
   const [massDialogOpen, setMassDialogOpen] = useState(false)
   const [massMonth, setMassMonth] = useState(format(new Date(), 'yyyy-MM'))
   const [generating, setGenerating] = useState(false)
+  const currentWeekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
+  const currentWeekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
+  const [weeklyVtOpen, setWeeklyVtOpen] = useState(false)
+  const [weeklyVtSaving, setWeeklyVtSaving] = useState(false)
+  const [weeklyVtForm, setWeeklyVtForm] = useState({
+    funcionarioId: '',
+    periodoInicio: currentWeekStart,
+    periodoFim: currentWeekEnd,
+    dataPagamento: currentWeekEnd,
+    diasTrabalhados: 0,
+    valorDiario: 0,
+    observacoes: '',
+  })
 
   // --- Dialog Dar Baixa ---
   const [baixaOpen, setBaixaOpen] = useState(false)
@@ -93,6 +108,7 @@ export default function FolhaPagamento() {
     observacoes: '',
   })
   const [adicionais, setAdicionais] = useState<PayrollAdicional[]>([])
+  const weeklyVtTotal = Number((weeklyVtForm.diasTrabalhados * weeklyVtForm.valorDiario).toFixed(2))
 
   const activeFilterBounds = dateFilter === 'previous'
     ? monthBounds(previousMonth)
@@ -145,6 +161,10 @@ export default function FolhaPagamento() {
     if (!employee?.tem_vt) return 0
     if (employee.vt_tipo === 'diaria') return Number(((employee.vt_valor || 0) * workedDays).toFixed(2))
     return Number(((employee.vt_valor || 0) * multiplier).toFixed(2))
+  }
+
+  function shouldAutoIncludeVt(employee: Employee | undefined) {
+    return !!employee?.tem_vt && !isLarSabedoriaCompany
   }
 
   // Computed totals
@@ -250,7 +270,7 @@ export default function FolhaPagamento() {
                 valor: 0 
              })
           }
-          if (emp.tem_vt) {
+          if (shouldAutoIncludeVt(emp)) {
              payloadAdicionais.push({
                 descricao: 'Vale Transporte',
                 tipo: 'provento',
@@ -325,7 +345,7 @@ export default function FolhaPagamento() {
     
     const initialAdicionais: PayrollAdicional[] = []
     if (firstEmp) {
-      if (firstEmp.tem_vt) {
+      if (shouldAutoIncludeVt(firstEmp)) {
         initialAdicionais.push({
           descricao: 'Vale Transporte',
           tipo: 'provento',
@@ -378,6 +398,108 @@ export default function FolhaPagamento() {
 
   function updateAdicional(idx: number, field: keyof PayrollAdicional, value: string | number) {
     setAdicionais(adicionais.map((a, i) => i === idx ? { ...a, [field]: value } : a))
+  }
+
+  function openWeeklyVtDialog() {
+    const employee = employees.find(e => e.status === 'ativo' && e.tem_vt)
+    const workedDays = countWorkedDays(employee, currentWeekStart, currentWeekEnd)
+    setWeeklyVtForm({
+      funcionarioId: employee?.id || '',
+      periodoInicio: currentWeekStart,
+      periodoFim: currentWeekEnd,
+      dataPagamento: currentWeekEnd,
+      diasTrabalhados: workedDays,
+      valorDiario: employee?.vt_tipo === 'diaria' ? employee.vt_valor || 0 : 0,
+      observacoes: '',
+    })
+    setWeeklyVtOpen(true)
+  }
+
+  function updateWeeklyVtForm(next: Partial<typeof weeklyVtForm>) {
+    setWeeklyVtForm(prev => {
+      const updated = { ...prev, ...next }
+      const employee = employees.find(e => e.id === updated.funcionarioId)
+
+      if ('funcionarioId' in next) {
+        updated.valorDiario = employee?.vt_tipo === 'diaria' ? employee.vt_valor || 0 : 0
+        updated.diasTrabalhados = countWorkedDays(employee, updated.periodoInicio, updated.periodoFim)
+      }
+
+      if ('periodoInicio' in next || 'periodoFim' in next) {
+        updated.diasTrabalhados = countWorkedDays(employee, updated.periodoInicio, updated.periodoFim)
+        updated.dataPagamento = updated.periodoFim || updated.dataPagamento
+      }
+
+      return updated
+    })
+  }
+
+  async function handleSaveWeeklyVt() {
+    const employee = employees.find(e => e.id === weeklyVtForm.funcionarioId)
+    if (!employee) {
+      alert('Selecione um funcionário.')
+      return
+    }
+    if (!weeklyVtForm.periodoInicio || !weeklyVtForm.periodoFim) {
+      alert('Informe o período da semana.')
+      return
+    }
+    if (weeklyVtForm.diasTrabalhados <= 0 || weeklyVtForm.valorDiario <= 0 || weeklyVtTotal <= 0) {
+      alert('Informe os dias trabalhados e o valor diário do vale transporte.')
+      return
+    }
+
+    const duplicated = payrolls.some(p =>
+      p.funcionarioId === employee.id &&
+      p.periodoInicio === weeklyVtForm.periodoInicio &&
+      p.periodoFim === weeklyVtForm.periodoFim &&
+      (p.observacoes || '').includes('VT semanal')
+    )
+
+    if (duplicated && !confirm('Já existe um lançamento de VT semanal para este funcionário neste período. Deseja criar outro mesmo assim?')) {
+      return
+    }
+
+    setWeeklyVtSaving(true)
+    try {
+      const descricaoAdicional = `Vale Transporte Semanal (${weeklyVtForm.diasTrabalhados} dia${weeklyVtForm.diasTrabalhados === 1 ? '' : 's'})`
+      const payrollResult = await insert({
+        funcionario_id: employee.id,
+        funcionario_nome: employee.nome,
+        cargo: employee.cargo,
+        salario_bruto: 0,
+        descontos: 0,
+        salario_liquido: weeklyVtTotal,
+        mes_referencia: weeklyVtForm.periodoFim.slice(0, 7),
+        status: 'pendente',
+        periodo_inicio: weeklyVtForm.periodoInicio,
+        periodo_fim: weeklyVtForm.periodoFim,
+        tipo_periodo: 'periodo',
+        observacoes: `VT semanal - pagamento aos domingos conforme trabalhado na semana.${weeklyVtForm.observacoes ? ` ${weeklyVtForm.observacoes}` : ''}`,
+        adicionais: [{
+          descricao: descricaoAdicional,
+          tipo: 'provento',
+          valor: weeklyVtTotal,
+        }],
+      } as any)
+
+      await insertBill({
+        descricao: `Vale Transporte Semanal - ${employee.nome} - ${formatDatePDF(weeklyVtForm.periodoInicio)} a ${formatDatePDF(weeklyVtForm.periodoFim)}`,
+        valor: weeklyVtTotal,
+        vencimento: weeklyVtForm.dataPagamento || weeklyVtForm.periodoFim,
+        status: 'pendente',
+        categoria: 'Vale Transporte',
+        payroll_id: payrollResult.id,
+      } as any)
+
+      alert('VT semanal lançado na Folha e no Contas a Pagar.')
+      setWeeklyVtOpen(false)
+    } catch (error) {
+      console.error(error)
+      alert('Erro ao lançar VT semanal.')
+    } finally {
+      setWeeklyVtSaving(false)
+    }
   }
 
   function updatePeriodAndSalary(val: 'mes' | 'periodo' | '13_salario', start: string, end: string, month: string) {
@@ -438,7 +560,7 @@ export default function FolhaPagamento() {
 
       setAdicionais(prevAdics => {
         let updated = prevAdics.map(a => {
-          if (a.descricao === 'Vale Transporte' && emp?.tem_vt) {
+          if (a.descricao === 'Vale Transporte' && shouldAutoIncludeVt(emp)) {
             return { ...a, valor: calculateVtValue(emp, multiplier, workedDays) }
           }
           if (a.descricao.startsWith('Adicional Insalubridade') && emp?.tem_insalubridade) {
@@ -446,7 +568,7 @@ export default function FolhaPagamento() {
           }
           return a
         })
-        if (val === '13_salario') {
+        if (val === '13_salario' || !shouldAutoIncludeVt(emp)) {
           updated = updated.filter(a => a.descricao !== 'Vale Transporte');
         }
         return updated;
@@ -459,11 +581,12 @@ export default function FolhaPagamento() {
   // PDF Pay Receipt
   function printReceipt(p: Payroll) {
     const emp = employees.find(e => e.id === p.funcionarioId)
+    const isWeeklyVtReceipt = (p.observacoes || '').includes('VT semanal')
     const periodo = p.periodoInicio && p.periodoFim
       ? `${formatDatePDF(p.periodoInicio)} a ${formatDatePDF(p.periodoFim)}`
       : p.mesReferencia
 
-    let rows = `
+    let rows = isWeeklyVtReceipt ? '' : `
       <tr><td>${p.tipo_periodo === '13_salario' ? '13º Salário' : 'Salário Base'}</td><td class="text-right">${formatCurrencyPDF(p.salarioBruto)}</td></tr>
     `
     if (p.adicionais) {
@@ -472,7 +595,9 @@ export default function FolhaPagamento() {
           <td class="text-right ${a.tipo === 'provento' ? 'text-green' : 'text-red'}">${a.tipo === 'provento' ? '+' : '-'}${formatCurrencyPDF(a.valor)}</td></tr>`
       }
     }
-    rows += `<tr><td>Descontos Gerais</td><td class="text-right text-red">-${formatCurrencyPDF(p.descontos - (p.adicionais?.filter(a => a.tipo === 'desconto').reduce((s, a) => s + a.valor, 0) || 0))}</td></tr>`
+    if (!isWeeklyVtReceipt) {
+      rows += `<tr><td>Descontos Gerais</td><td class="text-right text-red">-${formatCurrencyPDF(p.descontos - (p.adicionais?.filter(a => a.tipo === 'desconto').reduce((s, a) => s + a.valor, 0) || 0))}</td></tr>`
+    }
 
     const html = `
       <div style="margin-bottom:16px;">
@@ -487,7 +612,7 @@ export default function FolhaPagamento() {
       </table>
       <div class="divider"></div>
       <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:700;">
-        <span>Salário Líquido</span>
+        <span>${isWeeklyVtReceipt ? 'Total do Vale Transporte' : 'Salário Líquido'}</span>
         <span>${formatCurrencyPDF(p.salarioLiquido)}</span>
       </div>
       ${p.observacoes ? `<div style="margin-top:16px;padding:10px;background:#f9f9f9;border-radius:6px;"><strong>Observações:</strong><br/>${p.observacoes}</div>` : ''}
@@ -496,7 +621,7 @@ export default function FolhaPagamento() {
         <div class="signature-line"><hr/><span>Funcionário</span></div>
       </div>
     `
-    printPDF(`Recibo de Pagamento — ${p.funcionarioNome}`, html, clinic)
+    printPDF(`${isWeeklyVtReceipt ? 'Recibo de Vale Transporte' : 'Recibo de Pagamento'} — ${p.funcionarioNome}`, html, clinic)
   }
 
   function printRelatorio() {
@@ -662,6 +787,11 @@ export default function FolhaPagamento() {
           <Button variant="outline" onClick={() => setMassDialogOpen(true)} className="gap-2 text-primary border-primary/20 bg-primary/5">
             <CalendarClock className="h-4 w-4" /> Gerar via Escala
           </Button>
+          {isLarSabedoriaCompany && (
+            <Button variant="outline" onClick={openWeeklyVtDialog} className="gap-2 text-emerald-700 border-emerald-200 bg-emerald-50">
+              <Banknote className="h-4 w-4" /> VT Semanal
+            </Button>
+          )}
           <Button onClick={openNew} className="gap-2">
             <Plus className="h-4 w-4" /> Nova Folha
           </Button>
@@ -735,6 +865,9 @@ export default function FolhaPagamento() {
                       {p.funcionarioNome}
                       {p.observacoes?.includes('via escala') && (
                         <div className="text-[10px] text-primary font-bold">Gerado p/ Escala</div>
+                      )}
+                      {p.observacoes?.includes('VT semanal') && (
+                        <div className="text-[10px] text-emerald-600 font-bold">VT Semanal</div>
                       )}
                       {employees.find(e => e.id === p.funcionarioId)?.is_pro_labore && (
                         <div className="text-[10px] text-emerald-600 font-bold uppercase">Pro-Labore</div>
@@ -844,7 +977,7 @@ export default function FolhaPagamento() {
                   setForm({ ...form, funcionarioId: e.target.value, salarioBruto, descontos: emp?.descontos_fixos || 0 })
                   
                   const newAdicionais: PayrollAdicional[] = []
-                  if (emp?.tem_vt && form.tipo_periodo !== '13_salario') {
+                  if (shouldAutoIncludeVt(emp) && form.tipo_periodo !== '13_salario') {
                     newAdicionais.push({
                       descricao: 'Vale Transporte',
                       tipo: 'provento',
@@ -1008,6 +1141,108 @@ export default function FolhaPagamento() {
         <DialogFooter>
           <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancelar</Button>
           <Button onClick={handleSave}>Salvar</Button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={weeklyVtOpen} onOpenChange={setWeeklyVtOpen}>
+        <DialogHeader>
+          <DialogTitle>Lançar Vale Transporte Semanal</DialogTitle>
+          <DialogClose onClose={() => setWeeklyVtOpen(false)} />
+        </DialogHeader>
+        <DialogContent>
+          <div className="space-y-4">
+            <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200 text-sm text-emerald-900">
+              Controle exclusivo do Lar da Sabedoria: informe a semana trabalhada, os dias de VT e o valor por dia. O sistema cria a folha individual e uma conta a pagar com vencimento no domingo.
+            </div>
+
+            <div>
+              <Label>Funcionário</Label>
+              <Select
+                value={weeklyVtForm.funcionarioId}
+                onChange={(e) => updateWeeklyVtForm({ funcionarioId: e.target.value })}
+                className="mt-1"
+              >
+                <option value="">Selecionar...</option>
+                {employees.filter(e => e.status === 'ativo' && e.tem_vt).map(e => (
+                  <option key={e.id} value={e.id}>{e.nome}</option>
+                ))}
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label>Início da Semana</Label>
+                <Input
+                  type="date"
+                  value={weeklyVtForm.periodoInicio}
+                  onChange={(e) => updateWeeklyVtForm({ periodoInicio: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Domingo / Vencimento</Label>
+                <Input
+                  type="date"
+                  value={weeklyVtForm.periodoFim}
+                  onChange={(e) => updateWeeklyVtForm({ periodoFim: e.target.value, dataPagamento: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Data em Contas a Pagar</Label>
+                <Input
+                  type="date"
+                  value={weeklyVtForm.dataPagamento}
+                  onChange={(e) => updateWeeklyVtForm({ dataPagamento: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <Label>Dias Trabalhados na Semana</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={weeklyVtForm.diasTrabalhados}
+                  onChange={(e) => updateWeeklyVtForm({ diasTrabalhados: Number(e.target.value) })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Valor do VT por Dia</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={weeklyVtForm.valorDiario}
+                  onChange={(e) => updateWeeklyVtForm({ valorDiario: Number(e.target.value) })}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            <div className="bg-muted/50 rounded-lg p-4 flex items-center justify-between">
+              <span className="font-medium">Total do VT semanal</span>
+              <span className="text-lg font-bold text-emerald-700">{formatCurrency(weeklyVtTotal)}</span>
+            </div>
+
+            <div>
+              <Label>Observações</Label>
+              <Textarea
+                value={weeklyVtForm.observacoes}
+                onChange={(e) => updateWeeklyVtForm({ observacoes: e.target.value })}
+                className="mt-1"
+                placeholder="Ex: ajuste manual dos dias trabalhados, falta, dobra ou troca de escala..."
+              />
+            </div>
+          </div>
+        </DialogContent>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setWeeklyVtOpen(false)}>Cancelar</Button>
+          <Button onClick={handleSaveWeeklyVt} disabled={weeklyVtSaving}>
+            {weeklyVtSaving ? 'Salvando...' : 'Lançar VT Semanal'}
+          </Button>
         </DialogFooter>
       </Dialog>
 
