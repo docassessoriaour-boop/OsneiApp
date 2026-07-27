@@ -3,7 +3,7 @@ import { useDb } from '@/hooks/useDb'
 import { useCep } from '@/hooks/useCep'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
-import { WORK_UNIT_NAME, matchesWorkUnit, normalizeWorkUnit } from '@/lib/units'
+import { getCompanyWorkUnit, matchesWorkUnit, normalizeWorkUnit } from '@/lib/units'
 import type { Patient, Medication, BaseMedication, MedicationEntry, CompanionEntry, PersonalItemEntry } from '@/lib/types'
 
 import { SearchBar } from '@/components/shared/SearchBar'
@@ -27,7 +27,7 @@ const emptyPatient: Omit<Patient, 'id'> = {
   resp_rg: '', resp_cpf: '', resp_endereco: '', resp_cidade: '', resp_uf: '', resp_cep: '', resp_email: '',
   resp_is_whatsapp: false,
   resp_nacionalidade: 'Brasileira', resp_estado_civil: 'Casado(a)', resp_profissao: '',
-  status: 'ativo', unidade: WORK_UNIT_NAME, data_entrada: new Date().toISOString().slice(0, 10), observacoes: '',
+  status: 'ativo', unidade: 'Jardim Matilde', data_entrada: new Date().toISOString().slice(0, 10), observacoes: '',
   outros_responsaveis: []
 }
 
@@ -43,9 +43,10 @@ export default function Cadastro() {
   const baseMeds = rawProducts.filter((p: any) => p.tipo === 'medicamento')
   const { fetchCep } = useCep()
   const [clinic] = useClinic()
+  const companyWorkUnit = getCompanyWorkUnit(clinic as any)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'inativo'>('ativo')
-  const [unidadeFilter, setUnidadeFilter] = useState<'todos' | typeof WORK_UNIT_NAME>('todos')
+  const [unidadeFilter, setUnidadeFilter] = useState<string>('todos')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyPatient)
@@ -219,12 +220,12 @@ export default function Cadastro() {
   const filtered = patients.filter((p) => {
     const matchesSearch = p.nome.toLowerCase().includes(search.toLowerCase()) || p.cpf.includes(search)
     const matchesStatus = statusFilter === 'todos' || p.status === statusFilter
-    const matchesUnidade = matchesWorkUnit(p.unidade, unidadeFilter)
+    const matchesUnidade = matchesWorkUnit(p.unidade, unidadeFilter, clinic as any)
     return matchesSearch && matchesStatus && matchesUnidade
   }).sort((a, b) => a.nome.localeCompare(b.nome))
 
   function openNew() { 
-    setForm(emptyPatient); 
+    setForm({ ...emptyPatient, unidade: companyWorkUnit as Patient['unidade'] }); 
     setEditingId(null); 
     setActiveTab('dados');
     setDialogOpen(true) 
@@ -244,7 +245,7 @@ export default function Cadastro() {
 
   function openEdit(patient: Patient) {
     const age = patient.idade || calculateAge(patient.data_nascimento);
-    setForm({ ...emptyPatient, ...patient, unidade: normalizeWorkUnit(patient.unidade) as Patient['unidade'], idade: age });
+    setForm({ ...emptyPatient, ...patient, unidade: normalizeWorkUnit(patient.unidade, clinic as any) as Patient['unidade'], idade: age });
     setEditingId(patient.id);
     setActiveTab(isStandard ? 'medicacao' : 'dados');
     setDialogOpen(true);
@@ -328,7 +329,7 @@ export default function Cadastro() {
   function printReport() {
     const statusLabel = statusFilter === 'todos' ? 'Todos' : statusFilter === 'ativo' ? 'Ativos' : 'Inativos'
     const unidadeLabel = unidadeFilter === 'todos' ? 'Todas as Unidades' : unidadeFilter
-    const rows = filtered.map(p => `<tr><td>${p.nome}</td><td>${p.cpf}</td><td>${normalizeWorkUnit(p.unidade)}</td><td>${p.responsavel}</td><td>${p.status}</td></tr>`).join('')
+    const rows = filtered.map(p => `<tr><td>${p.nome}</td><td>${p.cpf}</td><td>${normalizeWorkUnit(p.unidade, clinic as any)}</td><td>${p.responsavel}</td><td>${p.status}</td></tr>`).join('')
     printPDF(`Relatório de Pacientes - ${unidadeLabel} (${statusLabel})`, `
       <table><thead><tr><th>Nome</th><th>CPF</th><th>Unidade</th><th>Responsável</th><th>Status</th></tr></thead>
       <tbody>${rows}</tbody></table>
@@ -348,7 +349,7 @@ export default function Cadastro() {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
           <div><strong>Nome:</strong> ${p.nome}</div>
           <div><strong>CPF:</strong> ${p.cpf}</div>
-          <div><strong>Unidade:</strong> ${normalizeWorkUnit(p.unidade)}</div>
+          <div><strong>Unidade:</strong> ${normalizeWorkUnit(p.unidade, clinic as any)}</div>
           <div><strong>RG:</strong> ${p.rg || '---'}</div>
           <div><strong>Data Nasc.:</strong> ${formatDate(p.data_nascimento)} (${p.idade} anos)</div>
           <div><strong>Data de Entrada:</strong> ${formatDate(p.data_entrada)}</div>
@@ -673,7 +674,7 @@ export default function Cadastro() {
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
           <div><strong>Nome:</strong> ${p.nome}</div>
           <div><strong>CPF:</strong> ${p.cpf}</div>
-          <div><strong>Unidade:</strong> ${normalizeWorkUnit(p.unidade)}</div>
+          <div><strong>Unidade:</strong> ${normalizeWorkUnit(p.unidade, clinic as any)}</div>
           <div><strong>RG:</strong> ${p.rg || '---'}</div>
           <div><strong>Data Nasc.:</strong> ${formatDate(p.data_nascimento)} (${p.idade} anos)</div>
           <div><strong>Data de Entrada:</strong> ${formatDate(p.data_entrada)}</div>
@@ -833,7 +834,7 @@ export default function Cadastro() {
               onChange={(e) => setUnidadeFilter(e.target.value as any)}
             >
               <option value="todos">Todas as Unidades</option>
-              <option value={WORK_UNIT_NAME}>{WORK_UNIT_NAME}</option>
+              <option value={companyWorkUnit}>{companyWorkUnit}</option>
             </Select>
           </div>
         </div>
@@ -860,7 +861,7 @@ export default function Cadastro() {
                     <TableCell className="font-medium">{patient.nome}</TableCell>
                     <TableCell>{patient.cpf}</TableCell>
                     <TableCell>
-                      <div>{normalizeWorkUnit(patient.unidade)}</div>
+                      <div>{normalizeWorkUnit(patient.unidade, clinic as any)}</div>
                       <div className="text-[10px] text-muted-foreground">
                         {patient.idade || calculateAge(patient.data_nascimento)} anos
                       </div>
@@ -941,8 +942,8 @@ export default function Cadastro() {
                 <div><Label>Status</Label><Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Patient['status'] })} className="mt-1"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></Select></div>
                 <div>
                   <Label>Unidade de Internação</Label>
-                  <Select value={normalizeWorkUnit(form.unidade)} onChange={(e) => setForm({ ...form, unidade: e.target.value as Patient['unidade'] })} className="mt-1">
-                    <option value={WORK_UNIT_NAME}>{WORK_UNIT_NAME}</option>
+                  <Select value={normalizeWorkUnit(form.unidade, clinic as any)} onChange={(e) => setForm({ ...form, unidade: e.target.value as Patient['unidade'] })} className="mt-1">
+                    <option value={companyWorkUnit}>{companyWorkUnit}</option>
                   </Select>
                 </div>
               </div>

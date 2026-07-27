@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useDb } from '@/hooks/useDb'
-import { WORK_UNIT_NAME, matchesWorkUnit } from '@/lib/units'
+import { getCompanyWorkUnit, matchesWorkUnit } from '@/lib/units'
 import type { Patient, Medication, BaseMedication, MedicationEntry } from '@/lib/types'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SearchBar } from '@/components/shared/SearchBar'
@@ -22,6 +22,7 @@ import { recalcularTodosEstoques, sincronizarEstoqueProdutos, vincularMedicament
 
 export default function Medicacao() {
   const [clinic] = useClinic()
+  const companyWorkUnit = getCompanyWorkUnit(clinic as any)
   const { data: rawPatients } = useDb<Patient>('patients')
   const { data: rawMedications, loading, update: updateMed, reload: reloadMeds } = useDb<Medication>('medications')
   const { data: medEntries, insert: insertMedEntry, loading: entriesLoading } = useDb<MedicationEntry>('medication_entries')
@@ -111,7 +112,7 @@ export default function Medicacao() {
 
   const filtered = medications.filter(m => {
     const patient = patients.find(p => p.id === (m.pacienteId || (m as any).paciente_id))
-    const matchesUnit = patient ? matchesWorkUnit(patient.unidade, selectedUnit) : selectedUnit === 'all'
+    const matchesUnit = patient ? matchesWorkUnit(patient.unidade, selectedUnit, clinic as any) : selectedUnit === 'all'
     const matchesPatient = selectedPatientId === 'all' || (m.pacienteId || (m as any).paciente_id) === selectedPatientId
     const matchesSearch = ((m.pacienteNome || (m as any).paciente_nome) || '').toLowerCase().includes(search.toLowerCase()) ||
                         m.medicamento.toLowerCase().includes(search.toLowerCase())
@@ -802,12 +803,12 @@ export default function Medicacao() {
             <div className="flex gap-2 flex-wrap">
               <Select value={selectedUnit} onChange={(e) => setSelectedUnit(e.target.value)} className="h-9 w-40 text-xs">
                 <option value="all">Todas Unidades</option>
-                <option value={WORK_UNIT_NAME}>{WORK_UNIT_NAME}</option>
+                <option value={companyWorkUnit}>{companyWorkUnit}</option>
               </Select>
 
               <Select value={selectedPatientId} onChange={(e) => setSelectedPatientId(e.target.value)} className="h-9 w-48 text-xs">
                 <option value="all">Todos os Pacientes</option>
-                {patients.filter(p => matchesWorkUnit(p.unidade, selectedUnit)).map(p => (
+                {patients.filter(p => matchesWorkUnit(p.unidade, selectedUnit, clinic as any)).map(p => (
                   <option key={p.id} value={p.id}>{p.nome}</option>
                 ))}
               </Select>

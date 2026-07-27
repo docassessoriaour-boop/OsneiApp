@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useDb } from '@/hooks/useDb'
-import { WORK_UNIT_NAME } from '@/lib/units'
+import { getCompanyWorkUnit } from '@/lib/units'
 import { useCep } from '@/hooks/useCep'
 import { useClinic } from '@/lib/clinicConfig'
 import type { Curriculum, Employee } from '@/lib/types'
@@ -48,6 +48,7 @@ const emptyCurriculum: Omit<Curriculum, 'id'> = {
 
 export default function Curriculos() {
   const [clinic] = useClinic()
+  const companyWorkUnit = getCompanyWorkUnit(clinic as any)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyCurriculum)
@@ -61,7 +62,7 @@ export default function Curriculos() {
   const [interviewForm, setInterviewForm] = useState({
     data: '',
     hora: '',
-    local: `Unidade ${WORK_UNIT_NAME}`
+    local: `Unidade ${companyWorkUnit}`
   })
   const navigate = useNavigate()
 
@@ -98,7 +99,7 @@ export default function Curriculos() {
     setInterviewForm({
       data: curr.data_entrevista || '',
       hora: curr.hora_entrevista || '',
-      local: curr.local_entrevista || `Unidade ${WORK_UNIT_NAME}`
+      local: curr.local_entrevista || `Unidade ${companyWorkUnit}`
     })
     setScheduleDialogOpen(true)
   }
@@ -229,7 +230,7 @@ export default function Curriculos() {
           cidade: curr.cidade,
           uf: curr.uf,
           cargo: curr.cargo_pretendido || '',
-          unidade: WORK_UNIT_NAME,
+          unidade: companyWorkUnit,
           turno: 'Diurno',
           escala: '12x36',
           salario: 0,
@@ -458,7 +459,7 @@ export default function Curriculos() {
                   value={interviewForm.local} 
                   onChange={(e) => setInterviewForm({ ...interviewForm, local: e.target.value })} 
                   className="pl-9"
-                  placeholder={`Ex: Unidade ${WORK_UNIT_NAME} ou Link do Meet`}
+                  placeholder={`Ex: Unidade ${companyWorkUnit} ou Link do Meet`}
                 />
               </div>
             </div>
