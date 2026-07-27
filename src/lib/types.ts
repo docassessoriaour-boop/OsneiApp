@@ -1,3 +1,5 @@
+import type { WorkUnit } from './units'
+
 export interface Employee {
   id: string
   nome: string
@@ -7,7 +9,7 @@ export interface Employee {
   escala: '12x36' | '40h' | 'Mensalista' | 'Manual' | 'Dobra'
   salario: number
   status: 'ativo' | 'inativo' | 'ferias' | 'contrato_cancelado'
-  unidade: 'Ouro Verde'
+  unidade: WorkUnit
   turno: 'Diurno' | 'Noturno'
   turno_inicio?: string
   turno_fim?: string
@@ -103,7 +105,7 @@ export interface Patient {
   resp_estado_civil?: string
   resp_profissao?: string
   status: 'ativo' | 'inativo'
-  unidade: 'Ouro Verde'
+  unidade: WorkUnit
   data_entrada: string
   observacoes: string
   outros_responsaveis?: Responsible[]

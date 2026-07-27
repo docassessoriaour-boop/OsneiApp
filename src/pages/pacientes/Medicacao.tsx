@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useDb } from '@/hooks/useDb'
+import { WORK_UNIT_NAME, matchesWorkUnit } from '@/lib/units'
 import type { Patient, Medication, BaseMedication, MedicationEntry } from '@/lib/types'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SearchBar } from '@/components/shared/SearchBar'
@@ -110,7 +111,7 @@ export default function Medicacao() {
 
   const filtered = medications.filter(m => {
     const patient = patients.find(p => p.id === (m.pacienteId || (m as any).paciente_id))
-    const matchesUnit = selectedUnit === 'all' || (patient && patient.unidade === selectedUnit)
+    const matchesUnit = patient ? matchesWorkUnit(patient.unidade, selectedUnit) : selectedUnit === 'all'
     const matchesPatient = selectedPatientId === 'all' || (m.pacienteId || (m as any).paciente_id) === selectedPatientId
     const matchesSearch = ((m.pacienteNome || (m as any).paciente_nome) || '').toLowerCase().includes(search.toLowerCase()) ||
                         m.medicamento.toLowerCase().includes(search.toLowerCase())
@@ -801,12 +802,12 @@ export default function Medicacao() {
             <div className="flex gap-2 flex-wrap">
               <Select value={selectedUnit} onChange={(e) => setSelectedUnit(e.target.value)} className="h-9 w-40 text-xs">
                 <option value="all">Todas Unidades</option>
-                <option value="Ouro Verde">Ouro Verde</option>
+                <option value={WORK_UNIT_NAME}>{WORK_UNIT_NAME}</option>
               </Select>
 
               <Select value={selectedPatientId} onChange={(e) => setSelectedPatientId(e.target.value)} className="h-9 w-48 text-xs">
                 <option value="all">Todos os Pacientes</option>
-                {patients.filter(p => selectedUnit === 'all' || p.unidade === selectedUnit).map(p => (
+                {patients.filter(p => matchesWorkUnit(p.unidade, selectedUnit)).map(p => (
                   <option key={p.id} value={p.id}>{p.nome}</option>
                 ))}
               </Select>

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useDb } from '@/hooks/useDb'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
+import { WORK_UNIT_NAME, matchesWorkUnit } from '@/lib/units'
 import type { Employee, ScheduleException, ScheduleHistory } from '@/lib/types'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Card } from '@/components/ui/card'
@@ -40,7 +41,7 @@ export default function Escalas() {
   
   const [clinic] = useClinic()
   const [currentDate, setCurrentDate] = useState(new Date())
-  const [unidadeFilter, setUnidadeFilter] = useState<'Ouro Verde'>('Ouro Verde')
+  const [unidadeFilter, setUnidadeFilter] = useState<typeof WORK_UNIT_NAME>(WORK_UNIT_NAME)
   const [turnoFilter, setTurnoFilter] = useState<'todos' | 'Diurno' | 'Noturno'>('todos')
   const [isManualMode, setIsManualMode] = useState(false)
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
@@ -56,7 +57,7 @@ export default function Escalas() {
 
   const activeEmployees = employees.filter(e => 
     e.status === 'ativo' && 
-    (e.unidade || 'Ouro Verde') === unidadeFilter &&
+    matchesWorkUnit(e.unidade, unidadeFilter) &&
     (turnoFilter === 'todos' || (e.turno || 'Diurno') === turnoFilter)
   ).sort((a, b) => a.nome.localeCompare(b.nome))
 
@@ -406,7 +407,7 @@ export default function Escalas() {
           </div>
           <div className="flex items-center gap-2">
               <Select value={unidadeFilter} onChange={(e) => setUnidadeFilter(e.target.value as any)} className="w-40 bg-white">
-                <option value="Ouro Verde">Ouro Verde</option>
+                <option value={WORK_UNIT_NAME}>{WORK_UNIT_NAME}</option>
               </Select>
             <Select value={turnoFilter} onChange={(e) => setTurnoFilter(e.target.value as typeof turnoFilter)} className="w-[120px]">
               <option value="todos">Todos</option>

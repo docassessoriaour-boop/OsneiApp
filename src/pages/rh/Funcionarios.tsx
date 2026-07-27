@@ -4,6 +4,7 @@ import { useCep } from '@/hooks/useCep'
 import { formatCurrency } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF, formatCurrencyPDF, formatDatePDF } from '@/lib/pdf'
+import { WORK_UNIT_NAME, normalizeWorkUnit } from '@/lib/units'
 import {
   DEMO_COMPANY_ADDRESS,
   DEMO_COMPANY_CNPJ,
@@ -35,7 +36,7 @@ const emptyEmployee: Omit<Employee, 'id'> = {
   cpf: '',
   rg: '',
   cargo: '',
-  unidade: 'Ouro Verde',
+  unidade: WORK_UNIT_NAME,
   turno: 'Diurno',
   turno_inicio: '07:00',
   turno_fim: '19:00',
@@ -546,6 +547,7 @@ export default function Funcionarios() {
       possui_filhos_menores_14: !!employee.possui_filhos_menores_14,
       quantidade_filhos_menores_14: employee.quantidade_filhos_menores_14 || 0,
       contrato_experiencia: employee.contrato_experiencia || 'nao',
+      unidade: normalizeWorkUnit(employee.unidade) as Employee['unidade'],
       turno_inicio: normalizeTime(employee.turno_inicio) || defaultTimes.turno_inicio,
       turno_fim: normalizeTime(employee.turno_fim) || defaultTimes.turno_fim,
       dataAdmissao: data_admissao || employee.dataAdmissao || ''
@@ -668,7 +670,7 @@ export default function Funcionarios() {
 
   function printReport() {
     const statusLabel = statusFilter === 'todos' ? 'Todos' : statusFilter === 'ativo' ? 'Ativos' : statusFilter === 'ferias' ? 'Em Férias' : statusFilter === 'contrato_cancelado' ? 'Contrato Cancelado' : 'Inativos'
-    const rows = filtered.map(e => `<tr><td>${e.nome}</td><td>${e.cpf}</td><td>${e.cargo}<br/><small>${e.unidade || 'Ouro Verde'} - ${e.turno || 'Diurno'}${getEmployeeShiftLabel(e)}</small></td><td>${e.escala}</td><td>${formatDatePDF(e.dataAdmissao)}</td><td class="text-right">${getEmployeeSalaryLabelPDF(e)}</td><td>${e.status}</td></tr>`).join('')
+    const rows = filtered.map(e => `<tr><td>${e.nome}</td><td>${e.cpf}</td><td>${e.cargo}<br/><small>${normalizeWorkUnit(e.unidade)} - ${e.turno || 'Diurno'}${getEmployeeShiftLabel(e)}</small></td><td>${e.escala}</td><td>${formatDatePDF(e.dataAdmissao)}</td><td class="text-right">${getEmployeeSalaryLabelPDF(e)}</td><td>${e.status}</td></tr>`).join('')
     const totalSalario = filtered.reduce((s, e) => s + e.salario, 0)
     printPDF(`Relatório de Funcionários - ${statusLabel}`, `
       <table><thead><tr><th>Nome</th><th>CPF</th><th>Cargo / Unidade / Turno</th><th>Escala</th><th>Admissão</th><th class="text-right">Salário</th><th>Status</th></tr></thead>
@@ -908,7 +910,7 @@ export default function Funcionarios() {
         <h3 style="background: #f4f4f4; padding: 5px 10px; font-size: 12pt; border-bottom: 2px solid #1a1f2e; margin-bottom: 10px;">DADOS PROFISSIONAIS</h3>
         <table style="width: 100%; border: none;">
           <tr style="border:none;"><td style="border:none; padding: 4px; width: 30%;"><strong>Cargo:</strong></td><td style="border:none; padding: 4px;">${employee.cargo}</td></tr>
-          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Unidade:</strong></td><td style="border:none; padding: 4px;">${employee.unidade || 'Ouro Verde'}</td></tr>
+          <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Unidade:</strong></td><td style="border:none; padding: 4px;">${normalizeWorkUnit(employee.unidade)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Turno:</strong></td><td style="border:none; padding: 4px;">${employee.turno || 'Diurno'}${getEmployeeShiftLabel(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Escala:</strong></td><td style="border:none; padding: 4px;">${employee.escala}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Tipo de Contrato:</strong></td><td style="border:none; padding: 4px;">${getContractTypeLabel(employee)}</td></tr>
@@ -1013,7 +1015,7 @@ export default function Funcionarios() {
                     <TableCell>
                       <div>{employee.cargo}</div>
                       <div className="flex gap-1 mt-1">
-                        <Badge variant="outline" className="text-[10px]">{employee.unidade || 'Ouro Verde'}</Badge>
+                        <Badge variant="outline" className="text-[10px]">{normalizeWorkUnit(employee.unidade)}</Badge>
                         <Badge variant="outline" className="text-[10px] bg-blue-50/50">
                           {employee.turno || 'Diurno'}{getEmployeeShiftLabel(employee)}
                         </Badge>
@@ -1201,8 +1203,8 @@ export default function Funcionarios() {
             </div>
             <div>
               <Label>Unidade de Trabalho</Label>
-              <Select value={form.unidade || 'Ouro Verde'} onChange={(e) => setForm({ ...form, unidade: e.target.value as Employee['unidade'] })} className="mt-1">
-                <option value="Ouro Verde">Ouro Verde</option>
+              <Select value={normalizeWorkUnit(form.unidade)} onChange={(e) => setForm({ ...form, unidade: e.target.value as Employee['unidade'] })} className="mt-1">
+                <option value={WORK_UNIT_NAME}>{WORK_UNIT_NAME}</option>
               </Select>
             </div>
             <div>

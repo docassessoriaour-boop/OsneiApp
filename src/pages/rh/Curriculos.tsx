@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useDb } from '@/hooks/useDb'
+import { WORK_UNIT_NAME } from '@/lib/units'
 import { useCep } from '@/hooks/useCep'
 import { useClinic } from '@/lib/clinicConfig'
 import type { Curriculum, Employee } from '@/lib/types'
@@ -60,7 +61,7 @@ export default function Curriculos() {
   const [interviewForm, setInterviewForm] = useState({
     data: '',
     hora: '',
-    local: 'Unidade Ouro Verde'
+    local: `Unidade ${WORK_UNIT_NAME}`
   })
   const navigate = useNavigate()
 
@@ -97,7 +98,7 @@ export default function Curriculos() {
     setInterviewForm({
       data: curr.data_entrevista || '',
       hora: curr.hora_entrevista || '',
-      local: curr.local_entrevista || 'Unidade Ouro Verde'
+      local: curr.local_entrevista || `Unidade ${WORK_UNIT_NAME}`
     })
     setScheduleDialogOpen(true)
   }
@@ -228,7 +229,7 @@ export default function Curriculos() {
           cidade: curr.cidade,
           uf: curr.uf,
           cargo: curr.cargo_pretendido || '',
-          unidade: 'Ouro Verde',
+          unidade: WORK_UNIT_NAME,
           turno: 'Diurno',
           escala: '12x36',
           salario: 0,
@@ -457,7 +458,7 @@ export default function Curriculos() {
                   value={interviewForm.local} 
                   onChange={(e) => setInterviewForm({ ...interviewForm, local: e.target.value })} 
                   className="pl-9"
-                  placeholder="Ex: Unidade Ouro Verde ou Link do Meet"
+                  placeholder={`Ex: Unidade ${WORK_UNIT_NAME} ou Link do Meet`}
                 />
               </div>
             </div>
