@@ -61,6 +61,8 @@ export default function ContasPagar() {
   const [categoryFilter, setCategoryFilter] = useState('')
   const [startDate, setStartDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10))
   const [endDate, setEndDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10))
+  type SortKey = 'descricao' | 'categoria' | 'valor' | 'vencimento' | 'pagamento' | 'status'
+  const [sortKey, setSortKey] = useState<SortKey>('vencimento')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -82,6 +84,29 @@ export default function ContasPagar() {
     categoria_id: ''
   })
 
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  function SortIcon({ column }: { column: SortKey }) {
+    if (sortKey !== column) return <ArrowUp className="h-3 w-3 opacity-25" />
+    return sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+  }
+
+  function getSortValue(b: Bill, key: SortKey) {
+    if (key === 'descricao') return b.descricao || ''
+    if (key === 'categoria') return b.categoria || ''
+    if (key === 'valor') return Number(b.valor || 0)
+    if (key === 'vencimento') return b.vencimento || ''
+    if (key === 'pagamento') return (b as any).payment_date || ''
+    return b.status || ''
+  }
+
   const filtered = bills.filter(b => {
     const matchesSearch = b.descricao.toLowerCase().includes(search.toLowerCase())
     const matchesStatus = statusFilter === 'todos' || b.status === statusFilter
@@ -93,11 +118,12 @@ export default function ContasPagar() {
     
     return matchesSearch && matchesStatus && matchesCategory && matchesDate
   }).sort((a, b) => {
-    if (!a.vencimento) return 1
-    if (!b.vencimento) return -1
-    const dateA = new Date(a.vencimento).getTime()
-    const dateB = new Date(b.vencimento).getTime()
-    return sortDir === 'asc' ? dateA - dateB : dateB - dateA
+    const aValue = getSortValue(a, sortKey)
+    const bValue = getSortValue(b, sortKey)
+    const result = typeof aValue === 'number' && typeof bValue === 'number'
+      ? aValue - bValue
+      : String(aValue).localeCompare(String(bValue), 'pt-BR', { numeric: true })
+    return sortDir === 'asc' ? result : -result
   })
 
   function openNew() { 
@@ -732,20 +758,24 @@ export default function ContasPagar() {
                   className="h-4 w-4"
                 />
               </TableHead>
-              <TableHead>Descrição</TableHead>
-              <TableHead>Categoria</TableHead>
-              <TableHead>Valor</TableHead>
-              <TableHead 
-                className="cursor-pointer hover:text-primary transition-colors select-none"
-                onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
-              >
-                <div className="flex items-center gap-1">
-                  Vencimento
-                  {sortDir === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-                </div>
+              <TableHead className="cursor-pointer hover:text-primary transition-colors select-none" onClick={() => toggleSort('descricao')}>
+                <div className="flex items-center gap-1">Descrição <SortIcon column="descricao" /></div>
               </TableHead>
-              <TableHead>Pagamento</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead className="cursor-pointer hover:text-primary transition-colors select-none" onClick={() => toggleSort('categoria')}>
+                <div className="flex items-center gap-1">Categoria <SortIcon column="categoria" /></div>
+              </TableHead>
+              <TableHead className="cursor-pointer hover:text-primary transition-colors select-none" onClick={() => toggleSort('valor')}>
+                <div className="flex items-center gap-1">Valor <SortIcon column="valor" /></div>
+              </TableHead>
+              <TableHead className="cursor-pointer hover:text-primary transition-colors select-none" onClick={() => toggleSort('vencimento')}>
+                <div className="flex items-center gap-1">Vencimento <SortIcon column="vencimento" /></div>
+              </TableHead>
+              <TableHead className="cursor-pointer hover:text-primary transition-colors select-none" onClick={() => toggleSort('pagamento')}>
+                <div className="flex items-center gap-1">Pagamento <SortIcon column="pagamento" /></div>
+              </TableHead>
+              <TableHead className="cursor-pointer hover:text-primary transition-colors select-none" onClick={() => toggleSort('status')}>
+                <div className="flex items-center gap-1">Status <SortIcon column="status" /></div>
+              </TableHead>
               <TableHead>
                 Ações
                 {selectedIds.length > 0 && (
