@@ -17,6 +17,7 @@ import { ptBR } from 'date-fns/locale'
 
 function getDefaultShiftTimes(employee: Employee) {
   if (employee.turno === 'Noturno') return { start: '19:00', end: '07:00' }
+  if (employee.turno === 'Intermediário') return { start: '', end: '' }
   if (employee.escala === '40h' || employee.escala === 'Mensalista') return { start: '06:30', end: '14:30' }
   return { start: '07:00', end: '19:00' }
 }
@@ -43,7 +44,7 @@ export default function Escalas() {
   const companyWorkUnit = getCompanyWorkUnit(clinic as any)
   const [currentDate, setCurrentDate] = useState(new Date())
   const [unidadeFilter, setUnidadeFilter] = useState<string>(companyWorkUnit)
-  const [turnoFilter, setTurnoFilter] = useState<'todos' | 'Diurno' | 'Noturno'>('todos')
+  const [turnoFilter, setTurnoFilter] = useState<'todos' | 'Diurno' | 'Noturno' | 'Intermediário'>('todos')
   const [isManualMode, setIsManualMode] = useState(false)
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [timeDialogOpen, setTimeDialogOpen] = useState(false)
@@ -67,7 +68,7 @@ export default function Escalas() {
   ).sort((a, b) => a.nome.localeCompare(b.nome))
 
   // Generate schedule based on employee scale type + exceptions
-  function getSchedule(employee: Employee, day: Date): { working: boolean, dobra: boolean } {
+  function getSchedule(employee: Employee, day: Date): { working: boolean, dobra: boolean, tipo_lancamento?: ScheduleException['tipo_lancamento'] } {
     const dateStr = format(day, 'yyyy-MM-dd')
     
     // Check for manual override/exception first
@@ -75,6 +76,7 @@ export default function Escalas() {
     if (exception) return { 
       working: exception.is_working, 
       dobra: !!exception.is_dobra,
+      tipo_lancamento: exception.tipo_lancamento,
       start_time: exception.start_time,
       end_time: exception.end_time
     }
@@ -117,10 +119,11 @@ export default function Escalas() {
 
     try {
       if (exception) {
-        await update(exception.id, { 
+      await update(exception.id, { 
           start_time: manualTimes.start || null, 
           end_time: manualTimes.end || null,
-          is_working: true // Assume working if times are set
+          is_working: true,
+          tipo_lancamento: exception.tipo_lancamento || 'trabalho'
         })
       } else {
         await insert({
@@ -128,6 +131,7 @@ export default function Escalas() {
           date: dateStr,
           is_working: true,
           is_dobra: false,
+          tipo_lancamento: 'trabalho',
           start_time: manualTimes.start || null,
           end_time: manualTimes.end || null
         } as Omit<ScheduleException, 'id'>)
@@ -150,25 +154,27 @@ export default function Escalas() {
     if (!current.working) {
       nextWorking = true;
       nextDobra = false;
-    } else if (current.working && !current.dobra) {
+    } else if (current.working && current.tipo_lancamento !== 'plantao_12h') {
       nextWorking = true;
       nextDobra = true;
     } else {
       nextWorking = false;
       nextDobra = false;
     }
+    const tipoLancamento: ScheduleException['tipo_lancamento'] = !nextWorking ? 'falta' : nextDobra ? 'plantao_12h' : 'trabalho'
 
     try {
       if (exception) {
         // Update existing exception
-        await update(exception.id, { is_working: nextWorking, is_dobra: nextDobra })
+        await update(exception.id, { is_working: nextWorking, is_dobra: nextDobra, tipo_lancamento: tipoLancamento })
       } else {
         // Create new exception
         await insert({
           employee_id: employee.id,
           date: dateStr,
           is_working: nextWorking,
-          is_dobra: nextDobra
+          is_dobra: nextDobra,
+          tipo_lancamento: tipoLancamento
         } as Omit<ScheduleException, 'id'>)
       }
     } catch (error) {
@@ -233,11 +239,12 @@ export default function Escalas() {
           escala: emp.escala,
           turno: emp.turno || 'Diurno',
           schedule: days.map(day => {
-            const { working, dobra } = getSchedule(emp, day)
+            const { working, dobra, tipo_lancamento } = getSchedule(emp, day)
             return {
               date: format(day, 'yyyy-MM-dd'),
               working,
-              dobra
+              dobra,
+              tipo_lancamento
             }
           })
         }
@@ -286,7 +293,7 @@ export default function Escalas() {
         const dobra = dayRecord ? dayRecord.dobra : false
         const startTime = dayRecord?.start_time
         const endTime = dayRecord?.end_time
-        const symbol = dobra ? '2X' : (working ? 'T' : '')
+        const symbol = dayRecord?.tipo_lancamento === 'plantao_12h' || dobra ? 'P12' : dayRecord?.tipo_lancamento === 'falta' ? 'F' : (working ? 'T' : '')
         const timeStr = startTime && endTime ? `<div style="font-size: 6px; opacity: 0.7;">${startTime}-${endTime}</div>` : ''
         return `<td style="text-align: center; border: 1px solid #ddd; font-size: 10px; padding: 2px; background-color: ${working ? (dobra ? 'rgba(245, 158, 11, 0.1)' : 'rgba(56, 189, 248, 0.1)') : 'transparent'}; font-weight: ${working ? 'bold' : 'normal'}; color: ${dobra ? '#b45309' : '#000'};">${symbol}${timeStr}</td>`
       }).join('')
@@ -315,7 +322,7 @@ export default function Escalas() {
         </tbody>
       </table>
       <div style="margin-top: 15px; font-size: 9px; color: #666;">
-        <strong>Legenda:</strong> [ T ] Trabalha | [ 2X ] Dobra de Turno | [ &nbsp;&nbsp; ] Folga
+        <strong>Legenda:</strong> [ T ] Trabalha | [ P12 ] Plantão 12h | [ F ] Falta | [ &nbsp;&nbsp; ] Folga
       </div>
     `
     printPDF(title, html, clinic)
@@ -343,8 +350,8 @@ export default function Escalas() {
       const shiftTime = getEmployeeShiftTime(employee)
 
       const scheduleCells = days.map(day => {
-        const { working, dobra, start_time, end_time } = getSchedule(employee, day) as any
-        const symbol = dobra ? '2X' : (working ? 'T' : '')
+        const { working, dobra, tipo_lancamento, start_time, end_time } = getSchedule(employee, day) as any
+        const symbol = tipo_lancamento === 'plantao_12h' || dobra ? 'P12' : tipo_lancamento === 'falta' ? 'F' : (working ? 'T' : '')
         const timeStr = start_time && end_time ? `<div style="font-size: 6px; opacity: 0.7;">${start_time}-${end_time}</div>` : ''
         return `<td style="text-align: center; border: 1px solid #ddd; font-size: 10px; padding: 2px; background-color: ${working ? (dobra ? 'rgba(245, 158, 11, 0.1)' : 'rgba(56, 189, 248, 0.1)') : 'transparent'}; font-weight: ${working ? 'bold' : 'normal'}; color: ${dobra ? '#b45309' : '#000'};">${symbol}${timeStr}</td>`
       }).join('')
@@ -374,7 +381,7 @@ export default function Escalas() {
         </tbody>
       </table>
       <div style="margin-top: 15px; font-size: 9px; color: #666;">
-        <strong>Legenda:</strong> [ T ] Trabalha | [ 2X ] Dobra de Turno | [ &nbsp;&nbsp; ] Folga
+        <strong>Legenda:</strong> [ T ] Trabalha | [ P12 ] Plantão 12h | [ F ] Falta | [ &nbsp;&nbsp; ] Folga
       </div>
     `
 
@@ -418,6 +425,7 @@ export default function Escalas() {
               <option value="todos">Todos</option>
               <option value="Diurno">Diurno</option>
               <option value="Noturno">Noturno</option>
+              <option value="Intermediário">Intermediário</option>
             </Select>
           </div>
           <div className="flex items-center gap-3">
@@ -472,8 +480,8 @@ export default function Escalas() {
                         <span className="line-clamp-1 text-xs">{employee.nome}</span>
                         <div className="flex flex-wrap gap-1 items-center mt-1">
                           <span className="text-[9px] text-muted-foreground font-medium uppercase">{employee.escala}</span>
-                          <span className={`text-[9px] px-1 rounded ${employee.turno === 'Noturno' ? 'bg-slate-800 text-white' : 'bg-amber-100 text-amber-900 font-bold'}`}>
-                            {employee.turno === 'Noturno' ? 'NOT' : 'DIU'}
+                          <span className={`text-[9px] px-1 rounded ${employee.turno === 'Noturno' ? 'bg-slate-800 text-white' : employee.turno === 'Intermediário' ? 'bg-sky-100 text-sky-900 font-bold' : 'bg-amber-100 text-amber-900 font-bold'}`}>
+                            {employee.turno === 'Noturno' ? 'NOT' : employee.turno === 'Intermediário' ? 'INT' : 'DIU'}
                           </span>
                           <span className="text-[9px] text-primary/70 font-semibold border px-1 rounded bg-primary/5">
                             {getEmployeeShiftTime(employee).replace('h/', '-').replace(/h$/, '')}
@@ -495,7 +503,7 @@ export default function Escalas() {
                     </td>
                     {days.map(day => {
                       const schedule = getSchedule(employee, day) as any
-                      const { working, dobra, start_time, end_time } = schedule
+                      const { working, dobra, tipo_lancamento, start_time, end_time } = schedule
                       const isException = exceptions.some(ex => ex.employee_id === employee.id && ex.date === format(day, 'yyyy-MM-dd'))
                       
                       return (
@@ -506,16 +514,18 @@ export default function Escalas() {
                               e.preventDefault()
                               handleOpenTimeDialog(employee, day)
                             }}
-                            title={`${dobra ? 'Dobra' : (working ? 'Trabalha' : 'Folga')} - Clique esquerdo alternar, Direito p/ Horário`}
+                            title={`${tipo_lancamento === 'plantao_12h' ? 'Plantão 12h' : tipo_lancamento === 'falta' ? 'Falta' : (working ? 'Trabalha' : 'Folga')} - Clique esquerdo alternar, Direito p/ Horário`}
                             className={`w-full h-10 flex flex-col items-center justify-center transition-all relative ${
-                              dobra
+                              tipo_lancamento === 'plantao_12h' || dobra
                                 ? 'bg-amber-100 text-amber-700 font-bold hover:bg-amber-200'
                                 : working
                                   ? 'bg-primary/10 text-primary font-bold hover:bg-primary/20'
-                                  : 'bg-transparent text-muted-foreground hover:bg-muted'
+                                  : tipo_lancamento === 'falta'
+                                    ? 'bg-red-50 text-red-700 font-bold hover:bg-red-100'
+                                    : 'bg-transparent text-muted-foreground hover:bg-muted'
                             } ${isException ? 'ring-1 ring-inset ring-amber-400' : ''}`}
                           >
-                            <span className="text-xs">{dobra ? '2X' : (working ? 'T' : '—')}</span>
+                            <span className="text-xs">{tipo_lancamento === 'plantao_12h' || dobra ? 'P12' : tipo_lancamento === 'falta' ? 'F' : (working ? 'T' : '—')}</span>
                             {working && start_time && (
                               <span className="text-[7px] font-normal leading-none mt-0.5 opacity-70">
                                 {start_time}-{end_time}
@@ -533,7 +543,8 @@ export default function Escalas() {
         )}
         <div className="mt-4 flex flex-wrap gap-4 text-xs items-center text-muted-foreground">
           <div className="flex items-center gap-1"><div className="w-3 h-3 bg-primary/10 rounded border border-primary/20 flex items-center justify-center text-[8px] font-bold text-primary">T</div> Trabalha</div>
-          <div className="flex items-center gap-1"><div className="w-3 h-3 bg-amber-100 rounded border border-amber-300 flex items-center justify-center text-[8px] font-bold text-amber-700">2X</div> Dobra</div>
+          <div className="flex items-center gap-1"><div className="w-5 h-3 bg-amber-100 rounded border border-amber-300 flex items-center justify-center text-[8px] font-bold text-amber-700">P12</div> Plantão 12h</div>
+          <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-50 border border-red-200 rounded flex items-center justify-center text-[8px] font-bold text-red-700">F</div> Falta</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 bg-transparent border rounded flex items-center justify-center text-[8px]">—</div> Folga</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 border border-amber-400 rounded"></div> Editado manualmente</div>
           <div className="ml-auto italic font-medium text-amber-600 animate-pulse">💡 Dica: Clique com o botão direito para definir horários específicos</div>

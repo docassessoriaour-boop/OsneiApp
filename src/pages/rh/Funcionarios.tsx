@@ -74,6 +74,7 @@ const emptyEmployee: Omit<Employee, 'id'> = {
   chave_pix: '',
   is_pro_labore: false,
   descontos_fixos: 0,
+  valor_plantao_12h: 0,
   cep: '',
   cidade: '',
   uf: '',
@@ -81,6 +82,7 @@ const emptyEmployee: Omit<Employee, 'id'> = {
 
 function getDefaultShiftTimes(turno: Employee['turno'], escala: Employee['escala']) {
   if (turno === 'Noturno') return { turno_inicio: '19:00', turno_fim: '07:00' }
+  if (turno === 'Intermediário') return { turno_inicio: '', turno_fim: '' }
   if (escala === '40h' || escala === 'Mensalista') return { turno_inicio: '06:30', turno_fim: '14:30' }
   return { turno_inicio: '07:00', turno_fim: '19:00' }
 }
@@ -1214,19 +1216,10 @@ export default function Funcionarios() {
                 const turno = e.target.value as Employee['turno']
                 setForm({ ...form, turno, ...getDefaultShiftTimes(turno, form.escala) })
               }} className="mt-1">
-                <option value="Diurno">Diurno (07:00/19:00)</option>
-                <option value="Noturno">Noturno (19:00/07:00)</option>
+                <option value="Diurno">Diurno</option>
+                <option value="Noturno">Noturno</option>
+                <option value="Intermediário">Intermediário</option>
               </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Entrada do Turno</Label>
-                <Input type="time" value={normalizeTime(form.turno_inicio)} onChange={(e) => setForm({ ...form, turno_inicio: e.target.value })} className="mt-1" />
-              </div>
-              <div>
-                <Label>Saída do Turno</Label>
-                <Input type="time" value={normalizeTime(form.turno_fim)} onChange={(e) => setForm({ ...form, turno_fim: e.target.value })} className="mt-1" />
-              </div>
             </div>
             <div>
               <Label>Escala</Label>
@@ -1245,6 +1238,10 @@ export default function Funcionarios() {
             <div>
               <Label>{form.salario_tipo === 'diaria' ? 'Valor da Diária' : 'Salário Base Mensal'}</Label>
               <Input type="number" value={form.salario} onChange={(e) => setForm({ ...form, salario: Number(e.target.value) })} className="mt-1" />
+            </div>
+            <div>
+              <Label>Valor do Plantão 12h</Label>
+              <Input type="number" value={form.valor_plantao_12h || 0} onChange={(e) => setForm({ ...form, valor_plantao_12h: Number(e.target.value) })} className="mt-1" />
             </div>
             <div>
               <Label>Tipo de Salário</Label>

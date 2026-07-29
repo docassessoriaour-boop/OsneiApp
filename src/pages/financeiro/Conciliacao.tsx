@@ -32,6 +32,8 @@ export default function Conciliacao() {
   const [importedTxs, setImportedTxs] = useState<BankTransaction[]>([])
   const [filterCat, setFilterCat] = useState('')
   const [filterType, setFilterType] = useState<'' | 'credito' | 'debito'>('')
+  const [importStartDate, setImportStartDate] = useState('')
+  const [importEndDate, setImportEndDate] = useState('')
   const [search, setSearch] = useState('')
   const [reconcileDialogOpen, setReconcileDialogOpen] = useState(false)
   const [selectedTx, setSelectedTx] = useState<BankTransaction | null>(null)
@@ -106,6 +108,21 @@ export default function Conciliacao() {
     })
   }
 
+  function sameBankTransaction(a: BankTransaction, b: BankTransaction) {
+    return a.data === b.data &&
+      a.tipo === b.tipo &&
+      Math.abs((a.valor || 0) - (b.valor || 0)) < 0.01 &&
+      a.descricao.trim().toLowerCase() === b.descricao.trim().toLowerCase() &&
+      (!selectedBankId || b.bank_account_id === selectedBankId)
+  }
+
+  function removeDuplicateImported(newTxs: BankTransaction[]) {
+    const existing = [...dbTransactions, ...importedTxs]
+    return newTxs
+      .filter(t => (!importStartDate || t.data >= importStartDate) && (!importEndDate || t.data <= importEndDate))
+      .filter(t => !existing.some(e => sameBankTransaction(t, e)))
+  }
+
   function parseCSV(text: string) {
     const lines = text.trim().split('\n')
     const newTxs: BankTransaction[] = []
@@ -135,7 +152,11 @@ export default function Conciliacao() {
         bank_account_id: selectedBankId
       })
     }
-    const categorized = applyAutoCategorization(newTxs)
+    const uniqueTxs = removeDuplicateImported(newTxs)
+    if (newTxs.length > uniqueTxs.length) {
+      alert(`${newTxs.length - uniqueTxs.length} lançamento(s) duplicado(s) ou fora do período foram ignorados.`)
+    }
+    const categorized = applyAutoCategorization(uniqueTxs)
     setImportedTxs([...importedTxs, ...categorized])
   }
 
@@ -167,7 +188,11 @@ export default function Conciliacao() {
         bank_account_id: selectedBankId
       })
     }
-    const categorized = applyAutoCategorization(newTxs)
+    const uniqueTxs = removeDuplicateImported(newTxs)
+    if (newTxs.length > uniqueTxs.length) {
+      alert(`${newTxs.length - uniqueTxs.length} lançamento(s) duplicado(s) ou fora do período foram ignorados.`)
+    }
+    const categorized = applyAutoCategorization(uniqueTxs)
     setImportedTxs([...importedTxs, ...categorized])
   }
 
@@ -178,6 +203,11 @@ export default function Conciliacao() {
     }
     try {
       if (t.id.startsWith('temp-')) {
+        if (dbTransactions.some(existing => sameBankTransaction(t, existing))) {
+          alert('Este lançamento já foi salvo anteriormente e não será duplicado.')
+          setImportedTxs(prev => prev.filter(x => x.id !== t.id))
+          return
+        }
         const cleaned = { ...t, bank_account_id: selectedBankId }
         delete (cleaned as any).id
         const newTx: any = await insertTx(cleaned)
@@ -225,6 +255,7 @@ export default function Conciliacao() {
       return
     }
     for (const t of importedTxs) {
+      if (dbTransactions.some(existing => sameBankTransaction(t, existing))) continue
       const cleaned = { ...t, bank_account_id: selectedBankId }
       delete (cleaned as any).id
       const newTx: any = await insertTx(cleaned)
@@ -547,6 +578,14 @@ export default function Conciliacao() {
             <option value="">-- Selecione a Conta --</option>
             {bankAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.nome}</option>)}
           </Select>
+        </div>
+        <div className="w-40">
+          <Label className="text-xs">Importar de</Label>
+          <Input type="date" value={importStartDate} onChange={e => setImportStartDate(e.target.value)} />
+        </div>
+        <div className="w-40">
+          <Label className="text-xs">Importar até</Label>
+          <Input type="date" value={importEndDate} onChange={e => setImportEndDate(e.target.value)} />
         </div>
         
         <div className="flex items-end gap-2 pt-5">

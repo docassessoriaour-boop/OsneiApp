@@ -4,13 +4,14 @@ import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Loader2, UploadCloud, FileText, CheckCircle2, AlertTriangle, ArrowRight, Search, Building2 } from 'lucide-react'
+import { Loader2, UploadCloud, FileText, CheckCircle2, AlertTriangle, Search, Building2, Trash2 } from 'lucide-react'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
 import { useDb } from '@/hooks/useDb'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import type { Product, Entity, Bill, TransactionCategory } from '@/lib/types'
 
 interface NfeParsedData {
+  accessKey: string
   supplier: { name: string; document: string }
   products: { name: string; quantity: number; unitPrice: number; total: number; unit: string }[]
   installments: { dueDate: string; amount: number; number: string }[]
@@ -19,9 +20,10 @@ interface NfeParsedData {
 
 export default function EntradaNfe() {
   const { data: entities, insert: insertEntity, update: updateEntity } = useDb<Entity>('entities')
-  const { data: products, insert: insertProduct, update: updateProduct } = useDb<Product>('products')
-  const { insert: insertBill } = useDb<Bill>('bills')
+  const { data: products, insert: insertProduct, update: updateProduct, remove: removeProduct } = useDb<Product>('products')
+  const { insert: insertBill, remove: removeBill } = useDb<Bill>('bills')
   const { data: categories } = useDb<TransactionCategory>('transaction_categories')
+  const { data: nfeEntries, insert: insertNfeEntry, remove: removeNfeEntry } = useDb<any>('nfe_entries')
 
   const [loadingFile, setLoadingFile] = useState(false)
   const [processing, setProcessing] = useState(false)
@@ -114,6 +116,7 @@ export default function EntradaNfe() {
       alert("XML não aparenta ser uma NF-e válida.")
       return
     }
+    const accessKey = (infNFe.getAttribute('Id') || '').replace(/^NFe/, '')
 
     // Emitente (Fornecedor)
     const emit = infNFe.getElementsByTagName('emit')[0]
@@ -161,6 +164,18 @@ export default function EntradaNfe() {
 
     const totalInvoice = parseFloat(infNFe.getElementsByTagName('vNF')[0]?.textContent || '0')
 
+    const duplicated = accessKey
+      ? nfeEntries.some(n => String(n.access_key || '').replace(/\D/g, '') === accessKey)
+      : nfeEntries.some(n =>
+          String(n.supplier_document || '').replace(/\D/g, '') === supplierCnpj.replace(/\D/g, '') &&
+          Number(n.total_amount || 0) === Number(totalInvoice || 0) &&
+          n.issue_date === issueDate
+        )
+    if (duplicated) {
+      alert('Esta NF-e já foi lançada anteriormente. O processamento foi bloqueado para evitar duplicidade.')
+      return
+    }
+
     // Cobrança: Exportar o valor total da nota para o contas a pagar com vcto da emissão da nota
     const parsedInstallments = [{
       number: '1',
@@ -170,6 +185,7 @@ export default function EntradaNfe() {
 
     setParsedData({
       supplier: { name: supplierName, document: supplierCnpj },
+      accessKey,
       products: parsedProducts,
       installments: parsedInstallments,
       totalInvoice
@@ -193,10 +209,22 @@ export default function EntradaNfe() {
       }
 
       // 2. Processar Produtos
+      const productSnapshots: any[] = []
+      const billIds: string[] = []
+
       for (const item of parsedData.products) {
         const existing = products.find(p => p.nome?.toLowerCase() === item.name?.toLowerCase())
         
         if (existing) {
+          productSnapshots.push({
+            id: existing.id,
+            existed: true,
+            estoque: existing.estoque || 0,
+            custo_medio: existing.custo_medio || 0,
+            ultimo_valor_comprado: existing.ultimo_valor_comprado || 0,
+            fornecedor_id: existing.fornecedor_id || null,
+            fornecedor: existing.fornecedor || ''
+          })
           // Atualiza estoque e custo médio
           const currentStock = existing.estoque || 0
           const currentAvgCost = existing.custo_medio || 0
@@ -214,7 +242,7 @@ export default function EntradaNfe() {
           })
         } else {
           // Cria novo produto
-          await insertProduct({
+          const createdProduct = await insertProduct({
             nome: item.name,
             tipo: 'material',
             estoque: item.quantity,
@@ -225,6 +253,7 @@ export default function EntradaNfe() {
             custo_medio: parseFloat(item.unitPrice.toFixed(2)),
             ultimo_valor_comprado: parseFloat(item.unitPrice.toFixed(2))
           })
+          productSnapshots.push({ id: createdProduct.id, existed: false })
         }
       }
 
@@ -249,8 +278,19 @@ export default function EntradaNfe() {
         if (defaultCategory?.id) {
           billData.category_id = defaultCategory.id
         }
-        await insertBill(billData)
+        const createdBill = await insertBill(billData)
+        billIds.push(createdBill.id)
       }
+
+      await insertNfeEntry({
+        access_key: parsedData.accessKey || null,
+        supplier_name: parsedData.supplier.name,
+        supplier_document: parsedData.supplier.document,
+        total_amount: parsedData.totalInvoice,
+        issue_date: parsedData.installments[0]?.dueDate || new Date().toISOString().slice(0, 10),
+        product_snapshots: productSnapshots,
+        bill_ids: billIds,
+      })
 
       alert('NF-e processada com sucesso! Produtos, fornecedor e Contas a Pagar atualizados.')
       setParsedData(null)
@@ -262,12 +302,62 @@ export default function EntradaNfe() {
     }
   }
 
+  async function deleteNfeEntry(entry: any) {
+    if (!confirm('Excluir esta entrada de NF-e e desfazer lançamentos de produtos e financeiro?')) return
+    try {
+      for (const billId of entry.bill_ids || []) {
+        await removeBill(billId)
+      }
+      for (const snap of entry.product_snapshots || []) {
+        if (snap.existed) {
+          await updateProduct(snap.id, {
+            estoque: snap.estoque,
+            custo_medio: snap.custo_medio,
+            ultimo_valor_comprado: snap.ultimo_valor_comprado,
+            fornecedor_id: snap.fornecedor_id,
+            fornecedor: snap.fornecedor,
+          } as any)
+        } else {
+          await removeProduct(snap.id)
+        }
+      }
+      await removeNfeEntry(entry.id)
+    } catch (e: any) {
+      console.error(e)
+      alert(`Erro ao excluir NF-e: ${e?.message || 'Erro desconhecido'}`)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Importar NF-e</h1>
         <p className="text-muted-foreground">Faça upload do XML para automatizar o cadastro e atualizar estoque + finanças</p>
       </div>
+
+      {nfeEntries.length > 0 && (
+        <Card className="p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold">Histórico de NF-e de Entrada</h3>
+            <Badge variant="secondary">{nfeEntries.length} lançada(s)</Badge>
+          </div>
+          <div className="max-h-64 overflow-y-auto divide-y rounded-md border">
+            {nfeEntries.map(entry => (
+              <div key={entry.id} className="flex items-center justify-between gap-3 p-3 text-sm">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{entry.supplier_name}</p>
+                  <p className="text-xs text-muted-foreground truncate">
+                    Chave: {entry.access_key || 'sem chave'} • Total: {formatCurrency(entry.total_amount || 0)} • {formatDate(entry.issue_date)}
+                  </p>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => deleteNfeEntry(entry)} title="Excluir NF-e e desfazer lançamentos">
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {!parsedData ? (
         <Card className="p-12 border-dashed flex flex-col justify-center items-center gap-4 bg-muted/10">

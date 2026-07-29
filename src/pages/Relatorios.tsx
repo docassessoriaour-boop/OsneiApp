@@ -467,6 +467,71 @@ export default function Relatorios() {
     printPDF(isBirthdayReport ? '' : `Relatório ${reportType}`, html, isBirthdayReport ? undefined : clinic)
   }
 
+  function xmlEscape(value: unknown) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+  }
+
+  function downloadExcelXml() {
+    const rows: Array<Array<string | number>> = [
+      ['Relatório', reportType],
+      ['Modo', viewMode],
+      ['Período', `${dateStart || 'início'} até ${dateEnd || 'fim'}`],
+      [],
+    ]
+
+    if (reportType === 'geral' || reportType === 'contasPagar') {
+      rows.push(['Contas a Pagar'], ['Vencimento', 'Descrição', 'Categoria', 'Valor', 'Status'])
+      filteredData.bills.forEach(b => rows.push([b.vencimento, b.descricao, b.categoria || '', b.valor, b.status]))
+      rows.push(['Total', '', '', totals.pagar, ''], [])
+    }
+
+    if (reportType === 'geral' || reportType === 'contasReceber') {
+      rows.push(['Contas a Receber'], ['Vencimento', 'Descrição', 'Categoria', 'Valor', 'Status'])
+      filteredData.incomes.forEach(i => rows.push([i.vencimento, i.descricao, i.categoria || '', i.valor, i.status]))
+      rows.push(['Total', '', '', totals.receber, ''], [])
+    }
+
+    if (reportType === 'bancario' || reportType === 'geral') {
+      rows.push(['Movimentação Bancária'], ['Data', 'Descrição', 'Categoria', 'Valor', 'Tipo'])
+      filteredData.transactions.forEach(t => rows.push([t.data, t.descricao, t.categoria || '', t.valor, t.tipo]))
+      rows.push(['Entradas', '', '', totals.bankIn, ''], ['Saídas', '', '', totals.bankOut, ''], [])
+    }
+
+    if (reportType === 'contratos') {
+      rows.push(['Contratos'], ['Paciente', 'Início', 'Vencimento', 'Valor', 'Status'])
+      filteredData.contratos.forEach(c => rows.push([c.pacienteNome || (c as any).paciente_nome || '', c.dataInicio || (c as any).data_inicio || '', c.dataFim || (c as any).data_fim || '', c.valor, c.status]))
+    }
+
+    const sheetRows = rows.map(row => `
+      <Row>${row.map(cell => {
+        const isNumber = typeof cell === 'number'
+        return `<Cell><Data ss:Type="${isNumber ? 'Number' : 'String'}">${xmlEscape(cell)}</Data></Cell>`
+      }).join('')}</Row>
+    `).join('')
+
+    const xml = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+  <Worksheet ss:Name="Relatorio">
+    <Table>${sheetRows}</Table>
+  </Worksheet>
+</Workbook>`
+    const blob = new Blob([xml], { type: 'application/vnd.ms-excel;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `relatorio-${reportType}-${new Date().toISOString().slice(0, 10)}.xls`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -480,6 +545,9 @@ export default function Relatorios() {
           </Button>
           <Button onClick={printReport} className="gap-2">
             <Printer className="h-4 w-4" /> Exportar para PDF
+          </Button>
+          <Button variant="outline" onClick={downloadExcelXml} className="gap-2">
+            <FileText className="h-4 w-4" /> Exportar Excel XML
           </Button>
         </div>
       </div>

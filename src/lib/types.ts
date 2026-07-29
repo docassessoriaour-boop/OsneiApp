@@ -10,7 +10,7 @@ export interface Employee {
   salario: number
   status: 'ativo' | 'inativo' | 'ferias' | 'contrato_cancelado'
   unidade: WorkUnit
-  turno: 'Diurno' | 'Noturno'
+  turno: 'Diurno' | 'Noturno' | 'Intermediário'
   turno_inicio?: string
   turno_fim?: string
   dataAdmissao: string
@@ -47,6 +47,7 @@ export interface Employee {
   chave_pix?: string
   is_pro_labore?: boolean
   descontos_fixos?: number
+  valor_plantao_12h?: number
 }
 
 export interface Curriculum {
@@ -361,6 +362,7 @@ export interface ScheduleException {
   date: string
   is_working: boolean
   is_dobra?: boolean
+  tipo_lancamento?: 'trabalho' | 'plantao_12h' | 'falta'
   start_time?: string
   end_time?: string
 }

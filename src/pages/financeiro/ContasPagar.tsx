@@ -15,7 +15,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, Loader2, Filter, ArrowUp, ArrowDown, Split, CheckCircle } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, Filter, ArrowUp, ArrowDown, Split, CheckCircle, Percent } from 'lucide-react'
 
 const emptyBill: Omit<Bill, 'id'> = {
   descricao: '', 
@@ -47,17 +47,23 @@ export default function ContasPagar() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [partialDialogOpen, setPartialDialogOpen] = useState(false)
   const [totalDialogOpen, setTotalDialogOpen] = useState(false)
+  const [adjustDialogOpen, setAdjustDialogOpen] = useState(false)
   const [partialBill, setPartialBill] = useState<Bill | null>(null)
   const [totalBill, setTotalBill] = useState<Bill | null>(null)
+  const [adjustBill, setAdjustBill] = useState<Bill | null>(null)
   const [totalForm, setTotalForm] = useState({ dataPagamento: new Date().toISOString().slice(0, 10), bank_account_id: '' })
   const [partialForm, setPartialForm] = useState({ valorPago: 0, dataPagamento: new Date().toISOString().slice(0, 10), bank_account_id: '' })
+  const [adjustForm, setAdjustForm] = useState({ dataBase: new Date().toISOString().slice(0, 10), multaPercent: 2, jurosMesPercent: 1, desconto: 0 })
   const [form, setForm] = useState(emptyBill)
   const [parcelas, setParcelas] = useState(1)
+  const [contaFixa, setContaFixa] = useState(false)
+  const [repeticoesFixas, setRepeticoesFixas] = useState(12)
   const [categoryFilter, setCategoryFilter] = useState('')
   const [startDate, setStartDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10))
   const [endDate, setEndDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10))
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   
   // States for split category
   const [isSplit, setIsSplit] = useState(false)
@@ -98,6 +104,8 @@ export default function ContasPagar() {
     setForm(emptyBill); 
     setEditingId(null); 
     setParcelas(1); 
+    setContaFixa(false);
+    setRepeticoesFixas(12);
     setIsSplit(false);
     setSplitForm({ category2_id: '', valor2: 0 });
     setDialogOpen(true) 
@@ -140,6 +148,33 @@ export default function ContasPagar() {
       bank_account_id: ''
     })
     setTotalDialogOpen(true)
+  }
+
+  function openAdjust(b: Bill) {
+    setAdjustBill(b)
+    setAdjustForm({ dataBase: new Date().toISOString().slice(0, 10), multaPercent: 2, jurosMesPercent: 1, desconto: 0 })
+    setAdjustDialogOpen(true)
+  }
+
+  const adjustPreview = (() => {
+    if (!adjustBill) return null
+    const due = new Date(`${adjustBill.vencimento}T00:00:00`)
+    const base = new Date(`${adjustForm.dataBase}T00:00:00`)
+    const days = Math.max(0, Math.floor((base.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)))
+    const multa = days > 0 ? adjustBill.valor * (adjustForm.multaPercent / 100) : 0
+    const juros = days > 0 ? adjustBill.valor * (adjustForm.jurosMesPercent / 100) * (days / 30) : 0
+    const total = Math.max(0, adjustBill.valor + multa + juros - adjustForm.desconto)
+    return { days, multa: Number(multa.toFixed(2)), juros: Number(juros.toFixed(2)), total: Number(total.toFixed(2)) }
+  })()
+
+  async function handleApplyAdjust() {
+    if (!adjustBill || !adjustPreview) return
+    await update(adjustBill.id, {
+      ...adjustBill,
+      valor: adjustPreview.total,
+      descricao: `${adjustBill.descricao} (juros/desconto aplicado)`
+    } as any)
+    setAdjustDialogOpen(false)
   }
 
   const handlePartialPayment = async () => {
@@ -452,21 +487,23 @@ export default function ContasPagar() {
       // Remove from payload before sending to Supabase because the column might not exist
       delete (payload as any).destination_bank_account_id
 
+      const repeatCount = contaFixa ? repeticoesFixas : parcelas
+
       if (editingId) {
-        if (parcelas > 1) {
+        if (repeatCount > 1) {
           const promises = []
           const baseDate = new Date(`${payload.vencimento || new Date().toISOString().slice(0, 10)}T12:00:00Z`)
           
           await update(editingId, {
             ...payload,
-            descricao: `${payload.descricao} (1/${parcelas})`
+            descricao: contaFixa ? payload.descricao : `${payload.descricao} (1/${repeatCount})`
           })
 
-          for (let i = 1; i < parcelas; i++) {
+          for (let i = 1; i < repeatCount; i++) {
             const installmentDate = addMonths(baseDate, i)
             const installmentPayload = {
               ...payload,
-              descricao: `${payload.descricao} (${i + 1}/${parcelas})`,
+              descricao: contaFixa ? payload.descricao : `${payload.descricao} (${i + 1}/${repeatCount})`,
               vencimento: installmentDate.toISOString().slice(0, 10),
             }
             promises.push(insert(installmentPayload))
@@ -498,14 +535,14 @@ export default function ContasPagar() {
           }
         }
       } else {
-        if (parcelas > 1) {
+        if (repeatCount > 1) {
           const promises = []
           const baseDate = new Date(`${payload.vencimento || new Date().toISOString().slice(0, 10)}T12:00:00Z`)
-          for (let i = 0; i < parcelas; i++) {
+          for (let i = 0; i < repeatCount; i++) {
             const installmentDate = addMonths(baseDate, i)
             const installmentPayload = {
               ...payload,
-              descricao: `${payload.descricao} (${i + 1}/${parcelas})`,
+              descricao: contaFixa ? payload.descricao : `${payload.descricao} (${i + 1}/${repeatCount})`,
               vencimento: installmentDate.toISOString().slice(0, 10),
             }
             promises.push(insert(installmentPayload))
@@ -687,6 +724,14 @@ export default function ContasPagar() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <input
+                  type="checkbox"
+                  checked={filtered.length > 0 && selectedIds.length === filtered.length}
+                  onChange={(e) => setSelectedIds(e.target.checked ? filtered.map(b => b.id) : [])}
+                  className="h-4 w-4"
+                />
+              </TableHead>
               <TableHead>Descrição</TableHead>
               <TableHead>Categoria</TableHead>
               <TableHead>Valor</TableHead>
@@ -701,17 +746,30 @@ export default function ContasPagar() {
               </TableHead>
               <TableHead>Pagamento</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Ações</TableHead>
+              <TableHead>
+                Ações
+                {selectedIds.length > 0 && (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">{selectedIds.length} selecionada(s)</span>
+                )}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={7}><div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8}><div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div></TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={7}><EmptyState message="Nenhum lançamento encontrado." /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8}><EmptyState message="Nenhum lançamento encontrado." /></TableCell></TableRow>
             ) : (
               filtered.map(b => (
                 <TableRow key={b.id}>
+                  <TableCell>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(b.id)}
+                      onChange={(e) => setSelectedIds(prev => e.target.checked ? [...prev, b.id] : prev.filter(id => id !== b.id))}
+                      className="h-4 w-4"
+                    />
+                  </TableCell>
                   <TableCell className="font-medium">{b.descricao}</TableCell>
                   <TableCell>{b.categoria}</TableCell>
                   <TableCell className="font-semibold text-red-600">{formatCurrency(b.valor)}</TableCell>
@@ -727,6 +785,9 @@ export default function ContasPagar() {
                           </Button>
                           <Button variant="ghost" size="icon" onClick={() => openPartial(b)} title="Baixa Parcial">
                             <Split className="h-4 w-4 text-blue-600" />
+                          </Button>
+                          <Button variant="ghost" size="icon" onClick={() => openAdjust(b)} title="Juros e Descontos">
+                            <Percent className="h-4 w-4 text-orange-600" />
                           </Button>
                         </>
                       )}
@@ -894,6 +955,7 @@ export default function ContasPagar() {
                 max={360} 
                 value={parcelas} 
                 onChange={(e) => setParcelas(Number(e.target.value))} 
+                disabled={contaFixa}
                 className="mt-1 w-1/3" 
               />
               <p className="text-xs text-muted-foreground mt-1">
@@ -902,6 +964,31 @@ export default function ContasPagar() {
                   : "Gera repetições lançando 1 mês para frente cada."}
               </p>
             </div>
+            <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+              <input
+                type="checkbox"
+                checked={contaFixa}
+                onChange={(e) => setContaFixa(e.target.checked)}
+                className="mt-0.5 h-4 w-4"
+              />
+              <span className="flex-1">
+                Conta fixa mensal
+                <span className="block text-xs text-muted-foreground">Repete o lançamento todo mês sem numerar como parcela.</span>
+              </span>
+            </label>
+            {contaFixa && (
+              <div>
+                <Label>Repetir por quantos meses</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={360}
+                  value={repeticoesFixas}
+                  onChange={(e) => setRepeticoesFixas(Number(e.target.value))}
+                  className="mt-1 w-1/3"
+                />
+              </div>
+            )}
           </div>
         </DialogContent>
         <DialogFooter>
@@ -1105,6 +1192,53 @@ export default function ContasPagar() {
         <DialogFooter>
           <Button variant="outline" onClick={() => setTotalDialogOpen(false)}>Cancelar</Button>
           <Button onClick={handleTotalPayment}>Confirmar Baixa Total</Button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={adjustDialogOpen} onOpenChange={setAdjustDialogOpen}>
+        <DialogHeader>
+          <DialogTitle>Juros e Descontos</DialogTitle>
+          <DialogClose onClose={() => setAdjustDialogOpen(false)} />
+        </DialogHeader>
+        <DialogContent>
+          {adjustBill && adjustPreview && (
+            <div className="grid gap-4">
+              <div className="bg-muted/50 p-3 rounded-lg text-sm">
+                <p><strong>Conta:</strong> {adjustBill.descricao}</p>
+                <p><strong>Valor original:</strong> {formatCurrency(adjustBill.valor)}</p>
+                <p><strong>Vencimento:</strong> {formatDate(adjustBill.vencimento)}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Calcular até</Label>
+                  <Input type="date" value={adjustForm.dataBase} onChange={(e) => setAdjustForm({ ...adjustForm, dataBase: e.target.value })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Desconto por antecipação</Label>
+                  <Input type="number" step="0.01" value={adjustForm.desconto} onChange={(e) => setAdjustForm({ ...adjustForm, desconto: Number(e.target.value) })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Multa por atraso (%)</Label>
+                  <Input type="number" step="0.01" value={adjustForm.multaPercent} onChange={(e) => setAdjustForm({ ...adjustForm, multaPercent: Number(e.target.value) })} className="mt-1" />
+                </div>
+                <div>
+                  <Label>Juros ao mês (%)</Label>
+                  <Input type="number" step="0.01" value={adjustForm.jurosMesPercent} onChange={(e) => setAdjustForm({ ...adjustForm, jurosMesPercent: Number(e.target.value) })} className="mt-1" />
+                </div>
+              </div>
+              <div className="grid gap-2 rounded-lg border p-3 text-sm">
+                <div className="flex justify-between"><span>Dias em atraso</span><strong>{adjustPreview.days}</strong></div>
+                <div className="flex justify-between"><span>Multa</span><strong>{formatCurrency(adjustPreview.multa)}</strong></div>
+                <div className="flex justify-between"><span>Juros</span><strong>{formatCurrency(adjustPreview.juros)}</strong></div>
+                <div className="flex justify-between"><span>Desconto</span><strong>{formatCurrency(adjustForm.desconto)}</strong></div>
+                <div className="flex justify-between border-t pt-2 text-base"><span>Valor atualizado</span><strong className="text-red-600">{formatCurrency(adjustPreview.total)}</strong></div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setAdjustDialogOpen(false)}>Cancelar</Button>
+          <Button onClick={handleApplyAdjust}>Aplicar no Lançamento</Button>
         </DialogFooter>
       </Dialog>
 

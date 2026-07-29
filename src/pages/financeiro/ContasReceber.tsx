@@ -96,6 +96,7 @@ export default function ContasReceber() {
   })
   const [form, setForm] = useState(emptyIncome)
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
   
   const findPatientForIncome = (income: Income) => {
     const relInv = invoices.find(inv => inv.income_id === income.id)
@@ -709,6 +710,14 @@ export default function ContasReceber() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <input
+                  type="checkbox"
+                  checked={filtered.length > 0 && selectedIds.length === filtered.length}
+                  onChange={(e) => setSelectedIds(e.target.checked ? filtered.map(i => i.id) : [])}
+                  className="h-4 w-4"
+                />
+              </TableHead>
               <TableHead>Descrição</TableHead>
               <TableHead>Categoria</TableHead>
               <TableHead>Valor</TableHead>
@@ -723,17 +732,30 @@ export default function ContasReceber() {
               </TableHead>
               <TableHead>Pagamento</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Ações</TableHead>
+              <TableHead>
+                Ações
+                {selectedIds.length > 0 && (
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">{selectedIds.length} selecionada(s)</span>
+                )}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
-              <TableRow><TableCell colSpan={7}><div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8}><div className="flex justify-center p-8"><Loader2 className="h-8 w-8 animate-spin" /></div></TableCell></TableRow>
             ) : filtered.length === 0 ? (
-              <TableRow><TableCell colSpan={7}><EmptyState message="Nenhuma receita" /></TableCell></TableRow>
+              <TableRow><TableCell colSpan={8}><EmptyState message="Nenhuma receita" /></TableCell></TableRow>
             ) : (
               filtered.map(i => (
                 <TableRow key={i.id}>
+                  <TableCell>
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(i.id)}
+                      onChange={(e) => setSelectedIds(prev => e.target.checked ? [...prev, i.id] : prev.filter(id => id !== i.id))}
+                      className="h-4 w-4"
+                    />
+                  </TableCell>
                   <TableCell className="font-medium">{i.descricao}</TableCell>
                   <TableCell>{i.categoria}</TableCell>
                   <TableCell className="font-semibold text-green-600">{formatCurrency(i.valor)}</TableCell>

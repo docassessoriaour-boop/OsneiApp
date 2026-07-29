@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useDb } from '@/hooks/useDb'
 import { formatCurrency } from '@/lib/utils'
-import type { Employee, Payroll, PayrollAdicional, ScheduleException, Bill, BankAccount } from '@/lib/types'
+import type { Employee, Payroll, PayrollAdicional, ScheduleException, Bill, BankAccount, TransactionCategory } from '@/lib/types'
 import { useClinic } from '@/lib/clinicConfig'
 import { LAR_SABEDORIA_CNPJ_DIGITS, onlyDigits } from '@/lib/companies'
 import { printPDF, formatCurrencyPDF, formatDatePDF } from '@/lib/pdf'
@@ -18,7 +18,7 @@ import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { Pencil, Trash2, FileText, Plus, X, CalendarClock, Loader2, Banknote, Printer, CheckCircle2 } from 'lucide-react'
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInCalendarDays, getDaysInMonth, subMonths, startOfWeek, endOfWeek } from 'date-fns'
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, differenceInCalendarDays, getDaysInMonth, subMonths, startOfWeek, endOfWeek, addMonths } from 'date-fns'
 
 const emptyAdicional: PayrollAdicional = { descricao: '', tipo: 'provento', valor: 0 }
 
@@ -38,6 +38,62 @@ function payrollMatchesPeriod(p: Payroll, start: string, end: string) {
 
   if (!payrollStart || !payrollEnd) return false
   return payrollStart <= end && payrollEnd >= start
+}
+
+function getEasterDate(year: number) {
+  const a = year % 19
+  const b = Math.floor(year / 100)
+  const c = year % 100
+  const d = Math.floor(b / 4)
+  const e = b % 4
+  const f = Math.floor((b + 8) / 25)
+  const g = Math.floor((b - f + 1) / 3)
+  const h = (19 * a + b - d - g + 15) % 30
+  const i = Math.floor(c / 4)
+  const k = c % 4
+  const l = (32 + 2 * e + 2 * i - h - k) % 7
+  const m = Math.floor((a + 11 * h + 22 * l) / 451)
+  const month = Math.floor((h + l - 7 * m + 114) / 31)
+  const day = ((h + l - 7 * m + 114) % 31) + 1
+  return new Date(year, month - 1, day)
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date)
+  next.setDate(next.getDate() + days)
+  return next
+}
+
+function holidaySet(year: number) {
+  const easter = getEasterDate(year)
+  const fixed = [
+    `${year}-01-01`, `${year}-04-21`, `${year}-05-01`, `${year}-07-09`,
+    `${year}-09-07`, `${year}-10-12`, `${year}-11-02`, `${year}-11-15`,
+    `${year}-11-20`, `${year}-12-25`,
+  ]
+  const variable = [
+    addDays(easter, -48),
+    addDays(easter, -47),
+    addDays(easter, -2),
+    addDays(easter, 60),
+  ].map(d => format(d, 'yyyy-MM-dd'))
+  return new Set([...fixed, ...variable])
+}
+
+function getPayrollDueDate(month: string) {
+  const payMonth = addMonths(parseISO(`${month}-01`), 1)
+  const holidays = holidaySet(payMonth.getFullYear())
+  let businessDays = 0
+  let cursor = startOfMonth(payMonth)
+
+  while (businessDays < 5) {
+    const day = getDay(cursor)
+    const key = format(cursor, 'yyyy-MM-dd')
+    if (day !== 0 && day !== 6 && !holidays.has(key)) businessDays++
+    if (businessDays < 5) cursor = addDays(cursor, 1)
+  }
+
+  return format(cursor, 'yyyy-MM-dd')
 }
 
 export default function FolhaPagamento() {
@@ -60,6 +116,7 @@ export default function FolhaPagamento() {
   const { data: exceptions } = useDb<ScheduleException>('schedule_exceptions')
   const { data: bills, insert: insertBill, update: updateBill } = useDb<Bill>('bills')
   const { data: bankAccounts } = useDb<BankAccount>('bank_accounts')
+  const { data: categories } = useDb<TransactionCategory>('transaction_categories')
   const { insert: insertBankTx } = useDb<any>('bank_transactions')
   
   const [clinic] = useClinic()
@@ -74,6 +131,7 @@ export default function FolhaPagamento() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [massDialogOpen, setMassDialogOpen] = useState(false)
   const [massMonth, setMassMonth] = useState(format(new Date(), 'yyyy-MM'))
+  const [massSendToBills, setMassSendToBills] = useState(true)
   const [generating, setGenerating] = useState(false)
   const currentWeekStart = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
   const currentWeekEnd = format(endOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-MM-dd')
@@ -167,6 +225,25 @@ export default function FolhaPagamento() {
     return !!employee?.tem_vt && !isLarSabedoriaCompany
   }
 
+  function getPayrollCategory() {
+    return categories.find(c => c.tipo === 'despesa' && c.nome.toLowerCase() === 'folha de pagamento')
+      || categories.find(c => c.tipo === 'despesa' && c.nome.toLowerCase().includes('folha'))
+  }
+
+  async function createPayrollBill(payroll: Payroll | any, dueDate?: string) {
+    if (bills.some(b => (b as any).payroll_id === payroll.id)) return
+    const category = getPayrollCategory()
+    await insertBill({
+      descricao: `Folha de Pagamento - ${payroll.funcionarioNome || payroll.funcionario_nome} - ${payroll.mesReferencia || payroll.mes_referencia}`,
+      valor: payroll.salarioLiquido ?? payroll.salario_liquido ?? 0,
+      vencimento: dueDate || getPayrollDueDate(payroll.mesReferencia || payroll.mes_referencia),
+      status: 'pendente',
+      categoria: category?.nome || 'Folha de Pagamento',
+      category_id: category?.id || null,
+      payroll_id: payroll.id
+    } as any)
+  }
+
   // Computed totals
   const totalProventos = adicionais.filter(a => a.tipo === 'provento').reduce((s, a) => s + a.valor, 0)
   const totalDescontos = adicionais.filter(a => a.tipo === 'desconto').reduce((s, a) => s + a.valor, 0)
@@ -200,13 +277,12 @@ export default function FolhaPagamento() {
         
         // If pro-labore, generate a bill in Contas a Pagar
         if (emp.is_pro_labore) {
-          await insertBill({
-            descricao: `Pro-Labore - ${emp.nome} - ${form.mesReferencia}`,
-            valor: salarioLiquidoCalc,
-            vencimento: new Date().toISOString().slice(0, 10), // Default to today
-            status: 'pendente',
-            categoria: 'Pró-Labore'
-          } as Omit<Bill, 'id'>)
+          await createPayrollBill({
+            ...result,
+            funcionarioNome: emp.nome,
+            mesReferencia: form.mesReferencia,
+            salarioLiquido: salarioLiquidoCalc,
+          }, getPayrollDueDate(form.mesReferencia))
         }
       }
       setDialogOpen(false)
@@ -223,6 +299,7 @@ export default function FolhaPagamento() {
       const monthStart = startOfMonth(targetMonth)
       const monthEnd = endOfMonth(targetMonth)
       const days = eachDayOfInterval({ start: monthStart, end: monthEnd })
+      const dueDate = getPayrollDueDate(massMonth)
 
       for (const emp of activeEmployees) {
         // Verifica se já existe folha para este mês
@@ -231,7 +308,8 @@ export default function FolhaPagamento() {
 
         // Cálculo de dias trabalhados via Escala
         let workedDays = 0
-        let dobrasCount = 0
+        let plantao12hCount = 0
+        let faltasCount = 0
         days.forEach(day => {
           const dateStr = format(day, 'yyyy-MM-dd')
           const exception = exceptions.find(ex => ex.employee_id === emp.id && ex.date === dateStr)
@@ -241,7 +319,8 @@ export default function FolhaPagamento() {
 
           if (exception) {
             works = exception.is_working
-            is_dobra = !!exception.is_dobra
+            is_dobra = !!exception.is_dobra || exception.tipo_lancamento === 'plantao_12h'
+            if (exception.tipo_lancamento === 'falta') faltasCount++
           } else if (emp.escala === '40h' || emp.escala === 'Mensalista') {
             const dow = getDay(day)
             works = dow >= 1 && dow <= 5
@@ -251,7 +330,7 @@ export default function FolhaPagamento() {
           }
           
           if (works) workedDays++
-          if (is_dobra) dobrasCount++
+          if (is_dobra) plantao12hCount++
         })
 
         if (workedDays > 0 || emp.escala === 'Mensalista' || emp.is_pro_labore) {
@@ -263,11 +342,21 @@ export default function FolhaPagamento() {
           const fixedDiscounts = emp.descontos_fixos || 0
 
           const payloadAdicionais: PayrollAdicional[] = []
-          if (dobrasCount > 0) {
+          if (plantao12hCount > 0) {
              payloadAdicionais.push({
-                descricao: `Dobra de Turno (${dobrasCount}x)`,
+                descricao: `Plantão 12h (${plantao12hCount}x)`,
                 tipo: 'provento',
-                valor: 0 
+                valor: Number(((emp.valor_plantao_12h || 0) * plantao12hCount).toFixed(2))
+             })
+          }
+          if (faltasCount > 0) {
+             const dailyDiscount = emp.salario_tipo === 'diaria'
+               ? emp.salario || 0
+               : (emp.salario || 0) / getDaysInMonth(targetMonth)
+             payloadAdicionais.push({
+                descricao: `Faltas (${faltasCount}x)`,
+                tipo: 'desconto',
+                valor: Number((dailyDiscount * faltasCount).toFixed(2))
              })
           }
           if (shouldAutoIncludeVt(emp)) {
@@ -298,19 +387,17 @@ export default function FolhaPagamento() {
             status: 'pendente',
             periodo_inicio: format(monthStart, 'yyyy-MM-dd'),
             periodo_fim: format(monthEnd, 'yyyy-MM-dd'),
-            observacoes: emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${emp.salario_tipo === 'diaria' ? ', salário calculado por diária' : ''}${emp.vt_tipo === 'diaria' ? ', VT por dia trabalhado' : ''}${dobrasCount > 0 ? `, incluindo ${dobrasCount} dobra(s)` : ''}.`,
+            observacoes: emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${emp.salario_tipo === 'diaria' ? ', salário calculado por diária' : ''}${emp.vt_tipo === 'diaria' ? ', VT por dia trabalhado' : ''}${plantao12hCount > 0 ? `, incluindo ${plantao12hCount} plantão(ões) 12h` : ''}${faltasCount > 0 ? `, descontando ${faltasCount} falta(s)` : ''}.`,
             adicionais: payloadAdicionais
           } as any)
 
-          // If pro-labore, generate a bill
-          if (emp.is_pro_labore) {
-            await insertBill({
-              descricao: `Pro-Labore - ${emp.nome} - ${massMonth}`,
-              valor: emp.salario || 0,
-              vencimento: new Date().toISOString().slice(0, 10),
-              status: 'pendente',
-              categoria: 'Pró-Labore'
-            } as Omit<Bill, 'id'>)
+          if (massSendToBills) {
+            await createPayrollBill({
+              ...payrollResult,
+              funcionarioNome: emp.nome,
+              mesReferencia: massMonth,
+              salarioLiquido: baseSalary + totalProventosGerados - fixedDiscounts - totalDescontosGerados,
+            }, dueDate)
           }
         }
       }
@@ -703,7 +790,8 @@ export default function FolhaPagamento() {
           tipo: 'debito',
           origem: 'manual',
           bank_account_id: baixaForm.bank_account_id,
-          categoria: 'Folha de Pagamento'
+          categoria: 'Folha de Pagamento',
+          category_id: getPayrollCategory()?.id || null
         })
         await updateBill(existingBill.id, {
           ...existingBill,
@@ -724,7 +812,8 @@ export default function FolhaPagamento() {
           tipo: 'debito',
           origem: 'manual',
           bank_account_id: baixaForm.bank_account_id,
-          categoria: 'Folha de Pagamento'
+          categoria: 'Folha de Pagamento',
+          category_id: getPayrollCategory()?.id || null
         })
         await insertBill({
           descricao,
@@ -735,6 +824,7 @@ export default function FolhaPagamento() {
           bank_account_id: baixaForm.bank_account_id,
           bank_transaction_id: bt?.id || null,
           categoria: 'Folha de Pagamento',
+          category_id: getPayrollCategory()?.id || null,
           payroll_id: p.id
         } as any)
         await update(p.id, { status: 'pago' } as any)
@@ -762,9 +852,10 @@ export default function FolhaPagamento() {
         await insertBill({
           descricao: `Folha de Pagamento - ${p.funcionarioNome} - ${p.mesReferencia}`,
           valor: p.salarioLiquido,
-          vencimento: new Date().toISOString().slice(0, 10),
+          vencimento: getPayrollDueDate(p.mesReferencia),
           status: 'pendente',
-          categoria: 'Folha de Pagamento',
+          categoria: getPayrollCategory()?.nome || 'Folha de Pagamento',
+          category_id: getPayrollCategory()?.id || null,
           payroll_id: p.id
         } as any)
         alert('Conta a Pagar gerada com sucesso!')
@@ -1260,6 +1351,17 @@ export default function FolhaPagamento() {
               <Label>Mês de Referência</Label>
               <Input type="month" value={massMonth} onChange={e => setMassMonth(e.target.value)} className="mt-1" />
             </div>
+            <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+              <input
+                type="checkbox"
+                checked={massSendToBills}
+                onChange={(e) => setMassSendToBills(e.target.checked)}
+                className="mt-0.5 h-4 w-4"
+              />
+              <span>
+                Enviar em lote para Contas a Pagar com categoria Folha de Pagamento e vencimento no 5º dia útil.
+              </span>
+            </label>
           </div>
         </DialogContent>
         <DialogFooter>
