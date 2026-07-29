@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { NOVO_HORIZONTE_CNPJ_DIGITS, onlyDigits } from '@/lib/companies'
 import { useAuth } from '@/hooks/useAuth'
 import type { Profile, UserRole } from '@/hooks/useAuth'
 import { Card } from '@/components/ui/card'
@@ -20,6 +21,11 @@ import {
 import {
   Select,
 } from "@/components/ui/select"
+
+function isExistingEmailError(error: unknown) {
+  const message = error instanceof Error ? error.message : String((error as any)?.message || '')
+  return /already.*registered|already.*exists|user.*exists/i.test(message)
+}
 
 export default function Usuarios() {
   const { isAdmin, user: currentUser, profile } = useAuth()
@@ -83,6 +89,60 @@ export default function Usuarios() {
   const [newUserInfo, setNewUserInfo] = useState({ email: '', password: '', fullName: '', role: 'user' as UserRole })
   const [adding, setAdding] = useState(false)
 
+  const isNovoHorizonteCompany =
+    onlyDigits(profile?.company?.cnpj_digits || profile?.company?.cnpj || '') === NOVO_HORIZONTE_CNPJ_DIGITS
+
+  async function findAuthUserByEmail(email: string) {
+    const normalizedEmail = email.trim().toLowerCase()
+    let page = 1
+
+    while (page <= 10) {
+      const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 })
+      if (error) throw error
+
+      const foundUser = data.users.find(user => user.email?.toLowerCase() === normalizedEmail)
+      if (foundUser) return foundUser
+      if (data.users.length < 1000) return null
+
+      page += 1
+    }
+
+    return null
+  }
+
+  async function linkExistingUserToNovoHorizonte() {
+    if (!profile?.company_id) throw new Error('Empresa atual não encontrada.')
+
+    const authUser = await findAuthUserByEmail(newUserInfo.email)
+    if (!authUser) {
+      throw new Error('Este e-mail já existe no acesso do sistema, mas a conta não pôde ser localizada para vinculação.')
+    }
+
+    const { error: updateAuthError } = await supabase.auth.admin.updateUserById(authUser.id, {
+      password: newUserInfo.password,
+      user_metadata: {
+        ...authUser.user_metadata,
+        full_name: newUserInfo.fullName,
+        role: newUserInfo.role,
+        company_id: profile.company_id
+      }
+    })
+
+    if (updateAuthError) throw updateAuthError
+
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .upsert({
+        id: authUser.id,
+        full_name: newUserInfo.fullName,
+        email: newUserInfo.email,
+        role: newUserInfo.role,
+        company_id: profile.company_id
+      })
+
+    if (profileError) throw profileError
+  }
+
   async function handleAddUser(e: React.FormEvent) {
     e.preventDefault()
     setAdding(true)
@@ -119,8 +179,24 @@ export default function Usuarios() {
 
       alert('Usuário criado com sucesso!')
       setIsAddModalOpen(false)
+      setNewUserInfo({ email: '', password: '', fullName: '', role: 'user' })
       fetchUsers()
     } catch (error: any) {
+      if (isNovoHorizonteCompany && isExistingEmailError(error)) {
+        try {
+          await linkExistingUserToNovoHorizonte()
+          alert('Usuário já existia no sistema e foi vinculado à Novo Horizonte com a nova senha temporária.')
+          setIsAddModalOpen(false)
+          setNewUserInfo({ email: '', password: '', fullName: '', role: 'user' })
+          fetchUsers()
+          return
+        } catch (linkError: any) {
+          console.error('Error linking existing user to Novo Horizonte:', linkError)
+          alert('Erro ao vincular usuário existente à Novo Horizonte: ' + linkError.message)
+          return
+        }
+      }
+
       console.error('Error adding user:', error)
       alert('Erro ao criar usuário: ' + error.message)
     } finally {
