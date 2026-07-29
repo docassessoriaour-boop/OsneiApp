@@ -1221,6 +1221,26 @@ export default function Funcionarios() {
                 <option value="Intermediário">Intermediário</option>
               </Select>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Horário de Entrada</Label>
+                <Input
+                  type="time"
+                  value={normalizeTime(form.turno_inicio)}
+                  onChange={(e) => setForm({ ...form, turno_inicio: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label>Horário de Saída</Label>
+                <Input
+                  type="time"
+                  value={normalizeTime(form.turno_fim)}
+                  onChange={(e) => setForm({ ...form, turno_fim: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+            </div>
             <div>
               <Label>Escala</Label>
               <Select value={form.escala} onChange={(e) => {
