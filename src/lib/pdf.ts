@@ -9,21 +9,37 @@ export function getClinicLogoSrc(clinic?: Partial<CompanySettings> | null) {
  * Opens a styled print window with the provided HTML content.
  * Works for both "Print" and "Save as PDF" via the browser's native dialog.
  */
-export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettings, options?: { hideLogo?: boolean, hideClinicHeader?: boolean, compactLayout?: boolean, hideTitle?: boolean }) {
+export function printPDF(
+  title: string,
+  bodyHtml: string,
+  clinic?: CompanySettings,
+  options?: {
+    hideLogo?: boolean
+    hideClinicHeader?: boolean
+    compactLayout?: boolean
+    hideTitle?: boolean
+    orientation?: 'portrait' | 'landscape'
+    pageMargin?: string
+  }
+) {
   const win = window.open('', '_blank', 'width=900,height=700')
   if (!win) return
 
   const logoSrc = getClinicLogoSrc(clinic)
   const logoHtml = options?.hideLogo ? '' : `<img src="${logoSrc}" alt="Logo" style="max-height:120px; width: auto; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto;" />`
+  const pageOrientation = options?.orientation === 'landscape' ? ' landscape' : ''
+  const pageMargin = options?.pageMargin || (options?.compactLayout ? '0.4cm' : '1.5cm')
+  const titleMargin = options?.compactLayout ? '8px' : '20px'
+  const generatedMarginTop = options?.compactLayout ? '0' : '-8pt'
 
   const clinicHeader = (clinic && !options?.hideClinicHeader)
     ? `
-      <div style="text-align:center;margin-bottom:24px;border-bottom:2px solid #1a1f2e;padding-bottom:16px;">
+      <div style="text-align:center;margin-bottom:${options?.compactLayout ? '8px' : '24px'};border-bottom:2px solid #1a1f2e;padding-bottom:${options?.compactLayout ? '6px' : '16px'};">
         ${logoHtml}
-        <h1 style="margin:0;font-size:22px;color:#1a1f2e;">${clinic.razao_social || (clinic as any).name || (clinic as any).nome_fantasia || ''}</h1>
-        <p style="margin:4px 0 0;font-size:12px;color:#555;">CNPJ: ${clinic.cnpj || ''} ${clinic.inscricao_estadual ? ` | IE: ${clinic.inscricao_estadual}` : ''}</p>
-        <p style="margin:2px 0 0;font-size:12px;color:#555;">${clinic.address || (clinic as any).endereco || ''}</p>
-        <p style="margin:2px 0 0;font-size:12px;color:#555;">Tel: ${clinic.phone || (clinic as any).telefone || ''} | ${clinic.email || ''}</p>
+        <h1 style="margin:0;font-size:${options?.compactLayout ? '13px' : '22px'};color:#1a1f2e;">${clinic.razao_social || (clinic as any).name || (clinic as any).nome_fantasia || ''}</h1>
+        <p style="margin:2px 0 0;font-size:${options?.compactLayout ? '8px' : '12px'};color:#555;">CNPJ: ${clinic.cnpj || ''} ${clinic.inscricao_estadual ? ` | IE: ${clinic.inscricao_estadual}` : ''}</p>
+        <p style="margin:1px 0 0;font-size:${options?.compactLayout ? '8px' : '12px'};color:#555;">${clinic.address || (clinic as any).endereco || ''}</p>
+        <p style="margin:1px 0 0;font-size:${options?.compactLayout ? '8px' : '12px'};color:#555;">Tel: ${clinic.phone || (clinic as any).telefone || ''} | ${clinic.email || ''}</p>
       </div>
     `
     : ''
@@ -34,15 +50,15 @@ export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettin
   <meta charset="UTF-8" />
   <title>${title}</title>
   <style>
-    @page { margin: 1.5cm !important; }
+    @page { size: A4${pageOrientation}; margin: ${pageMargin} !important; }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       padding: 0;
 
       font-family: Arial, Helvetica, sans-serif;
       color: #000;
-      font-size: 12pt;
-      line-height: 1.5;
+      font-size: ${options?.compactLayout ? '9pt' : '12pt'};
+      line-height: ${options?.compactLayout ? '1.25' : '1.5'};
       text-align: justify;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
@@ -96,9 +112,9 @@ export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettin
     .badge-warning { background: #fef9c3; color: #a16207; }
     .badge-danger { background: #fee2e2; color: #dc2626; }
     .footer {
-      margin-top: 40px;
+      margin-top: ${options?.compactLayout ? '10px' : '40px'};
       border-top: 1px solid #ccc;
-      padding-top: 12px;
+      padding-top: ${options?.compactLayout ? '4px' : '12px'};
       font-size: 10px;
       color: #999;
       text-align: center;
@@ -118,13 +134,13 @@ export function printPDF(title: string, bodyHtml: string, clinic?: CompanySettin
       margin-bottom: 4px;
     }
     @media print {
-      body { padding: 16px; }
+      body { padding: ${options?.compactLayout ? '0' : '16px'}; }
     }
   </style>
 </head>
 <body>
   ${clinicHeader}
-  ${!options?.hideTitle ? `<div style="text-align: center; margin-bottom: 20px;"><h2>${title}</h2><p style="font-size: 10pt; color: #666; margin-top: -8pt;">Gerado em: ${new Date().toLocaleString('pt-BR')}</p></div>` : ''}
+  ${!options?.hideTitle ? `<div style="text-align: center; margin-bottom: ${titleMargin};"><h2>${title}</h2><p style="font-size: ${options?.compactLayout ? '7pt' : '10pt'}; color: #666; margin-top: ${generatedMarginTop};">Gerado em: ${new Date().toLocaleString('pt-BR')}</p></div>` : ''}
   ${bodyHtml}
 </body>
 </html>`)

@@ -33,6 +33,21 @@ function getEmployeeShiftTime(employee: Employee) {
   return start && end ? `${start}h/${end}h` : ''
 }
 
+type ScheduleCell = {
+  working: boolean
+  dobra: boolean
+  tipo_lancamento?: ScheduleException['tipo_lancamento']
+  start_time?: string
+  end_time?: string
+}
+
+const optionalScheduleColumns = ['tipo_lancamento', 'is_dobra', 'start_time', 'end_time'] as const
+
+function getMissingOptionalScheduleColumn(error: any) {
+  const message = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`
+  return optionalScheduleColumns.find(column => message.includes(column))
+}
+
 export default function Escalas() {
   const { data: rawEmployees, loading: loadingEmployees } = useDb<Employee>('employees')
   // Normaliza: DB retorna data_admissao (snake_case), código usa dataAdmissao (camelCase)
@@ -68,7 +83,30 @@ export default function Escalas() {
   ).sort((a, b) => a.nome.localeCompare(b.nome))
 
   // Generate schedule based on employee scale type + exceptions
-  function getSchedule(employee: Employee, day: Date): { working: boolean, dobra: boolean, tipo_lancamento?: ScheduleException['tipo_lancamento'] } {
+  async function saveScheduleException(
+    existing: ScheduleException | undefined,
+    payload: Partial<ScheduleException>
+  ) {
+    const nextPayload: Partial<ScheduleException> = { ...payload }
+
+    while (true) {
+      try {
+        if (existing) {
+          await update(existing.id, nextPayload)
+        } else {
+          await insert(nextPayload as Omit<ScheduleException, 'id'>)
+        }
+        return
+      } catch (error) {
+        const missingColumn = getMissingOptionalScheduleColumn(error)
+        if (!missingColumn || !(missingColumn in nextPayload)) throw error
+        console.warn(`Coluna opcional ausente em schedule_exceptions: ${missingColumn}. Salvando sem ela.`)
+        delete (nextPayload as any)[missingColumn]
+      }
+    }
+  }
+
+  function getSchedule(employee: Employee, day: Date): ScheduleCell {
     const dateStr = format(day, 'yyyy-MM-dd')
     
     // Check for manual override/exception first
@@ -119,14 +157,14 @@ export default function Escalas() {
 
     try {
       if (exception) {
-      await update(exception.id, { 
+        await saveScheduleException(exception, { 
           start_time: manualTimes.start || null, 
           end_time: manualTimes.end || null,
           is_working: true,
           tipo_lancamento: exception.tipo_lancamento || 'trabalho'
         })
       } else {
-        await insert({
+        await saveScheduleException(undefined, {
           employee_id: employee.id,
           date: dateStr,
           is_working: true,
@@ -166,10 +204,10 @@ export default function Escalas() {
     try {
       if (exception) {
         // Update existing exception
-        await update(exception.id, { is_working: nextWorking, is_dobra: nextDobra, tipo_lancamento: tipoLancamento })
+        await saveScheduleException(exception, { is_working: nextWorking, is_dobra: nextDobra, tipo_lancamento: tipoLancamento })
       } else {
         // Create new exception
-        await insert({
+        await saveScheduleException(undefined, {
           employee_id: employee.id,
           date: dateStr,
           is_working: nextWorking,
@@ -210,9 +248,9 @@ export default function Escalas() {
         const exception = exceptions.find(ex => ex.employee_id === employee.id && ex.date === dateStr)
         
         if (exception) {
-          await update(exception.id, { is_working: !current.working, is_dobra: false })
+          await saveScheduleException(exception, { is_working: !current.working, is_dobra: false })
         } else {
-          await insert({
+          await saveScheduleException(undefined, {
             employee_id: employee.id,
             date: dateStr,
             is_working: !current.working,
@@ -239,12 +277,14 @@ export default function Escalas() {
           escala: emp.escala,
           turno: emp.turno || 'Diurno',
           schedule: days.map(day => {
-            const { working, dobra, tipo_lancamento } = getSchedule(emp, day)
+            const { working, dobra, tipo_lancamento, start_time, end_time } = getSchedule(emp, day)
             return {
               date: format(day, 'yyyy-MM-dd'),
               working,
               dobra,
-              tipo_lancamento
+              tipo_lancamento,
+              start_time,
+              end_time
             }
           })
         }
@@ -278,7 +318,7 @@ export default function Escalas() {
       const isWeekend = getDay(day) === 0 || getDay(day) === 6
       const bgColor = isWeekend ? '#f9fafb' : 'transparent'
       return `
-        <th style="width: 20px; text-align: center; border: 1px solid #ddd; font-size: 7px; padding: 2px; background-color: ${bgColor};">
+        <th style="width: 16px; text-align: center; border: 1px solid #ddd; font-size: 6px; padding: 1px; background-color: ${bgColor}; line-height: 1.05;">
           <div style="font-weight: bold; opacity: 0.6;">${dayInitial}</div>
           <div>${format(day, 'd')}</div>
         </th>
@@ -295,12 +335,12 @@ export default function Escalas() {
         const endTime = dayRecord?.end_time
         const symbol = dayRecord?.tipo_lancamento === 'plantao_12h' || dobra ? 'P12' : dayRecord?.tipo_lancamento === 'falta' ? 'F' : (working ? 'T' : '')
         const timeStr = startTime && endTime ? `<div style="font-size: 6px; opacity: 0.7;">${startTime}-${endTime}</div>` : ''
-        return `<td style="text-align: center; border: 1px solid #ddd; font-size: 10px; padding: 2px; background-color: ${working ? (dobra ? 'rgba(245, 158, 11, 0.1)' : 'rgba(56, 189, 248, 0.1)') : 'transparent'}; font-weight: ${working ? 'bold' : 'normal'}; color: ${dobra ? '#b45309' : '#000'};">${symbol}${timeStr}</td>`
+        return `<td style="text-align: center; border: 1px solid #ddd; font-size: 8px; padding: 1px; background-color: ${working ? (dobra ? 'rgba(245, 158, 11, 0.1)' : 'rgba(56, 189, 248, 0.1)') : 'transparent'}; font-weight: ${working ? 'bold' : 'normal'}; color: ${dobra ? '#b45309' : '#000'}; line-height: 1.05;">${symbol}${timeStr}</td>`
       }).join('')
       
       return `
         <tr>
-          <td style="border: 1px solid #ddd; padding: 4px; font-size: 9px; min-width: 100px;">
+          <td style="border: 1px solid #ddd; padding: 2px 3px; font-size: 7px; min-width: 86px; line-height: 1.15;">
             <strong>${emp.nome}</strong><br/>
             <small style="color: #444;">${emp.escala} - ${emp.turno}</small>
           </td>
@@ -310,10 +350,10 @@ export default function Escalas() {
     }).join('')
 
     const html = `
-      <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+      <table style="width: 100%; border-collapse: collapse; margin-top: 4px; table-layout: fixed;">
         <thead>
           <tr style="background-color: #f3f4f6;">
-            <th style="text-align: left; padding: 4px; border: 1px solid #ddd; font-size: 10px;">Funcionário</th>
+            <th style="text-align: left; padding: 2px 3px; border: 1px solid #ddd; font-size: 7px; width: 96px;">Funcionário</th>
             ${daysHeader}
           </tr>
         </thead>
@@ -321,11 +361,16 @@ export default function Escalas() {
           ${rows}
         </tbody>
       </table>
-      <div style="margin-top: 15px; font-size: 9px; color: #666;">
+      <div class="footer" style="margin-top: 5px; font-size: 7px; color: #666;">
         <strong>Legenda:</strong> [ T ] Trabalha | [ P12 ] Plantão 12h | [ F ] Falta | [ &nbsp;&nbsp; ] Folga
       </div>
     `
-    printPDF(title, html, clinic)
+    printPDF(title, html, clinic, {
+      orientation: 'landscape',
+      compactLayout: true,
+      hideLogo: true,
+      pageMargin: '0.35cm'
+    })
   }
 
   function printReport() {
@@ -338,7 +383,7 @@ export default function Escalas() {
       const isWeekend = getDay(day) === 0 || getDay(day) === 6
       const bgColor = isWeekend ? '#f9fafb' : 'transparent'
       return `
-        <th style="width: 20px; text-align: center; border: 1px solid #ddd; font-size: 7px; padding: 2px; background-color: ${bgColor};">
+        <th style="width: 16px; text-align: center; border: 1px solid #ddd; font-size: 6px; padding: 1px; background-color: ${bgColor}; line-height: 1.05;">
           <div style="font-weight: bold; opacity: 0.6;">${dayInitial}</div>
           <div>${format(day, 'd')}</div>
         </th>
@@ -352,16 +397,16 @@ export default function Escalas() {
       const scheduleCells = days.map(day => {
         const { working, dobra, tipo_lancamento, start_time, end_time } = getSchedule(employee, day) as any
         const symbol = tipo_lancamento === 'plantao_12h' || dobra ? 'P12' : tipo_lancamento === 'falta' ? 'F' : (working ? 'T' : '')
-        const timeStr = start_time && end_time ? `<div style="font-size: 6px; opacity: 0.7;">${start_time}-${end_time}</div>` : ''
-        return `<td style="text-align: center; border: 1px solid #ddd; font-size: 10px; padding: 2px; background-color: ${working ? (dobra ? 'rgba(245, 158, 11, 0.1)' : 'rgba(56, 189, 248, 0.1)') : 'transparent'}; font-weight: ${working ? 'bold' : 'normal'}; color: ${dobra ? '#b45309' : '#000'};">${symbol}${timeStr}</td>`
+        const timeStr = start_time && end_time ? `<div style="font-size: 5px; opacity: 0.7;">${start_time}-${end_time}</div>` : ''
+        return `<td style="text-align: center; border: 1px solid #ddd; font-size: 8px; padding: 1px; background-color: ${working ? (dobra ? 'rgba(245, 158, 11, 0.1)' : 'rgba(56, 189, 248, 0.1)') : 'transparent'}; font-weight: ${working ? 'bold' : 'normal'}; color: ${dobra ? '#b45309' : '#000'}; line-height: 1.05;">${symbol}${timeStr}</td>`
       }).join('')
       
       return `
         <tr>
-          <td style="border: 1px solid #ddd; padding: 4px; font-size: 9px; min-width: 100px;">
+          <td style="border: 1px solid #ddd; padding: 2px 3px; font-size: 7px; min-width: 86px; line-height: 1.15;">
             <strong>${employee.nome}</strong><br/>
             <small style="color: #444;">${employee.escala} - ${employee.turno || 'Diurno'}</small><br/>
-            <small style="color: #666; font-size: 8px;">Horário: ${shiftTime}</small>
+            <small style="color: #666; font-size: 6px;">Horário: ${shiftTime}</small>
           </td>
           ${scheduleCells}
         </tr>
@@ -369,10 +414,10 @@ export default function Escalas() {
     }).join('')
 
     const html = `
-      <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+      <table style="width: 100%; border-collapse: collapse; margin-top: 4px; table-layout: fixed;">
         <thead>
           <tr style="background-color: #f3f4f6;">
-            <th style="text-align: left; padding: 4px; border: 1px solid #ddd; font-size: 10px;">Funcionário</th>
+            <th style="text-align: left; padding: 2px 3px; border: 1px solid #ddd; font-size: 7px; width: 96px;">Funcionário</th>
             ${daysHeader}
           </tr>
         </thead>
@@ -380,12 +425,17 @@ export default function Escalas() {
           ${rows}
         </tbody>
       </table>
-      <div style="margin-top: 15px; font-size: 9px; color: #666;">
+      <div class="footer" style="margin-top: 5px; font-size: 7px; color: #666;">
         <strong>Legenda:</strong> [ T ] Trabalha | [ P12 ] Plantão 12h | [ F ] Falta | [ &nbsp;&nbsp; ] Folga
       </div>
     `
 
-    printPDF(title, html, clinic)
+    printPDF(title, html, clinic, {
+      orientation: 'landscape',
+      compactLayout: true,
+      hideLogo: true,
+      pageMargin: '0.35cm'
+    })
   }
 
   return (
