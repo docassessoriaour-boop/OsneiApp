@@ -192,7 +192,7 @@ export default function Escalas() {
     if (!current.working) {
       nextWorking = true;
       nextDobra = false;
-    } else if (current.working && current.tipo_lancamento !== 'plantao_12h') {
+    } else if (current.working && !current.dobra && current.tipo_lancamento !== 'plantao_12h') {
       nextWorking = true;
       nextDobra = true;
     } else {
