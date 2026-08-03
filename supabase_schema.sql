@@ -201,6 +201,23 @@ CREATE TABLE IF NOT EXISTS patient_companionships (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Migrações financeiras complementares
+ALTER TABLE IF EXISTS bank_transactions ADD COLUMN IF NOT EXISTS bank_account_id UUID;
+ALTER TABLE IF EXISTS bank_transactions ADD COLUMN IF NOT EXISTS category_id UUID;
+ALTER TABLE IF EXISTS bank_transactions ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pago';
+
+ALTER TABLE IF EXISTS bills ADD COLUMN IF NOT EXISTS category_id UUID;
+ALTER TABLE IF EXISTS bills ADD COLUMN IF NOT EXISTS payment_date DATE;
+ALTER TABLE IF EXISTS bills ADD COLUMN IF NOT EXISTS bank_account_id UUID;
+ALTER TABLE IF EXISTS bills ADD COLUMN IF NOT EXISTS bank_transaction_id UUID;
+ALTER TABLE IF EXISTS bills ADD COLUMN IF NOT EXISTS destination_bank_account_id UUID;
+
+ALTER TABLE IF EXISTS incomes ADD COLUMN IF NOT EXISTS category_id UUID;
+ALTER TABLE IF EXISTS incomes ADD COLUMN IF NOT EXISTS payment_date DATE;
+ALTER TABLE IF EXISTS incomes ADD COLUMN IF NOT EXISTS bank_account_id UUID;
+ALTER TABLE IF EXISTS incomes ADD COLUMN IF NOT EXISTS bank_transaction_id UUID;
+ALTER TABLE IF EXISTS incomes ADD COLUMN IF NOT EXISTS source_bank_account_id UUID;
+
 -- Habilitar RLS (Opcional, mas recomendado)
 -- Por enquanto, como você está usando a service_role key, o RLS será ignorado.
 -- Mas no futuro, você deve configurar as Policies.

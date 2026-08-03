@@ -219,6 +219,7 @@ export interface Bill {
   payment_date?: string
   bank_account_id?: string
   bank_transaction_id?: string
+  destination_bank_account_id?: string
   payroll_id?: string
 }
 
@@ -234,6 +235,7 @@ export interface Income {
   payment_date?: string
   bank_account_id?: string
   bank_transaction_id?: string
+  source_bank_account_id?: string
   paid_by?: string
   paid_by_phone?: string
   paid_by_document?: string

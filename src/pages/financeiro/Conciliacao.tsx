@@ -322,6 +322,8 @@ export default function Conciliacao() {
       const syncData = { 
         status: tx.tipo === 'credito' ? 'recebido' : 'pago', 
         bank_transaction_id: newTxId,
+        bank_account_id: tx.bank_account_id || selectedBankId || null,
+        payment_date: tx.data,
         ...( (!item.category_id || item.categoria === 'Sem Categoria') ? {
           category_id: tx.category_id,
           categoria: tx.categoria
