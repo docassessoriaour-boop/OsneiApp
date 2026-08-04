@@ -138,7 +138,9 @@ export function useDb<T>(table: string) {
     let cleanedPayload = payload
     let result: any[] | null = null
 
-    for (let attempt = 0; attempt < 5; attempt++) {
+    const maxAttempts = Math.max(1, Object.keys(cleanedPayload as Record<string, unknown>).length + 1)
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const response = await supabase
         .from(table)
         .insert(cleanedPayload as any)
@@ -167,7 +169,9 @@ export function useDb<T>(table: string) {
   const update = async (id: string | number, item: Partial<T>) => {
     let cleanedItem = item
 
-    for (let attempt = 0; attempt < 5; attempt++) {
+    const maxAttempts = Math.max(1, Object.keys(cleanedItem as Record<string, unknown>).length + 1)
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
       let query = supabase
         .from(table)
         .update(cleanedItem as any)

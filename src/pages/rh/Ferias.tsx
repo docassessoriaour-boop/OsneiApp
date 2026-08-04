@@ -271,21 +271,21 @@ export default function Ferias() {
     setSaving(true)
     try {
       const vData = {
-        funcionarioId: form.funcionarioId,
-        funcionarioNome: emp.nome,
-        dataInicio: form.dataInicio,
-        dataFim: form.dataFim,
+        funcionario_id: form.funcionarioId,
+        funcionario_nome: emp.nome,
+        data_inicio: form.dataInicio,
+        data_fim: form.dataFim,
         status: form.status,
-        salarioBase: form.salarioBase,
-        diasFerias: form.diasFerias,
-        diasAbono: form.venderFerias ? form.diasAbono : 0,
-        valorFerias: results?.vFerias,
-        valorTercoConstitucional: results?.vTerco,
-        valorAbonoPecuniario: results?.vAbono,
-        valorTercoAbono: results?.vTercoAbono,
-        descontosInss: results?.inss,
-        descontosIrrf: results?.irrf,
-        valorLiquido: results?.liquid
+        salario_base: form.salarioBase,
+        dias_ferias: form.diasFerias,
+        dias_abono: form.venderFerias ? form.diasAbono : 0,
+        valor_ferias: results?.vFerias,
+        valor_terco_constitucional: results?.vTerco,
+        valor_abono_pecuniario: results?.vAbono,
+        valor_terco_abono: results?.vTercoAbono,
+        descontos_inss: results?.inss,
+        descontos_irrf: results?.irrf,
+        valor_liquido: results?.liquid
       }
       if (editingId) {
         await update(editingId, vData as Omit<Vacation, 'id'>)
