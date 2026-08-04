@@ -182,19 +182,9 @@ export default function Ferias() {
     const vTercoAbono = vAbono / 3
 
     // INSS informado manualmente no lancamento.
-    const baseInss = vFerias + vTerco
     const inss = Math.max(0, descontoInss || 0)
 
-    // IRRF Table 2024
-    const baseIrrf = baseInss - inss
-    let irrf = 0
-    if (baseIrrf <= 2259.20) irrf = 0
-    else if (baseIrrf <= 2826.65) irrf = (baseIrrf * 0.075) - 169.44
-    else if (baseIrrf <= 3751.05) irrf = (baseIrrf * 0.15) - 381.44
-    else if (baseIrrf <= 4664.68) irrf = (baseIrrf * 0.225) - 662.77
-    else irrf = (baseIrrf * 0.275) - 896.00
-
-    const liquid = vFerias + vTerco + vAbono + vTercoAbono - inss - (irrf > 0 ? irrf : 0)
+    const liquid = vFerias + vTerco + vAbono + vTercoAbono - inss
 
     return {
       vFerias,
@@ -202,10 +192,9 @@ export default function Ferias() {
       vAbono,
       vTercoAbono,
       inss,
-      irrf: irrf > 0 ? irrf : 0,
       liquid,
       totalProventos: vFerias + vTerco + vAbono + vTercoAbono,
-      totalDescontos: inss + (irrf > 0 ? irrf : 0)
+      totalDescontos: inss
     }
   }, [form])
 
@@ -287,7 +276,7 @@ export default function Ferias() {
         valor_abono_pecuniario: results?.vAbono,
         valor_terco_abono: results?.vTercoAbono,
         descontos_inss: results?.inss,
-        descontos_irrf: results?.irrf,
+        descontos_irrf: 0,
         valor_liquido: results?.liquid
       }
       if (editingId) {
@@ -349,7 +338,6 @@ export default function Ferias() {
           ${v.valorAbonoPecuniario ? `<tr><td>Abono Pecuniário (${v.diasAbono} dias)</td><td class="text-right">${formatCurrency(v.valorAbonoPecuniario)}</td><td></td></tr>` : ''}
           ${v.valorTercoAbono ? `<tr><td>1/3 sobre Abono</td><td class="text-right">${formatCurrency(v.valorTercoAbono)}</td><td></td></tr>` : ''}
           ${v.descontosInss ? `<tr><td>INSS sobre Férias</td><td></td><td class="text-right">${formatCurrency(v.descontosInss)}</td></tr>` : ''}
-          ${v.descontosIrrf ? `<tr><td>IRRF sobre Férias</td><td></td><td class="text-right">${formatCurrency(v.descontosIrrf)}</td></tr>` : ''}
         </tbody>
         <tfoot>
           <tr style="font-weight:700;">
@@ -638,7 +626,7 @@ export default function Ferias() {
                     </>
                   )}
 
-                  {(results.inss > 0 || results.irrf > 0) && (
+                  {results.inss > 0 && (
                     <Separator className="bg-primary/10" />
                   )}
                   
@@ -648,13 +636,6 @@ export default function Ferias() {
                       <span>-{formatCurrency(results.inss)}</span>
                     </div>
                   )}
-                  {results.irrf > 0 && (
-                    <div className="flex justify-between items-center text-sm text-destructive">
-                      <span>IRRF:</span>
-                      <span>-{formatCurrency(results.irrf)}</span>
-                    </div>
-                  )}
-
                   <div className="mt-auto pt-6 border-t-2 border-primary/20">
                     <div className="bg-white p-4 rounded-lg shadow-sm border border-primary/10">
                       <div className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Valor Líquido a Receber</div>
