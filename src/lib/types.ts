@@ -221,6 +221,7 @@ export interface Bill {
   bank_transaction_id?: string
   destination_bank_account_id?: string
   payroll_id?: string
+  vacation_id?: string
 }
 
 export interface Income {

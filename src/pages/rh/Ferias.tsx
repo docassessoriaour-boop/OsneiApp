@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useDb } from '@/hooks/useDb'
 import { formatDate, formatCurrency } from '@/lib/utils'
-import type { Employee, Vacation } from '@/lib/types'
+import type { Bill, Employee, TransactionCategory, Vacation } from '@/lib/types'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { SearchBar } from '@/components/shared/SearchBar'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -13,7 +13,7 @@ import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFo
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select } from '@/components/ui/select'
-import { Pencil, Trash2, Calculator, Info, CheckCircle2, Printer, Loader2 } from 'lucide-react'
+import { Pencil, Trash2, Calculator, Info, CheckCircle2, Printer, Loader2, FileText } from 'lucide-react'
 import { Separator } from '@/components/ui/separator'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
@@ -71,6 +71,8 @@ export default function Ferias() {
   const [clinic] = useClinic()
   const { data: employees } = useDb<Employee>('employees')
   const { data: rawVacations, loading, insert, update, remove } = useDb<Vacation>('vacations')
+  const { data: bills, insert: insertBill, update: updateBill } = useDb<Bill>('bills')
+  const { data: categories } = useDb<TransactionCategory>('transaction_categories')
   const vacations = rawVacations.map((v: VacationDb) => ({
     ...v,
     funcionarioId: v.funcionarioId || v.funcionario_id || '',
@@ -90,8 +92,11 @@ export default function Ferias() {
   })) as Vacation[]
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [payableDialogOpen, setPayableDialogOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [payableSaving, setPayableSaving] = useState(false)
+  const [selectedVacation, setSelectedVacation] = useState<Vacation | null>(null)
   const [form, setForm] = useState({
     funcionarioId: '',
     dataInicio: '',
@@ -103,10 +108,31 @@ export default function Ferias() {
     venderFerias: false,
     descontoInss: 0,
   })
+  const [payableForm, setPayableForm] = useState({
+    vencimento: new Date().toISOString().slice(0, 10),
+    status: 'pendente' as Extract<Bill['status'], 'pendente' | 'pago'>,
+    paymentDate: '',
+    valor: 0,
+  })
 
   const filtered = vacations.filter(v =>
     (v.funcionarioNome || '').toLowerCase().includes(search.toLowerCase())
   )
+
+  function getVacationBillDescription(vacation: Vacation) {
+    return `Férias - ${vacation.funcionarioNome} - ${formatDate(vacation.dataInicio)} a ${formatDate(vacation.dataFim)}`
+  }
+
+  function getVacationBill(vacation: Vacation) {
+    const description = getVacationBillDescription(vacation)
+    return bills.find(b => (b as any).vacation_id === vacation.id || b.descricao === description)
+  }
+
+  function getVacationExpenseCategory() {
+    return categories.find(c => c.tipo === 'despesa' && c.nome.toLowerCase().includes('férias'))
+      || categories.find(c => c.tipo === 'despesa' && c.nome.toLowerCase().includes('ferias'))
+      || categories.find(c => c.tipo === 'despesa' && c.nome.toLowerCase().includes('folha'))
+  }
 
   const vacationOverview = useMemo(() => {
     const today = new Date()
@@ -304,6 +330,58 @@ export default function Ferias() {
     }
   }
 
+  function openPayable(v: Vacation) {
+    const existingBill = getVacationBill(v)
+    setSelectedVacation(v)
+    setPayableForm({
+      vencimento: existingBill?.vencimento
+        ? new Date(existingBill.vencimento).toISOString().slice(0, 10)
+        : v.dataInicio || new Date().toISOString().slice(0, 10),
+      status: existingBill?.status === 'pago' ? 'pago' : 'pendente',
+      paymentDate: existingBill?.payment_date || '',
+      valor: Number(existingBill?.valor ?? v.valorLiquido ?? 0),
+    })
+    setPayableDialogOpen(true)
+  }
+
+  async function handleSavePayable() {
+    if (!selectedVacation) return
+    if (!payableForm.vencimento || payableForm.valor <= 0) {
+      alert('Informe a data de vencimento e um valor maior que zero.')
+      return
+    }
+
+    setPayableSaving(true)
+    try {
+      const category = getVacationExpenseCategory()
+      const existingBill = getVacationBill(selectedVacation)
+      const payload = {
+        descricao: getVacationBillDescription(selectedVacation),
+        categoria: category?.nome || 'Férias',
+        category_id: category?.id || null,
+        valor: Number(Number(payableForm.valor).toFixed(2)),
+        vencimento: payableForm.vencimento,
+        status: payableForm.status,
+        payment_date: payableForm.status === 'pago' ? (payableForm.paymentDate || payableForm.vencimento) : null,
+        vacation_id: selectedVacation.id,
+      }
+
+      if (existingBill) {
+        await updateBill(existingBill.id, { ...existingBill, ...payload } as any)
+      } else {
+        await insertBill(payload as any)
+      }
+
+      setPayableDialogOpen(false)
+      alert(existingBill ? 'Lançamento atualizado no Contas a Pagar!' : 'Férias lançadas no Contas a Pagar!')
+    } catch (error: any) {
+      console.error(error)
+      alert(`Erro ao lançar no Contas a Pagar: ${error.message || 'Erro desconhecido'}`)
+    } finally {
+      setPayableSaving(false)
+    }
+  }
+
   function openEdit(v: Vacation) {
     setForm({ 
       funcionarioId: v.funcionarioId, 
@@ -489,6 +567,14 @@ export default function Ferias() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" onClick={() => printVacationReceipt(v)} title="Imprimir Recibo"><Printer className="h-4 w-4" /></Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openPayable(v)}
+                          title={getVacationBill(v) ? 'Editar no Contas a Pagar' : 'Lançar no Contas a Pagar'}
+                        >
+                          <FileText className="h-4 w-4" />
+                        </Button>
                         <Button variant="ghost" size="icon" onClick={() => openEdit(v)} title="Editar"><Pencil className="h-4 w-4" /></Button>
                         <Button variant="ghost" size="icon" onClick={() => handleDelete(v.id)} title="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                       </div>
@@ -500,6 +586,92 @@ export default function Ferias() {
           </Table>
         </div>
       </Card>
+
+      <Dialog open={payableDialogOpen} onOpenChange={setPayableDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              {selectedVacation && getVacationBill(selectedVacation) ? 'Editar Contas a Pagar' : 'Lançar em Contas a Pagar'}
+            </DialogTitle>
+            <DialogClose onClose={() => setPayableDialogOpen(false)} />
+          </DialogHeader>
+
+          {selectedVacation && (
+            <div className="grid gap-4">
+              <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+                <p><strong>Funcionário:</strong> {selectedVacation.funcionarioNome}</p>
+                <p><strong>Período:</strong> {formatDate(selectedVacation.dataInicio)} até {formatDate(selectedVacation.dataFim)}</p>
+                <p><strong>Valor líquido:</strong> {formatCurrency(selectedVacation.valorLiquido || 0)}</p>
+              </div>
+
+              <div>
+                <Label>Valor do lançamento (R$)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={payableForm.valor}
+                  onChange={(e) => setPayableForm({ ...payableForm, valor: Number(e.target.value) })}
+                  className="mt-1"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Data de vencimento</Label>
+                  <Input
+                    type="date"
+                    value={payableForm.vencimento}
+                    onChange={(e) => setPayableForm({ ...payableForm, vencimento: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+                <div>
+                  <Label>Status</Label>
+                  <Select
+                    value={payableForm.status}
+                    onChange={(e) => {
+                      const status = e.target.value as typeof payableForm.status
+                      setPayableForm({
+                        ...payableForm,
+                        status,
+                        paymentDate: status === 'pago' && !payableForm.paymentDate
+                          ? new Date().toISOString().slice(0, 10)
+                          : payableForm.paymentDate,
+                      })
+                    }}
+                    className="mt-1"
+                  >
+                    <option value="pendente">Pendente</option>
+                    <option value="pago">Pago</option>
+                  </Select>
+                </div>
+              </div>
+
+              {payableForm.status === 'pago' && (
+                <div>
+                  <Label>Data do pagamento</Label>
+                  <Input
+                    type="date"
+                    value={payableForm.paymentDate}
+                    onChange={(e) => setPayableForm({ ...payableForm, paymentDate: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPayableDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSavePayable} disabled={payableSaving}>
+              {payableSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+              {payableSaving ? 'Salvando...' : 'Salvar Lançamento'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
