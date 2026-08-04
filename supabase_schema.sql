@@ -140,6 +140,16 @@ CREATE TABLE IF NOT EXISTS vacations (
   data_inicio DATE,
   data_fim DATE,
   status TEXT DEFAULT 'agendada',
+  salario_base NUMERIC,
+  dias_ferias INTEGER,
+  dias_abono INTEGER DEFAULT 0,
+  valor_ferias NUMERIC,
+  valor_terco_constitucional NUMERIC,
+  valor_abono_pecuniario NUMERIC,
+  valor_terco_abono NUMERIC,
+  descontos_inss NUMERIC DEFAULT 0,
+  descontos_irrf NUMERIC DEFAULT 0,
+  valor_liquido NUMERIC,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

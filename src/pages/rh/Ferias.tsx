@@ -101,6 +101,7 @@ export default function Ferias() {
     diasFerias: 30,
     diasAbono: 0,
     venderFerias: false,
+    descontoInss: 0,
   })
 
   const filtered = vacations.filter(v =>
@@ -169,7 +170,7 @@ export default function Ferias() {
 
   // Calculate vacation values
   const results = useMemo(() => {
-    const { salarioBase, diasFerias, diasAbono, venderFerias } = form
+    const { salarioBase, diasFerias, diasAbono, venderFerias, descontoInss } = form
     if (!salarioBase) return null
 
     const vFerias = (salarioBase / 30) * diasFerias
@@ -180,9 +181,9 @@ export default function Ferias() {
     const vAbono = (salarioBase / 30) * abonoDays
     const vTercoAbono = vAbono / 3
 
-    // INSS (Removido a pedido)
+    // INSS informado manualmente no lancamento.
     const baseInss = vFerias + vTerco
-    const inss = 0
+    const inss = Math.max(0, descontoInss || 0)
 
     // IRRF Table 2024
     const baseIrrf = baseInss - inss
@@ -241,6 +242,7 @@ export default function Ferias() {
       diasFerias: 30,
       diasAbono: 10,
       venderFerias: false,
+      descontoInss: 0,
     })
     setEditingId(null)
     setDialogOpen(true)
@@ -256,6 +258,7 @@ export default function Ferias() {
       diasFerias: 30,
       diasAbono: 10,
       venderFerias: false,
+      descontoInss: 0,
     })
     setEditingId(null)
     setDialogOpen(true)
@@ -322,6 +325,7 @@ export default function Ferias() {
       diasFerias: v.diasFerias || 30,
       diasAbono: v.diasAbono || 0,
       venderFerias: (v.diasAbono || 0) > 0,
+      descontoInss: v.descontosInss || 0,
     })
     setEditingId(v.id)
     setDialogOpen(true)
@@ -553,6 +557,18 @@ export default function Ferias() {
                   <Label>Data Fim</Label>
                   <Input type="date" value={form.dataFim} onChange={(e) => setForm({ ...form, dataFim: e.target.value })} className="mt-1" />
                 </div>
+              </div>
+
+              <div>
+                <Label>Desconto INSS (R$)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.descontoInss}
+                  onChange={(e) => setForm({ ...form, descontoInss: Number(e.target.value) })}
+                  className="mt-1"
+                />
               </div>
 
               <div className="p-4 bg-muted/50 rounded-lg space-y-4 border border-dashed border-primary/20">
