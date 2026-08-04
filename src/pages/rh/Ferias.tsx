@@ -67,6 +67,16 @@ function vacationDays(vacation: Vacation) {
   return Math.max(0, diffDays(start, end) + 1)
 }
 
+function toMoneyInput(value: number) {
+  return Number(value || 0).toFixed(2).replace('.', ',')
+}
+
+function parseMoneyInput(value: string) {
+  const normalized = value.replace(/\./g, '').replace(',', '.')
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
 export default function Ferias() {
   const [clinic] = useClinic()
   const { data: employees } = useDb<Employee>('employees')
@@ -112,7 +122,7 @@ export default function Ferias() {
     vencimento: new Date().toISOString().slice(0, 10),
     status: 'pendente' as Extract<Bill['status'], 'pendente' | 'pago'>,
     paymentDate: '',
-    valor: 0,
+    valor: '0,00',
   })
 
   const filtered = vacations.filter(v =>
@@ -339,14 +349,15 @@ export default function Ferias() {
         : v.dataInicio || new Date().toISOString().slice(0, 10),
       status: existingBill?.status === 'pago' ? 'pago' : 'pendente',
       paymentDate: existingBill?.payment_date || '',
-      valor: Number(existingBill?.valor ?? v.valorLiquido ?? 0),
+      valor: toMoneyInput(Number(existingBill?.valor ?? v.valorLiquido ?? 0)),
     })
     setPayableDialogOpen(true)
   }
 
   async function handleSavePayable() {
     if (!selectedVacation) return
-    if (!payableForm.vencimento || payableForm.valor <= 0) {
+    const payableValue = parseMoneyInput(payableForm.valor)
+    if (!payableForm.vencimento || payableValue <= 0) {
       alert('Informe a data de vencimento e um valor maior que zero.')
       return
     }
@@ -359,7 +370,7 @@ export default function Ferias() {
         descricao: getVacationBillDescription(selectedVacation),
         categoria: category?.nome || 'Férias',
         category_id: category?.id || null,
-        valor: Number(Number(payableForm.valor).toFixed(2)),
+        valor: Number(payableValue.toFixed(2)),
         vencimento: payableForm.vencimento,
         status: payableForm.status,
         payment_date: payableForm.status === 'pago' ? (payableForm.paymentDate || payableForm.vencimento) : null,
@@ -608,12 +619,13 @@ export default function Ferias() {
               <div>
                 <Label>Valor do lançamento (R$)</Label>
                 <Input
-                  type="number"
-                  min={0}
-                  step="0.01"
+                  type="text"
+                  inputMode="decimal"
                   value={payableForm.valor}
-                  onChange={(e) => setPayableForm({ ...payableForm, valor: Number(e.target.value) })}
+                  onChange={(e) => setPayableForm({ ...payableForm, valor: e.target.value })}
+                  onBlur={() => setPayableForm({ ...payableForm, valor: toMoneyInput(parseMoneyInput(payableForm.valor)) })}
                   className="mt-1"
+                  placeholder="0,00"
                 />
               </div>
 
