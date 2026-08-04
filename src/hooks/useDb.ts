@@ -7,6 +7,21 @@ function applyCompanyScope(query: any, profile: ReturnType<typeof useAuth>['prof
   return query.eq('company_id', profile.company_id)
 }
 
+function getMissingColumn(error: any) {
+  const message = String(error?.message || '')
+  return message.match(/Could not find the '([^']+)' column/)?.[1] || null
+}
+
+function omitColumn<TPayload>(payload: TPayload, column: string): TPayload {
+  if (Array.isArray(payload)) {
+    return payload.map(item => omitColumn(item, column)) as TPayload
+  }
+  if (!payload || typeof payload !== 'object') return payload
+
+  const { [column]: _removed, ...rest } = payload as Record<string, unknown>
+  return rest as TPayload
+}
+
 export function useDb<T>(table: string) {
   const { profile } = useAuth()
   const [data, setData] = useState<T[]>([])
@@ -120,32 +135,61 @@ export function useDb<T>(table: string) {
         ? { ...(item as any), company_id: profile.company_id }
         : item
 
-    const { data: result, error } = await supabase
-      .from(table)
-      .insert(payload as any)
-      .select()
-    if (error) throw error
+    let cleanedPayload = payload
+    let result: any[] | null = null
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const response = await supabase
+        .from(table)
+        .insert(cleanedPayload as any)
+        .select()
+
+      if (!response.error) {
+        result = response.data
+        break
+      }
+
+      const missingColumn = getMissingColumn(response.error)
+      if (!missingColumn) throw response.error
+
+      cleanedPayload = omitColumn(cleanedPayload, missingColumn)
+    }
+
+    if (!result) throw new Error(`Nao foi possivel salvar em ${table}.`)
     if (result && result.length > 0) {
       setData(prev => [result[0] as T, ...prev])
       return result[0]
     }
     // Caso o RLS não retorne a linha inserida
-    return payload as T
+    return cleanedPayload as T
   }
 
   const update = async (id: string | number, item: Partial<T>) => {
-    let query = supabase
-      .from(table)
-      .update(item as any)
-      .eq('id', id)
+    let cleanedItem = item
 
-    if (profile?.company_id && table !== 'companies') {
-      query = applyCompanyScope(query, profile)
+    for (let attempt = 0; attempt < 5; attempt++) {
+      let query = supabase
+        .from(table)
+        .update(cleanedItem as any)
+        .eq('id', id)
+
+      if (profile?.company_id && table !== 'companies') {
+        query = applyCompanyScope(query, profile)
+      }
+
+      const { error } = await query
+      if (!error) {
+        setData(prev => prev.map(i => ((i as any).id === id ? { ...i, ...cleanedItem } : i)))
+        return
+      }
+
+      const missingColumn = getMissingColumn(error)
+      if (!missingColumn) throw error
+
+      cleanedItem = omitColumn(cleanedItem, missingColumn)
     }
 
-    const { error } = await query
-    if (error) throw error
-    setData(prev => prev.map(i => ((i as any).id === id ? { ...i, ...item } : i)))
+    throw new Error(`Nao foi possivel atualizar ${table}.`)
   }
 
   const remove = async (id: string | number) => {
