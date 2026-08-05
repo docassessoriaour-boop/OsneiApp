@@ -365,9 +365,13 @@ export interface ScheduleException {
   date: string
   is_working: boolean
   is_dobra?: boolean
-  tipo_lancamento?: 'trabalho' | 'plantao_12h' | 'falta'
+  tipo_lancamento?: 'trabalho' | 'plantao_12h' | 'falta' | 'hora_extra'
   start_time?: string
   end_time?: string
+  horas_extras?: number
+  valor_hora_extra?: number
+  valor_hora_extra_total?: number
+  observacoes?: string
 }
 
 export interface ScheduleHistory {

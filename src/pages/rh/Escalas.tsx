@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useDb } from '@/hooks/useDb'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
+import { formatCurrency } from '@/lib/utils'
 import { getCompanyWorkUnit, matchesWorkUnit } from '@/lib/units'
 import type { Employee, ScheduleException, ScheduleHistory } from '@/lib/types'
 import { PageHeader } from '@/components/shared/PageHeader'
@@ -41,11 +42,32 @@ type ScheduleCell = {
   end_time?: string
 }
 
-const optionalScheduleColumns = ['tipo_lancamento', 'is_dobra', 'start_time', 'end_time'] as const
+const optionalScheduleColumns = ['tipo_lancamento', 'is_dobra', 'start_time', 'end_time', 'horas_extras', 'valor_hora_extra', 'valor_hora_extra_total', 'observacoes'] as const
 
 function getMissingOptionalScheduleColumn(error: any) {
   const message = `${error?.message || ''} ${error?.details || ''} ${error?.hint || ''}`
   return optionalScheduleColumns.find(column => message.includes(column))
+}
+
+function timeToMinutes(time?: string | null) {
+  if (!time) return 0
+  const [hours, minutes] = time.slice(0, 5).split(':').map(Number)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 0
+  return hours * 60 + minutes
+}
+
+function calculateHoursBetween(start?: string | null, end?: string | null) {
+  const startMinutes = timeToMinutes(start)
+  let endMinutes = timeToMinutes(end)
+  if (!start || !end) return 0
+  if (endMinutes <= startMinutes) endMinutes += 24 * 60
+  return Number(((endMinutes - startMinutes) / 60).toFixed(2))
+}
+
+function getDefaultOvertimeHourlyValue(employee: Employee) {
+  const salary = employee.salario || 0
+  const baseHourly = employee.salario_tipo === 'diaria' ? salary / 8 : salary / 220
+  return Number((baseHourly * 1.5).toFixed(2))
 }
 
 export default function Escalas() {
@@ -64,7 +86,7 @@ export default function Escalas() {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [timeDialogOpen, setTimeDialogOpen] = useState(false)
   const [selectedCell, setSelectedCell] = useState<{ employee: Employee, day: Date } | null>(null)
-  const [manualTimes, setManualTimes] = useState({ start: '', end: '' })
+  const [manualTimes, setManualTimes] = useState({ start: '', end: '', hourlyValue: 0, notes: '' })
 
   useEffect(() => {
     setUnidadeFilter(companyWorkUnit)
@@ -106,23 +128,9 @@ export default function Escalas() {
     }
   }
 
-  function getSchedule(employee: Employee, day: Date): ScheduleCell {
-    const dateStr = format(day, 'yyyy-MM-dd')
-    
-    // Check for manual override/exception first
-    const exception = exceptions.find(ex => ex.employee_id === employee.id && ex.date === dateStr)
-    if (exception) return { 
-      working: exception.is_working, 
-      dobra: !!exception.is_dobra,
-      tipo_lancamento: exception.tipo_lancamento,
-      start_time: exception.start_time,
-      end_time: exception.end_time
-    }
-
-    // If manual mode is active, everything else is blank
+  function getBaseSchedule(employee: Employee, day: Date): ScheduleCell {
     if (isManualMode) return { working: false, dobra: false }
 
-    // Default logic if no exception
     if (employee.escala === '40h' || employee.escala === 'Mensalista') {
       const dayOfWeek = getDay(day)
       return { working: dayOfWeek >= 1 && dayOfWeek <= 5, dobra: false }
@@ -137,6 +145,31 @@ export default function Escalas() {
     return { working: diff % 2 === 0, dobra: false }
   }
 
+  function getSchedule(employee: Employee, day: Date): ScheduleCell {
+    const dateStr = format(day, 'yyyy-MM-dd')
+    const exception = exceptions.find(ex => ex.employee_id === employee.id && ex.date === dateStr)
+
+    if (exception?.tipo_lancamento === 'hora_extra') {
+      const base = getBaseSchedule(employee, day)
+      return {
+        ...base,
+        tipo_lancamento: 'hora_extra',
+        start_time: exception.start_time,
+        end_time: exception.end_time
+      }
+    }
+
+    if (exception) return {
+      working: exception.is_working,
+      dobra: !!exception.is_dobra,
+      tipo_lancamento: exception.tipo_lancamento,
+      start_time: exception.start_time,
+      end_time: exception.end_time
+    }
+
+    return getBaseSchedule(employee, day)
+  }
+
   async function handleOpenTimeDialog(employee: Employee, day: Date) {
     const dateStr = format(day, 'yyyy-MM-dd')
     const exception = exceptions.find(ex => ex.employee_id === employee.id && ex.date === dateStr)
@@ -144,7 +177,9 @@ export default function Escalas() {
     setSelectedCell({ employee, day })
     setManualTimes({
       start: exception?.start_time || '',
-      end: exception?.end_time || ''
+      end: exception?.end_time || '',
+      hourlyValue: (exception as any)?.valor_hora_extra || getDefaultOvertimeHourlyValue(employee),
+      notes: (exception as any)?.observacoes || ''
     })
     setTimeDialogOpen(true)
   }
@@ -154,24 +189,34 @@ export default function Escalas() {
     const { employee, day } = selectedCell
     const dateStr = format(day, 'yyyy-MM-dd')
     const exception = exceptions.find(ex => ex.employee_id === employee.id && ex.date === dateStr)
+    const horasExtras = calculateHoursBetween(manualTimes.start, manualTimes.end)
+    const valorTotal = Number((horasExtras * (manualTimes.hourlyValue || 0)).toFixed(2))
+
+    if (!manualTimes.start || !manualTimes.end || horasExtras <= 0) {
+      alert('Informe entrada e saída válidas para a hora extra.')
+      return
+    }
 
     try {
+      const payload = {
+        start_time: manualTimes.start || null,
+        end_time: manualTimes.end || null,
+        is_working: getBaseSchedule(employee, day).working,
+        is_dobra: false,
+        tipo_lancamento: 'hora_extra' as ScheduleException['tipo_lancamento'],
+        horas_extras: horasExtras,
+        valor_hora_extra: manualTimes.hourlyValue || 0,
+        valor_hora_extra_total: valorTotal,
+        observacoes: manualTimes.notes || null
+      }
+
       if (exception) {
-        await saveScheduleException(exception, { 
-          start_time: manualTimes.start || null, 
-          end_time: manualTimes.end || null,
-          is_working: true,
-          tipo_lancamento: exception.tipo_lancamento || 'trabalho'
-        })
+        await saveScheduleException(exception, payload)
       } else {
         await saveScheduleException(undefined, {
           employee_id: employee.id,
           date: dateStr,
-          is_working: true,
-          is_dobra: false,
-          tipo_lancamento: 'trabalho',
-          start_time: manualTimes.start || null,
-          end_time: manualTimes.end || null
+          ...payload
         } as Omit<ScheduleException, 'id'>)
       }
       setTimeDialogOpen(false)
@@ -333,9 +378,9 @@ export default function Escalas() {
         const dobra = dayRecord ? dayRecord.dobra : false
         const startTime = dayRecord?.start_time
         const endTime = dayRecord?.end_time
-        const symbol = dayRecord?.tipo_lancamento === 'plantao_12h' || dobra ? 'P12' : dayRecord?.tipo_lancamento === 'falta' ? 'F' : (working ? 'T' : '')
+        const symbol = dayRecord?.tipo_lancamento === 'hora_extra' ? 'HE' : dayRecord?.tipo_lancamento === 'plantao_12h' || dobra ? 'P12' : dayRecord?.tipo_lancamento === 'falta' ? 'F' : (working ? 'T' : '')
         const timeStr = startTime && endTime ? `<div style="font-size: 6px; opacity: 0.7;">${startTime}-${endTime}</div>` : ''
-        return `<td style="text-align: center; border: 1px solid #ddd; font-size: 8px; padding: 1px; background-color: ${working ? (dobra ? 'rgba(245, 158, 11, 0.1)' : 'rgba(56, 189, 248, 0.1)') : 'transparent'}; font-weight: ${working ? 'bold' : 'normal'}; color: ${dobra ? '#b45309' : '#000'}; line-height: 1.05;">${symbol}${timeStr}</td>`
+        return `<td style="text-align: center; border: 1px solid #ddd; font-size: 8px; padding: 1px; background-color: ${dayRecord?.tipo_lancamento === 'hora_extra' ? 'rgba(34, 197, 94, 0.12)' : working ? (dobra ? 'rgba(245, 158, 11, 0.1)' : 'rgba(56, 189, 248, 0.1)') : 'transparent'}; font-weight: ${working || dayRecord?.tipo_lancamento === 'hora_extra' ? 'bold' : 'normal'}; color: ${dayRecord?.tipo_lancamento === 'hora_extra' ? '#15803d' : dobra ? '#b45309' : '#000'}; line-height: 1.05;">${symbol}${timeStr}</td>`
       }).join('')
       
       return `
@@ -396,9 +441,9 @@ export default function Escalas() {
 
       const scheduleCells = days.map(day => {
         const { working, dobra, tipo_lancamento, start_time, end_time } = getSchedule(employee, day) as any
-        const symbol = tipo_lancamento === 'plantao_12h' || dobra ? 'P12' : tipo_lancamento === 'falta' ? 'F' : (working ? 'T' : '')
+        const symbol = tipo_lancamento === 'hora_extra' ? 'HE' : tipo_lancamento === 'plantao_12h' || dobra ? 'P12' : tipo_lancamento === 'falta' ? 'F' : (working ? 'T' : '')
         const timeStr = start_time && end_time ? `<div style="font-size: 5px; opacity: 0.7;">${start_time}-${end_time}</div>` : ''
-        return `<td style="text-align: center; border: 1px solid #ddd; font-size: 8px; padding: 1px; background-color: ${working ? (dobra ? 'rgba(245, 158, 11, 0.1)' : 'rgba(56, 189, 248, 0.1)') : 'transparent'}; font-weight: ${working ? 'bold' : 'normal'}; color: ${dobra ? '#b45309' : '#000'}; line-height: 1.05;">${symbol}${timeStr}</td>`
+        return `<td style="text-align: center; border: 1px solid #ddd; font-size: 8px; padding: 1px; background-color: ${tipo_lancamento === 'hora_extra' ? 'rgba(34, 197, 94, 0.12)' : working ? (dobra ? 'rgba(245, 158, 11, 0.1)' : 'rgba(56, 189, 248, 0.1)') : 'transparent'}; font-weight: ${working || tipo_lancamento === 'hora_extra' ? 'bold' : 'normal'}; color: ${tipo_lancamento === 'hora_extra' ? '#15803d' : dobra ? '#b45309' : '#000'}; line-height: 1.05;">${symbol}${timeStr}</td>`
       }).join('')
       
       return `
@@ -564,9 +609,11 @@ export default function Escalas() {
                               e.preventDefault()
                               handleOpenTimeDialog(employee, day)
                             }}
-                            title={`${tipo_lancamento === 'plantao_12h' ? 'Plantão 12h' : tipo_lancamento === 'falta' ? 'Falta' : (working ? 'Trabalha' : 'Folga')} - Clique esquerdo alternar, Direito p/ Horário`}
+                            title={`${tipo_lancamento === 'hora_extra' ? 'Hora Extra' : tipo_lancamento === 'plantao_12h' ? 'Plantão 12h' : tipo_lancamento === 'falta' ? 'Falta' : (working ? 'Trabalha' : 'Folga')} - Clique esquerdo alternar, Direito p/ Hora Extra`}
                             className={`w-full h-10 flex flex-col items-center justify-center transition-all relative ${
-                              tipo_lancamento === 'plantao_12h' || dobra
+                              tipo_lancamento === 'hora_extra'
+                                ? 'bg-emerald-100 text-emerald-700 font-bold hover:bg-emerald-200'
+                                : tipo_lancamento === 'plantao_12h' || dobra
                                 ? 'bg-amber-100 text-amber-700 font-bold hover:bg-amber-200'
                                 : working
                                   ? 'bg-primary/10 text-primary font-bold hover:bg-primary/20'
@@ -575,8 +622,8 @@ export default function Escalas() {
                                     : 'bg-transparent text-muted-foreground hover:bg-muted'
                             } ${isException ? 'ring-1 ring-inset ring-amber-400' : ''}`}
                           >
-                            <span className="text-xs">{tipo_lancamento === 'plantao_12h' || dobra ? 'P12' : tipo_lancamento === 'falta' ? 'F' : (working ? 'T' : '—')}</span>
-                            {working && start_time && (
+                            <span className="text-xs">{tipo_lancamento === 'hora_extra' ? 'HE' : tipo_lancamento === 'plantao_12h' || dobra ? 'P12' : tipo_lancamento === 'falta' ? 'F' : (working ? 'T' : '—')}</span>
+                            {start_time && (
                               <span className="text-[7px] font-normal leading-none mt-0.5 opacity-70">
                                 {start_time}-{end_time}
                               </span>
@@ -594,16 +641,17 @@ export default function Escalas() {
         <div className="mt-4 flex flex-wrap gap-4 text-xs items-center text-muted-foreground">
           <div className="flex items-center gap-1"><div className="w-3 h-3 bg-primary/10 rounded border border-primary/20 flex items-center justify-center text-[8px] font-bold text-primary">T</div> Trabalha</div>
           <div className="flex items-center gap-1"><div className="w-5 h-3 bg-amber-100 rounded border border-amber-300 flex items-center justify-center text-[8px] font-bold text-amber-700">P12</div> Plantão 12h</div>
+          <div className="flex items-center gap-1"><div className="w-5 h-3 bg-emerald-100 rounded border border-emerald-300 flex items-center justify-center text-[8px] font-bold text-emerald-700">HE</div> Hora extra</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-50 border border-red-200 rounded flex items-center justify-center text-[8px] font-bold text-red-700">F</div> Falta</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 bg-transparent border rounded flex items-center justify-center text-[8px]">—</div> Folga</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 border border-amber-400 rounded"></div> Editado manualmente</div>
-          <div className="ml-auto italic font-medium text-amber-600 animate-pulse">💡 Dica: Clique com o botão direito para definir horários específicos</div>
+          <div className="ml-auto italic font-medium text-amber-600 animate-pulse">Dica: clique com o botão direito para lançar hora extra</div>
         </div>
       </Card>
 
       <Dialog open={timeDialogOpen} onOpenChange={setTimeDialogOpen}>
         <DialogHeader>
-          <DialogTitle>Definir Horário Manual</DialogTitle>
+          <DialogTitle>Lançar Hora Extra</DialogTitle>
           <p className="text-sm text-muted-foreground">
             {selectedCell?.employee.nome} - {selectedCell?.day && format(selectedCell.day, 'dd/MM/yyyy')}
           </p>
@@ -626,11 +674,37 @@ export default function Escalas() {
                 onChange={(e) => setManualTimes({ ...manualTimes, end: e.target.value })} 
               />
             </div>
+            <div className="space-y-2">
+              <Label>Horas Calculadas</Label>
+              <Input value={calculateHoursBetween(manualTimes.start, manualTimes.end)} readOnly />
+            </div>
+            <div className="space-y-2">
+              <Label>Valor por Hora</Label>
+              <Input
+                type="number"
+                min={0}
+                step="0.01"
+                value={manualTimes.hourlyValue}
+                onChange={(e) => setManualTimes({ ...manualTimes, hourlyValue: Number(e.target.value) })}
+              />
+            </div>
+            <div className="col-span-2 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-sm flex items-center justify-between">
+              <span>Total para folha</span>
+              <strong>{formatCurrency(calculateHoursBetween(manualTimes.start, manualTimes.end) * (manualTimes.hourlyValue || 0))}</strong>
+            </div>
+            <div className="col-span-2 space-y-2">
+              <Label>Observações</Label>
+              <Input
+                value={manualTimes.notes}
+                onChange={(e) => setManualTimes({ ...manualTimes, notes: e.target.value })}
+                placeholder="Ex: cobertura de plantão, atraso na saída..."
+              />
+            </div>
           </div>
         </DialogContent>
         <DialogFooter>
           <Button variant="outline" onClick={() => setTimeDialogOpen(false)}>Cancelar</Button>
-          <Button onClick={saveManualTimes}>Salvar Horário</Button>
+          <Button onClick={saveManualTimes}>Salvar Hora Extra</Button>
         </DialogFooter>
       </Dialog>
 

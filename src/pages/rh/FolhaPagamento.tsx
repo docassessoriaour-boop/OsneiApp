@@ -96,6 +96,24 @@ function getPayrollDueDate(month: string) {
   return format(cursor, 'yyyy-MM-dd')
 }
 
+function employeeWorksByDefault(employee: Employee, day: Date) {
+  if (employee.escala === '40h' || employee.escala === 'Mensalista') {
+    const dow = getDay(day)
+    return dow >= 1 && dow <= 5
+  }
+  if (employee.escala === '12x36' && employee.dataAdmissao) {
+    const diff = differenceInCalendarDays(day, parseISO(employee.dataAdmissao))
+    return diff % 2 === 0
+  }
+  return false
+}
+
+function getDefaultOvertimeHourlyValue(employee: Employee) {
+  const salary = employee.salario || 0
+  const baseHourly = employee.salario_tipo === 'diaria' ? salary / 8 : salary / 220
+  return Number((baseHourly * 1.5).toFixed(2))
+}
+
 export default function FolhaPagamento() {
   const { data: rawEmployees } = useDb<Employee>('employees')
   // Normaliza: DB retorna data_admissao (snake_case), código usa dataAdmissao (camelCase)
@@ -193,18 +211,37 @@ export default function FolhaPagamento() {
       const dateStr = format(day, 'yyyy-MM-dd')
       const exception = exceptions.find(ex => ex.employee_id === employee.id && ex.date === dateStr)
 
+      if (exception?.tipo_lancamento === 'hora_extra') {
+        return total + (employeeWorksByDefault(employee, day) ? 1 : 0)
+      }
       if (exception) return total + (exception.is_working ? 1 : 0)
-      if (employee.escala === '40h' || employee.escala === 'Mensalista') {
-        const dow = getDay(day)
-        return total + (dow >= 1 && dow <= 5 ? 1 : 0)
-      }
-      if (employee.escala === '12x36' && employee.dataAdmissao) {
-        const diff = differenceInCalendarDays(day, parseISO(employee.dataAdmissao))
-        return total + (diff % 2 === 0 ? 1 : 0)
-      }
-
-      return total
+      return total + (employeeWorksByDefault(employee, day) ? 1 : 0)
     }, 0)
+  }
+
+  function getOvertimeAdicionais(employee: Employee | undefined, start: string, end: string) {
+    if (!employee || !start || !end) return []
+    const overtimeLaunches = exceptions.filter(ex =>
+      ex.employee_id === employee.id &&
+      ex.tipo_lancamento === 'hora_extra' &&
+      ex.date >= start &&
+      ex.date <= end
+    )
+
+    return overtimeLaunches.map(ex => {
+      const hours = Number((ex as any).horas_extras || 0)
+      const hourlyValue = Number((ex as any).valor_hora_extra || getDefaultOvertimeHourlyValue(employee))
+      const rawTotalValue = (ex as any).valor_hora_extra_total ?? hours * hourlyValue
+      const totalValue = Number(Number(rawTotalValue).toFixed(2))
+      const dateLabel = formatDatePDF(ex.date)
+      const period = ex.start_time && ex.end_time ? ` ${ex.start_time}-${ex.end_time}` : ''
+
+      return {
+        descricao: `Hora Extra ${dateLabel}${period} (${hours}h)`,
+        tipo: 'provento' as const,
+        valor: totalValue,
+      }
+    }).filter(a => a.valor > 0)
   }
 
   function calculateEmployeeSalary(employee: Employee | undefined, multiplier: number, start: string, end: string, tipoPeriodo: typeof form.tipo_periodo) {
@@ -318,9 +355,13 @@ export default function FolhaPagamento() {
           let is_dobra = false
 
           if (exception) {
-            works = exception.is_working
-            is_dobra = !!exception.is_dobra || exception.tipo_lancamento === 'plantao_12h'
-            if (exception.tipo_lancamento === 'falta') faltasCount++
+            if (exception.tipo_lancamento === 'hora_extra') {
+              works = employeeWorksByDefault(emp, day)
+            } else {
+              works = exception.is_working
+              is_dobra = !!exception.is_dobra || exception.tipo_lancamento === 'plantao_12h'
+              if (exception.tipo_lancamento === 'falta') faltasCount++
+            }
           } else if (emp.escala === '40h' || emp.escala === 'Mensalista') {
             const dow = getDay(day)
             works = dow >= 1 && dow <= 5
@@ -341,7 +382,7 @@ export default function FolhaPagamento() {
             : Number(((emp.salario || 0) * multiplier).toFixed(2))
           const fixedDiscounts = emp.descontos_fixos || 0
 
-          const payloadAdicionais: PayrollAdicional[] = []
+          const payloadAdicionais: PayrollAdicional[] = getOvertimeAdicionais(emp, format(monthStart, 'yyyy-MM-dd'), format(monthEnd, 'yyyy-MM-dd'))
           if (plantao12hCount > 0) {
              payloadAdicionais.push({
                 descricao: `Plantão 12h (${plantao12hCount}x)`,
@@ -387,7 +428,7 @@ export default function FolhaPagamento() {
             status: 'pendente',
             periodo_inicio: format(monthStart, 'yyyy-MM-dd'),
             periodo_fim: format(monthEnd, 'yyyy-MM-dd'),
-            observacoes: emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${emp.salario_tipo === 'diaria' ? ', salário calculado por diária' : ''}${emp.vt_tipo === 'diaria' ? ', VT por dia trabalhado' : ''}${plantao12hCount > 0 ? `, incluindo ${plantao12hCount} plantão(ões) 12h` : ''}${faltasCount > 0 ? `, descontando ${faltasCount} falta(s)` : ''}.`,
+            observacoes: emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${emp.salario_tipo === 'diaria' ? ', salário calculado por diária' : ''}${emp.vt_tipo === 'diaria' ? ', VT por dia trabalhado' : ''}${plantao12hCount > 0 ? `, incluindo ${plantao12hCount} plantão(ões) 12h` : ''}${payloadAdicionais.some(a => a.descricao.startsWith('Hora Extra')) ? ', com hora(s) extra(s)' : ''}${faltasCount > 0 ? `, descontando ${faltasCount} falta(s)` : ''}.`,
             adicionais: payloadAdicionais
           } as any)
 
@@ -432,6 +473,7 @@ export default function FolhaPagamento() {
     
     const initialAdicionais: PayrollAdicional[] = []
     if (firstEmp) {
+      initialAdicionais.push(...getOvertimeAdicionais(firstEmp, start, end))
       if (shouldAutoIncludeVt(firstEmp)) {
         initialAdicionais.push({
           descricao: 'Vale Transporte',
@@ -646,7 +688,10 @@ export default function FolhaPagamento() {
       }
 
       setAdicionais(prevAdics => {
-        let updated = prevAdics.map(a => {
+        const overtimeAdicionais = val === '13_salario' ? [] : getOvertimeAdicionais(emp, start, end)
+        let updated = prevAdics
+          .filter(a => !a.descricao.startsWith('Hora Extra '))
+          .map(a => {
           if (a.descricao === 'Vale Transporte' && shouldAutoIncludeVt(emp)) {
             return { ...a, valor: calculateVtValue(emp, multiplier, workedDays) }
           }
@@ -658,7 +703,7 @@ export default function FolhaPagamento() {
         if (val === '13_salario' || !shouldAutoIncludeVt(emp)) {
           updated = updated.filter(a => a.descricao !== 'Vale Transporte');
         }
-        return updated;
+        return [...overtimeAdicionais, ...updated];
       })
 
       return { ...prev, tipo_periodo: val, periodoInicio: start, periodoFim: end, mesReferencia: month, salarioBruto: novoSalario }
@@ -1067,7 +1112,7 @@ export default function FolhaPagamento() {
                   const salarioBruto = calculateEmployeeSalary(emp, multiplier, form.periodoInicio, form.periodoFim, form.tipo_periodo)
                   setForm({ ...form, funcionarioId: e.target.value, salarioBruto, descontos: emp?.descontos_fixos || 0 })
                   
-                  const newAdicionais: PayrollAdicional[] = []
+                  const newAdicionais: PayrollAdicional[] = getOvertimeAdicionais(emp, form.periodoInicio, form.periodoFim)
                   if (shouldAutoIncludeVt(emp) && form.tipo_periodo !== '13_salario') {
                     newAdicionais.push({
                       descricao: 'Vale Transporte',
