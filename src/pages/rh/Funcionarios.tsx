@@ -143,6 +143,14 @@ function blankIfEmpty(value?: string) {
 
 type EmployeeDb = Employee & { data_admissao?: string }
 
+function normalizeEmployee(raw: EmployeeDb | any): Employee {
+  return {
+    ...raw,
+    dataAdmissao: raw.dataAdmissao || raw.data_admissao || '',
+    valor_hora_extra: Number(raw.valor_hora_extra ?? raw.valorHoraExtra ?? raw.valor_hora_extra_cadastrado ?? 0),
+  } as Employee
+}
+
 type ClinicWithRhFields = Partial<CompanySettings> & {
   cnpj_digits?: string
   endereco?: string
@@ -492,10 +500,7 @@ export default function Funcionarios() {
   const clinicConfig = clinic as ClinicWithRhFields | null
 
   // Normaliza: DB retorna data_admissao (snake_case), código usa dataAdmissao (camelCase)
-  const employees = rawEmployees.map((e: EmployeeDb) => ({
-    ...e,
-    dataAdmissao: e.dataAdmissao || e.data_admissao || ''
-  })) as Employee[]
+  const employees = rawEmployees.map(normalizeEmployee)
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'inativo' | 'ferias' | 'contrato_cancelado'>('ativo')

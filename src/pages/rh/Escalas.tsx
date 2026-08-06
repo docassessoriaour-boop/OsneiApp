@@ -130,10 +130,18 @@ function getSalaryTypeLabel(employee: Employee) {
   return 'Mensal'
 }
 
+function normalizeEmployee(raw: any): Employee {
+  return {
+    ...raw,
+    dataAdmissao: raw.dataAdmissao || raw.data_admissao || '',
+    valor_hora_extra: Number(raw.valor_hora_extra ?? raw.valorHoraExtra ?? raw.valor_hora_extra_cadastrado ?? 0),
+  } as Employee
+}
+
 export default function Escalas() {
   const { data: rawEmployees, loading: loadingEmployees } = useDb<Employee>('employees')
   // Normaliza: DB retorna data_admissao (snake_case), código usa dataAdmissao (camelCase)
-  const employees = rawEmployees.map((e: any) => ({ ...e, dataAdmissao: e.dataAdmissao || e.data_admissao || '' })) as Employee[]
+  const employees = rawEmployees.map(normalizeEmployee)
   const { data: exceptions, insert, update, remove, loading: loadingExceptions } = useDb<ScheduleException>('schedule_exceptions')
   const { data: histories, insert: insertHistory, remove: removeHistory, loading: loadingHistories } = useDb<ScheduleHistory>('schedule_histories')
   

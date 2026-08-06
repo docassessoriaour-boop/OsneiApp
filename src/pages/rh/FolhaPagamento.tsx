@@ -190,10 +190,18 @@ function getPlantaoPackageSalary(employee: Employee | undefined) {
   return Number(((employee.valor_plantao_12h || 0) * count).toFixed(2))
 }
 
+function normalizeEmployee(raw: any): Employee {
+  return {
+    ...raw,
+    dataAdmissao: raw.dataAdmissao || raw.data_admissao || '',
+    valor_hora_extra: Number(raw.valor_hora_extra ?? raw.valorHoraExtra ?? raw.valor_hora_extra_cadastrado ?? 0),
+  } as Employee
+}
+
 export default function FolhaPagamento() {
   const { data: rawEmployees } = useDb<Employee>('employees')
   // Normaliza: DB retorna data_admissao (snake_case), código usa dataAdmissao (camelCase)
-  const employees = [...rawEmployees].map((e: any) => ({ ...e, dataAdmissao: e.dataAdmissao || e.data_admissao || '' })) as Employee[]
+  const employees = [...rawEmployees].map(normalizeEmployee)
   employees.sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
   const { data: rawPayrolls, loading, insert, update, remove } = useDb<Payroll>('payrolls')
   
