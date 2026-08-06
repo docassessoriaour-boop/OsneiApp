@@ -217,7 +217,7 @@ export default function FolhaPagamento() {
     periodoFim: p.periodoFim || p.periodo_fim,
   })) as Payroll[]
   const { data: exceptions } = useDb<ScheduleException>('schedule_exceptions')
-  const { data: bills, insert: insertBill, update: updateBill } = useDb<Bill>('bills')
+  const { data: bills, insert: insertBill, update: updateBill, remove: removeBill } = useDb<Bill>('bills')
   const { data: bankAccounts } = useDb<BankAccount>('bank_accounts')
   const { data: categories } = useDb<TransactionCategory>('transaction_categories')
   const { insert: insertBankTx } = useDb<any>('bank_transactions')
@@ -396,10 +396,9 @@ export default function FolhaPagamento() {
       || categories.find(c => c.tipo === 'despesa' && c.nome.toLowerCase().includes('folha'))
   }
 
-  async function createPayrollBill(payroll: Payroll | any, dueDate?: string) {
-    if (bills.some(b => (b as any).payroll_id === payroll.id)) return
+  function buildPayrollBillPayload(payroll: Payroll | any, dueDate?: string) {
     const category = getPayrollCategory()
-    await insertBill({
+    return {
       descricao: `Folha de Pagamento - ${payroll.funcionarioNome || payroll.funcionario_nome} - ${payroll.mesReferencia || payroll.mes_referencia}`,
       valor: payroll.salarioLiquido ?? payroll.salario_liquido ?? 0,
       vencimento: dueDate || getPayrollDueDate(payroll.mesReferencia || payroll.mes_referencia),
@@ -407,6 +406,27 @@ export default function FolhaPagamento() {
       categoria: category?.nome || 'Folha de Pagamento',
       category_id: category?.id || null,
       payroll_id: payroll.id
+    }
+  }
+
+  async function createPayrollBill(payroll: Payroll | any, dueDate?: string) {
+    if (bills.some(b => (b as any).payroll_id === payroll.id)) return
+    await insertBill(buildPayrollBillPayload(payroll, dueDate) as any)
+  }
+
+  async function syncPayrollBill(payrollId: string, payroll: Payroll | any, dueDate?: string) {
+    const linkedBill = bills.find(b => (b as any).payroll_id === payrollId)
+    if (!linkedBill || linkedBill.status === 'pago') return
+
+    const payload = buildPayrollBillPayload({ ...payroll, id: payrollId }, dueDate)
+    await updateBill(linkedBill.id, {
+      ...linkedBill,
+      descricao: payload.descricao,
+      valor: payload.valor,
+      vencimento: payload.vencimento,
+      categoria: payload.categoria,
+      category_id: payload.category_id,
+      payroll_id: payrollId,
     } as any)
   }
 
@@ -438,6 +458,7 @@ export default function FolhaPagamento() {
     try {
       if (editingId) {
         await update(editingId, payrollData as any)
+        await syncPayrollBill(editingId, payrollData, getPayrollDueDate(form.mesReferencia))
       } else {
         const result = await insert(payrollData as any)
         
@@ -775,6 +796,28 @@ export default function FolhaPagamento() {
       alert('Erro ao lançar VT semanal.')
     } finally {
       setWeeklyVtSaving(false)
+    }
+  }
+
+  async function handleDelete(payroll: Payroll) {
+    const linkedBill = bills.find(b => (b as any).payroll_id === payroll.id)
+
+    if (linkedBill?.status === 'pago') {
+      alert('Esta folha possui uma Conta a Pagar já paga. Para excluir, primeiro estorne/remova o pagamento em Contas a Pagar.')
+      return
+    }
+
+    const message = linkedBill
+      ? `Excluir a folha de ${payroll.funcionarioNome}? A Conta a Pagar vinculada também será excluída.`
+      : `Excluir a folha de ${payroll.funcionarioNome}?`
+
+    if (!confirm(message)) return
+
+    try {
+      if (linkedBill) await removeBill(linkedBill.id)
+      await remove(payroll.id)
+    } catch {
+      alert('Erro ao excluir folha')
     }
   }
 
@@ -1199,7 +1242,7 @@ export default function FolhaPagamento() {
                         <Button variant="ghost" size="icon" onClick={() => openEdit(p)}>
                           <Pencil className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => remove(p.id)}>
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(p)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
