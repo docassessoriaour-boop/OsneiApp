@@ -89,6 +89,7 @@ function formatHoursToHHMM(hours: number) {
 
 function getDefaultOvertimeHourlyValue(employee: Employee) {
   if (employee.valor_hora_extra && employee.valor_hora_extra > 0) return Number(employee.valor_hora_extra.toFixed(2))
+  if (employee.salario_tipo === 'plantao_10_10h') return 12
   const salary = employee.salario || 0
   const plantaoCount = employee.salario_tipo === 'plantao_10_10h' || employee.salario_tipo === 'plantao_10_12h' ? 10 : employee.salario_tipo === 'plantao_15_12h' ? 15 : 0
   const plantaoHours = employee.salario_tipo === 'plantao_10_10h' ? 10 : 12
