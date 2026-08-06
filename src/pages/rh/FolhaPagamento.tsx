@@ -115,20 +115,28 @@ function getDefaultOvertimeHourlyValue(employee: Employee) {
   const baseHourly = employee.salario_tipo === 'diaria'
     ? salary / 8
     : employee.salario_tipo?.startsWith('plantao_')
-      ? plantaoPackageSalary / (getPlantaoPackageCount(employee) * 12 || 220)
+      ? plantaoPackageSalary / (getPlantaoPackageCount(employee) * getPlantaoPackageHours(employee) || 220)
       : salary / 220
   return Number((baseHourly * 1.5).toFixed(2))
 }
 
 function getPlantaoPackageCount(employee: Employee | undefined) {
+  if (employee?.salario_tipo === 'plantao_10_10h') return 10
   if (employee?.salario_tipo === 'plantao_10_12h') return 10
   if (employee?.salario_tipo === 'plantao_15_12h') return 15
+  return 0
+}
+
+function getPlantaoPackageHours(employee: Employee | undefined) {
+  if (employee?.salario_tipo === 'plantao_10_10h') return 10
+  if (employee?.salario_tipo === 'plantao_10_12h' || employee?.salario_tipo === 'plantao_15_12h') return 12
   return 0
 }
 
 function getPlantaoPackageSalary(employee: Employee | undefined) {
   const count = getPlantaoPackageCount(employee)
   if (!employee || count <= 0) return 0
+  if (employee.salario_tipo === 'plantao_10_10h') return Number((employee.salario || 0).toFixed(2))
   return Number(((employee.valor_plantao_12h || 0) * count).toFixed(2))
 }
 
@@ -411,7 +419,7 @@ export default function FolhaPagamento() {
           }
           if (faltasCount > 0) {
              const dailyDiscount = isLarSabedoriaCompany && emp.salario_tipo?.startsWith('plantao_')
-               ? emp.valor_plantao_12h || 0
+               ? Number((getPlantaoPackageSalary(emp) / (getPlantaoPackageCount(emp) || 1)).toFixed(2))
                : emp.salario_tipo === 'diaria'
                  ? emp.salario || 0
                  : (emp.salario || 0) / getDaysInMonth(targetMonth)
@@ -438,7 +446,7 @@ export default function FolhaPagamento() {
           const totalProventosGerados = payloadAdicionais.filter(a => a.tipo === 'provento').reduce((s, a) => s + a.valor, 0)
           const totalDescontosGerados = payloadAdicionais.filter(a => a.tipo === 'desconto').reduce((s, a) => s + a.valor, 0)
           const salarioLiquidoGerado = baseSalary + totalProventosGerados - fixedDiscounts - totalDescontosGerados
-          const observacoesGeradas = emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${emp.salario_tipo === 'diaria' ? ', salário calculado por diária' : ''}${isLarSabedoriaCompany && emp.salario_tipo?.startsWith('plantao_') ? `, salário calculado pelo pacote de ${getPlantaoPackageCount(emp)} plantões 12h` : ''}${emp.vt_tipo === 'diaria' ? ', VT por dia trabalhado' : ''}${plantao12hCount > 0 ? `, incluindo ${plantao12hCount} plantão(ões) 12h extra` : ''}${payloadAdicionais.some(a => a.descricao.startsWith('Hora Extra')) ? ', com hora(s) extra(s)' : ''}${faltasCount > 0 ? `, descontando ${faltasCount} falta(s)` : ''}.`
+          const observacoesGeradas = emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${emp.salario_tipo === 'diaria' ? ', salário calculado por diária' : ''}${isLarSabedoriaCompany && emp.salario_tipo?.startsWith('plantao_') ? `, salário calculado pelo pacote de ${getPlantaoPackageCount(emp)} plantões ${getPlantaoPackageHours(emp)}h` : ''}${emp.vt_tipo === 'diaria' ? ', VT por dia trabalhado' : ''}${plantao12hCount > 0 ? `, incluindo ${plantao12hCount} plantão(ões) 12h extra` : ''}${payloadAdicionais.some(a => a.descricao.startsWith('Hora Extra')) ? ', com hora(s) extra(s)' : ''}${faltasCount > 0 ? `, descontando ${faltasCount} falta(s)` : ''}.`
 
           const payrollPayload = {
             funcionario_id: emp.id,

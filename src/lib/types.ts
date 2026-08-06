@@ -20,7 +20,7 @@ export interface Employee {
   tem_vt: boolean
   vt_tipo?: string
   vt_valor: number
-  salario_tipo?: 'mensal' | 'diaria' | 'plantao_10_12h' | 'plantao_15_12h'
+  salario_tipo?: 'mensal' | 'diaria' | 'plantao_10_10h' | 'plantao_10_12h' | 'plantao_15_12h'
   tipo_contrato?: 'autonomo' | 'mei'
   possui_beneficio_governamental?: boolean
   mei_razao_social?: string

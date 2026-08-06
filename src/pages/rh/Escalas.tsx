@@ -83,12 +83,13 @@ function calculateOvertimeHours(employee: Employee, start?: string | null, end?:
 function getDefaultOvertimeHourlyValue(employee: Employee) {
   if (employee.valor_hora_extra && employee.valor_hora_extra > 0) return Number(employee.valor_hora_extra.toFixed(2))
   const salary = employee.salario || 0
-  const plantaoCount = employee.salario_tipo === 'plantao_10_12h' ? 10 : employee.salario_tipo === 'plantao_15_12h' ? 15 : 0
-  const plantaoSalary = (employee.valor_plantao_12h || 0) * plantaoCount
+  const plantaoCount = employee.salario_tipo === 'plantao_10_10h' || employee.salario_tipo === 'plantao_10_12h' ? 10 : employee.salario_tipo === 'plantao_15_12h' ? 15 : 0
+  const plantaoHours = employee.salario_tipo === 'plantao_10_10h' ? 10 : 12
+  const plantaoSalary = employee.salario_tipo === 'plantao_10_10h' ? employee.salario || 0 : (employee.valor_plantao_12h || 0) * plantaoCount
   const baseHourly = employee.salario_tipo === 'diaria'
     ? salary / 8
     : plantaoCount > 0
-      ? plantaoSalary / (plantaoCount * 12)
+      ? plantaoSalary / (plantaoCount * plantaoHours)
       : salary / 220
   return Number((baseHourly * 1.5).toFixed(2))
 }
