@@ -64,6 +64,22 @@ function calculateHoursBetween(start?: string | null, end?: string | null) {
   return Number(((endMinutes - startMinutes) / 60).toFixed(2))
 }
 
+function calculateOvertimeHours(start?: string | null, end?: string | null) {
+  if (!start || !end) return 0
+
+  const workStart = timeToMinutes(start)
+  let workEnd = timeToMinutes(end)
+  const regularStart = timeToMinutes('07:00')
+  const regularEnd = timeToMinutes('17:00')
+
+  if (workEnd <= workStart) workEnd += 24 * 60
+
+  const beforeRegular = Math.max(0, Math.min(workEnd, regularStart) - workStart)
+  const afterRegular = Math.max(0, workEnd - Math.max(workStart, regularEnd))
+
+  return Number(((beforeRegular + afterRegular) / 60).toFixed(2))
+}
+
 function getDefaultOvertimeHourlyValue(employee: Employee) {
   if (employee.valor_hora_extra && employee.valor_hora_extra > 0) return Number(employee.valor_hora_extra.toFixed(2))
   const salary = employee.salario || 0
@@ -198,8 +214,7 @@ export default function Escalas() {
     const dateStr = format(day, 'yyyy-MM-dd')
     const exception = exceptions.find(ex => ex.employee_id === employee.id && ex.date === dateStr)
     const tipoLancamento = manualTimes.type || 'hora_extra'
-    const horasRegistradas = calculateHoursBetween(manualTimes.start, manualTimes.end)
-    const horasExtras = tipoLancamento === 'hora_extra' ? horasRegistradas : 0
+    const horasExtras = tipoLancamento === 'hora_extra' ? calculateOvertimeHours(manualTimes.start, manualTimes.end) : 0
     const valorTotal = Number((horasExtras * (manualTimes.hourlyValue || 0)).toFixed(2))
 
     if (tipoLancamento !== 'falta' && (!manualTimes.start || !manualTimes.end)) {
@@ -702,7 +717,7 @@ export default function Escalas() {
             </div>
             <div className="space-y-2">
               <Label>{manualTimes.type === 'hora_extra' ? 'Horas Extras' : 'Horas Registradas'}</Label>
-              <Input value={calculateHoursBetween(manualTimes.start, manualTimes.end)} readOnly />
+              <Input value={manualTimes.type === 'hora_extra' ? calculateOvertimeHours(manualTimes.start, manualTimes.end) : calculateHoursBetween(manualTimes.start, manualTimes.end)} readOnly />
             </div>
             <div className="space-y-2">
               <Label>Valor por Hora</Label>
@@ -716,7 +731,7 @@ export default function Escalas() {
             </div>
             <div className="col-span-2 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-sm flex items-center justify-between">
               <span>Total para folha</span>
-              <strong>{formatCurrency((manualTimes.type === 'hora_extra' ? calculateHoursBetween(manualTimes.start, manualTimes.end) : 0) * (manualTimes.hourlyValue || 0))}</strong>
+              <strong>{formatCurrency((manualTimes.type === 'hora_extra' ? calculateOvertimeHours(manualTimes.start, manualTimes.end) : 0) * (manualTimes.hourlyValue || 0))}</strong>
             </div>
             <div className="col-span-2 space-y-2">
               <Label>Observações</Label>
