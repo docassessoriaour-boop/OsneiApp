@@ -80,6 +80,13 @@ function calculateOvertimeHours(employee: Employee, start?: string | null, end?:
   return Number(Math.max(0, workedHours - scheduledHours).toFixed(2))
 }
 
+function formatHoursToHHMM(hours: number) {
+  const totalMinutes = Math.round((Number(hours) || 0) * 60)
+  const h = Math.floor(totalMinutes / 60)
+  const m = totalMinutes % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
 function getDefaultOvertimeHourlyValue(employee: Employee) {
   if (employee.valor_hora_extra && employee.valor_hora_extra > 0) return Number(employee.valor_hora_extra.toFixed(2))
   const salary = employee.salario || 0
@@ -725,7 +732,7 @@ export default function Escalas() {
             </div>
             <div className="space-y-2">
               <Label>{dialogShouldCalculateOvertime ? 'Horas Extras' : 'Horas Registradas'}</Label>
-              <Input value={dialogShouldCalculateOvertime ? dialogOvertimeHours : calculateHoursBetween(manualTimes.start, manualTimes.end)} readOnly />
+              <Input value={formatHoursToHHMM(dialogShouldCalculateOvertime ? dialogOvertimeHours : calculateHoursBetween(manualTimes.start, manualTimes.end))} readOnly />
             </div>
             <div className="space-y-2">
               <Label>Valor por Hora</Label>

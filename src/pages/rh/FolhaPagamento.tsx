@@ -141,6 +141,13 @@ function calculateScheduledShiftHours(employee: Employee) {
   return calculateHoursBetween(start, end)
 }
 
+function formatHoursToHHMM(hours: number) {
+  const totalMinutes = Math.round((Number(hours) || 0) * 60)
+  const h = Math.floor(totalMinutes / 60)
+  const m = totalMinutes % 60
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
 function getDefaultOvertimeHourlyValue(employee: Employee) {
   if (employee.valor_hora_extra && employee.valor_hora_extra > 0) return Number(employee.valor_hora_extra.toFixed(2))
   const salary = employee.salario || 0
@@ -311,7 +318,7 @@ export default function FolhaPagamento() {
 
       if (balance > 0) {
         return [{
-          descricao: `Hora Extra por Frequência (${balance}h)`,
+          descricao: `Hora Extra por Frequência (${formatHoursToHHMM(balance)})`,
           tipo: 'provento' as const,
           valor: Number((balance * overtimeHourlyValue).toFixed(2)),
         }]
@@ -319,7 +326,7 @@ export default function FolhaPagamento() {
       if (balance < 0) {
         const owedHours = Math.abs(balance)
         return [{
-          descricao: `Horas Devidas por Frequência (${owedHours}h)`,
+          descricao: `Horas Devidas por Frequência (${formatHoursToHHMM(owedHours)})`,
           tipo: 'desconto' as const,
           valor: Number((owedHours * baseHourlyValue).toFixed(2)),
         }]
@@ -336,7 +343,7 @@ export default function FolhaPagamento() {
 
       if (balance > 0) {
         return [{
-          descricao: `Hora Extra ${dateLabel} ${period} (${balance}h)`,
+          descricao: `Hora Extra ${dateLabel} ${period} (${formatHoursToHHMM(balance)})`,
           tipo: 'provento' as const,
           valor: Number((balance * overtimeHourlyValue).toFixed(2)),
         }]
@@ -344,7 +351,7 @@ export default function FolhaPagamento() {
       if (balance < 0) {
         const owedHours = Math.abs(balance)
         return [{
-          descricao: `Horas Devidas ${dateLabel} ${period} (${owedHours}h)`,
+          descricao: `Horas Devidas ${dateLabel} ${period} (${formatHoursToHHMM(owedHours)})`,
           tipo: 'desconto' as const,
           valor: Number((owedHours * baseHourlyValue).toFixed(2)),
         }]
