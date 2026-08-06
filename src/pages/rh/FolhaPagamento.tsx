@@ -908,12 +908,16 @@ export default function FolhaPagamento() {
       const periodo = p.periodoInicio && p.periodoFim
         ? `${formatDatePDF(p.periodoInicio)} a ${formatDatePDF(p.periodoFim)}`
         : p.mesReferencia
+      const totalHoraExtra = (p.adicionais || [])
+        .filter(a => a.tipo === 'provento' && a.descricao.toLowerCase().includes('hora extra'))
+        .reduce((sum, a) => sum + a.valor, 0)
       return `
         <tr>
           <td>${p.funcionarioNome}</td>
           <td>${p.cargo}</td>
           <td>${periodo}</td>
           <td class="text-right">${formatCurrencyPDF(p.salarioBruto)}</td>
+          <td class="text-right text-green">${formatCurrencyPDF(totalHoraExtra)}</td>
           <td class="text-right text-red">${formatCurrencyPDF(p.descontos)}</td>
           <td class="text-right font-bold">${formatCurrencyPDF(p.salarioLiquido)}</td>
           <td class="text-center">${p.status === 'pago' ? 'Pago' : 'Pendente'}</td>
@@ -922,34 +926,43 @@ export default function FolhaPagamento() {
     }).join('')
 
     const totalBruto = filtered.reduce((acc, p) => acc + p.salarioBruto, 0)
+    const totalHoraExtra = filtered.reduce((acc, p) => acc + ((p.adicionais || [])
+      .filter(a => a.tipo === 'provento' && a.descricao.toLowerCase().includes('hora extra'))
+      .reduce((sum, a) => sum + a.valor, 0)), 0)
     const totalDescontos = filtered.reduce((acc, p) => acc + p.descontos, 0)
     const totalLiquido = filtered.reduce((acc, p) => acc + p.salarioLiquido, 0)
 
     const html = `
-      <table style="font-size: 9pt;">
+      <table style="font-size: 8pt;">
         <thead>
           <tr>
             <th>Funcionário</th>
             <th>Cargo</th>
             <th>Período</th>
             <th class="text-right">Sal. Bruto</th>
+            <th class="text-right">Hora Extra</th>
             <th class="text-right">Descontos</th>
             <th class="text-right">Sal. Líquido</th>
             <th class="text-center">Status</th>
           </tr>
         </thead>
         <tbody>
-          ${rows.length > 0 ? rows : '<tr><td colspan="7" class="text-center">Nenhum registro encontrado</td></tr>'}
+          ${rows.length > 0 ? rows : '<tr><td colspan="8" class="text-center">Nenhum registro encontrado</td></tr>'}
         </tbody>
       </table>
       <div class="divider"></div>
-      <div style="display:flex; justify-content:flex-end; gap: 40px; font-size:12pt; font-weight:700; margin-top: 10px;">
+      <div style="display:flex; justify-content:flex-end; gap: 28px; font-size:11pt; font-weight:700; margin-top: 10px;">
         <span>Bruto: ${formatCurrencyPDF(totalBruto)}</span>
+        <span class="text-green">Hora Extra: ${formatCurrencyPDF(totalHoraExtra)}</span>
         <span class="text-red">Descontos: ${formatCurrencyPDF(totalDescontos)}</span>
         <span class="text-green">Total Líquido: ${formatCurrencyPDF(totalLiquido)}</span>
       </div>
     `
-    printPDF('Relatório de Folha de Pagamento', html, clinic)
+    printPDF('Relatório de Folha de Pagamento', html, clinic, {
+      orientation: 'landscape',
+      compactLayout: true,
+      pageMargin: '0.8cm'
+    })
   }
 
   // Abre dialog de dar baixa — confronta bill existente
