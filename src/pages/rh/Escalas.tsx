@@ -153,7 +153,7 @@ export default function Escalas() {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [timeDialogOpen, setTimeDialogOpen] = useState(false)
   const [selectedCell, setSelectedCell] = useState<{ employee: Employee, day: Date } | null>(null)
-  const [manualTimes, setManualTimes] = useState({ type: 'hora_extra' as ScheduleException['tipo_lancamento'], start: '', end: '', hourlyValue: 0, notes: '' })
+  const [manualTimes, setManualTimes] = useState({ type: 'trabalho' as ScheduleException['tipo_lancamento'], start: '', end: '', hourlyValue: 0, notes: '' })
 
   useEffect(() => {
     setUnidadeFilter(companyWorkUnit)
@@ -247,7 +247,7 @@ export default function Escalas() {
     
     setSelectedCell({ employee, day })
     setManualTimes({
-      type: exception?.tipo_lancamento || 'hora_extra',
+      type: exception?.tipo_lancamento || 'trabalho',
       start: exception?.start_time || '',
       end: exception?.end_time || '',
       hourlyValue: (exception as any)?.valor_hora_extra || getDefaultOvertimeHourlyValue(employee),
@@ -261,7 +261,7 @@ export default function Escalas() {
     const { employee, day } = selectedCell
     const dateStr = format(day, 'yyyy-MM-dd')
     const exception = exceptions.find(ex => ex.employee_id === employee.id && ex.date === dateStr)
-    const tipoLancamento = manualTimes.type || 'hora_extra'
+    const tipoLancamento = manualTimes.type || 'trabalho'
     const shouldCalculateOvertime = tipoLancamento === 'hora_extra' || tipoLancamento === 'trabalho'
     const horasExtras = shouldCalculateOvertime ? calculateOvertimeHours(employee, manualTimes.start, manualTimes.end) : 0
     const valorTotal = Number((horasExtras * (manualTimes.hourlyValue || 0)).toFixed(2))
@@ -870,7 +870,7 @@ export default function Escalas() {
             <div className="col-span-2 space-y-2">
               <Label>Tipo de lançamento</Label>
               <Select
-                value={manualTimes.type || 'hora_extra'}
+                value={manualTimes.type || 'trabalho'}
                 onChange={(e) => setManualTimes({ ...manualTimes, type: e.target.value as ScheduleException['tipo_lancamento'] })}
               >
                 <option value="trabalho">Trabalho / frequência</option>
