@@ -360,9 +360,9 @@ export default function FolhaPagamento() {
       const dueDate = getPayrollDueDate(massMonth)
 
       for (const emp of activeEmployees) {
-        // Verifica se já existe folha para este mês
-        const exists = payrolls.some(p => p.funcionarioId === emp.id && p.mesReferencia === massMonth)
-        if (exists) continue
+        const existingPayroll = payrolls.find(p => p.funcionarioId === emp.id && p.mesReferencia === massMonth)
+        const canRecalculateExisting = existingPayroll?.status === 'pendente' && (existingPayroll.observacoes || '').includes('via escala')
+        if (existingPayroll && !canRecalculateExisting) continue
 
         // Cálculo de dias trabalhados via Escala
         let workedDays = 0
@@ -395,7 +395,7 @@ export default function FolhaPagamento() {
           if (is_dobra) plantao12hCount++
         })
 
-        if (workedDays > 0 || emp.escala === 'Mensalista' || emp.is_pro_labore) {
+        if (workedDays > 0 || emp.escala === 'Mensalista' || emp.is_pro_labore || canRecalculateExisting) {
           let multiplier = 1
 
           const baseSalary = calculateEmployeeSalary(emp, multiplier, format(monthStart, 'yyyy-MM-dd'), format(monthEnd, 'yyyy-MM-dd'), 'mes')
@@ -437,28 +437,49 @@ export default function FolhaPagamento() {
           }
           const totalProventosGerados = payloadAdicionais.filter(a => a.tipo === 'provento').reduce((s, a) => s + a.valor, 0)
           const totalDescontosGerados = payloadAdicionais.filter(a => a.tipo === 'desconto').reduce((s, a) => s + a.valor, 0)
+          const salarioLiquidoGerado = baseSalary + totalProventosGerados - fixedDiscounts - totalDescontosGerados
+          const observacoesGeradas = emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${emp.salario_tipo === 'diaria' ? ', salário calculado por diária' : ''}${isLarSabedoriaCompany && emp.salario_tipo?.startsWith('plantao_') ? `, salário calculado pelo pacote de ${getPlantaoPackageCount(emp)} plantões 12h` : ''}${emp.vt_tipo === 'diaria' ? ', VT por dia trabalhado' : ''}${plantao12hCount > 0 ? `, incluindo ${plantao12hCount} plantão(ões) 12h extra` : ''}${payloadAdicionais.some(a => a.descricao.startsWith('Hora Extra')) ? ', com hora(s) extra(s)' : ''}${faltasCount > 0 ? `, descontando ${faltasCount} falta(s)` : ''}.`
 
-          const payrollResult = await insert({
+          const payrollPayload = {
             funcionario_id: emp.id,
             funcionario_nome: emp.nome,
             cargo: emp.cargo,
             salario_bruto: baseSalary,
             descontos: fixedDiscounts,
-            salario_liquido: baseSalary + totalProventosGerados - fixedDiscounts - totalDescontosGerados,
+            salario_liquido: salarioLiquidoGerado,
             mes_referencia: massMonth,
             status: 'pendente',
             periodo_inicio: format(monthStart, 'yyyy-MM-dd'),
             periodo_fim: format(monthEnd, 'yyyy-MM-dd'),
-            observacoes: emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${emp.salario_tipo === 'diaria' ? ', salário calculado por diária' : ''}${isLarSabedoriaCompany && emp.salario_tipo?.startsWith('plantao_') ? `, salário calculado pelo pacote de ${getPlantaoPackageCount(emp)} plantões 12h` : ''}${emp.vt_tipo === 'diaria' ? ', VT por dia trabalhado' : ''}${plantao12hCount > 0 ? `, incluindo ${plantao12hCount} plantão(ões) 12h extra` : ''}${payloadAdicionais.some(a => a.descricao.startsWith('Hora Extra')) ? ', com hora(s) extra(s)' : ''}${faltasCount > 0 ? `, descontando ${faltasCount} falta(s)` : ''}.`,
+            tipo_periodo: 'mes',
+            observacoes: observacoesGeradas,
             adicionais: payloadAdicionais
-          } as any)
+          } as any
 
-          if (massSendToBills) {
+          const payrollResult = existingPayroll
+            ? { ...existingPayroll, ...payrollPayload, id: existingPayroll.id, funcionarioNome: emp.nome, mesReferencia: massMonth, salarioLiquido: salarioLiquidoGerado }
+            : await insert(payrollPayload)
+
+          if (existingPayroll) {
+            await update(existingPayroll.id, payrollPayload)
+            const linkedBill = bills.find(b => (b as any).payroll_id === existingPayroll.id)
+            if (linkedBill && linkedBill.status !== 'pago') {
+              await updateBill(linkedBill.id, {
+                ...linkedBill,
+                valor: salarioLiquidoGerado,
+                vencimento: dueDate,
+                categoria: getPayrollCategory()?.nome || linkedBill.categoria || 'Folha de Pagamento',
+                category_id: getPayrollCategory()?.id || linkedBill.category_id || null,
+              } as any)
+            }
+          }
+
+          if (massSendToBills && !existingPayroll) {
             await createPayrollBill({
               ...payrollResult,
               funcionarioNome: emp.nome,
               mesReferencia: massMonth,
-              salarioLiquido: baseSalary + totalProventosGerados - fixedDiscounts - totalDescontosGerados,
+              salarioLiquido: salarioLiquidoGerado,
             }, dueDate)
           }
         }
