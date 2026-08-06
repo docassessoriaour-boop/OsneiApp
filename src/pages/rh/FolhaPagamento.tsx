@@ -108,6 +108,39 @@ function employeeWorksByDefault(employee: Employee, day: Date) {
   return false
 }
 
+function normalizeTime(value?: string) {
+  return value ? value.slice(0, 5) : ''
+}
+
+function getDefaultShiftTimes(employee: Employee) {
+  if (employee.turno === 'Noturno') return { start: '19:00', end: '07:00' }
+  if (employee.turno === 'Intermediário') return { start: '', end: '' }
+  if (employee.escala === '40h' || employee.escala === 'Mensalista') return { start: '06:30', end: '14:30' }
+  return { start: '07:00', end: '17:00' }
+}
+
+function timeToMinutes(time?: string | null) {
+  if (!time) return 0
+  const [hours, minutes] = time.slice(0, 5).split(':').map(Number)
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return 0
+  return hours * 60 + minutes
+}
+
+function calculateHoursBetween(start?: string | null, end?: string | null) {
+  const startMinutes = timeToMinutes(start)
+  let endMinutes = timeToMinutes(end)
+  if (!start || !end) return 0
+  if (endMinutes <= startMinutes) endMinutes += 24 * 60
+  return Number(((endMinutes - startMinutes) / 60).toFixed(2))
+}
+
+function calculateScheduledShiftHours(employee: Employee) {
+  const defaults = getDefaultShiftTimes(employee)
+  const start = normalizeTime(employee.turno_inicio) || defaults.start || '07:00'
+  const end = normalizeTime(employee.turno_fim) || defaults.end || '17:00'
+  return calculateHoursBetween(start, end)
+}
+
 function getDefaultOvertimeHourlyValue(employee: Employee) {
   if (employee.valor_hora_extra && employee.valor_hora_extra > 0) return Number(employee.valor_hora_extra.toFixed(2))
   const salary = employee.salario || 0
@@ -118,6 +151,16 @@ function getDefaultOvertimeHourlyValue(employee: Employee) {
       ? plantaoPackageSalary / (getPlantaoPackageCount(employee) * getPlantaoPackageHours(employee) || 220)
       : salary / 220
   return Number((baseHourly * 1.5).toFixed(2))
+}
+
+function getDefaultBaseHourlyValue(employee: Employee) {
+  const salary = employee.salario || 0
+  if (employee.salario_tipo === 'diaria') return Number((salary / 8).toFixed(2))
+  if (employee.salario_tipo?.startsWith('plantao_')) {
+    const totalHours = getPlantaoPackageCount(employee) * getPlantaoPackageHours(employee)
+    return Number(((getPlantaoPackageSalary(employee) || salary) / (totalHours || 220)).toFixed(2))
+  }
+  return Number((salary / 220).toFixed(2))
 }
 
 function getPlantaoPackageCount(employee: Employee | undefined) {
@@ -238,36 +281,76 @@ export default function FolhaPagamento() {
       const exception = exceptions.find(ex => ex.employee_id === employee.id && ex.date === dateStr)
 
       if (exception?.tipo_lancamento === 'hora_extra') {
-        return total + (employeeWorksByDefault(employee, day) ? 1 : 0)
+        return total + (exception.is_working || (exception.start_time && exception.end_time) ? 1 : (employeeWorksByDefault(employee, day) ? 1 : 0))
       }
       if (exception) return total + (exception.is_working ? 1 : 0)
       return total + (employeeWorksByDefault(employee, day) ? 1 : 0)
     }, 0)
   }
 
-  function getOvertimeAdicionais(employee: Employee | undefined, start: string, end: string) {
+  function getFrequencyAdicionais(employee: Employee | undefined, start: string, end: string, multiplier = 1, tipoPeriodo: typeof form.tipo_periodo = 'mes') {
     if (!employee || !start || !end) return []
-    const overtimeLaunches = exceptions.filter(ex =>
+    if (tipoPeriodo === '13_salario') return []
+
+    const attendanceLaunches = exceptions.filter(ex =>
       ex.employee_id === employee.id &&
-      ex.tipo_lancamento === 'hora_extra' &&
       ex.date >= start &&
-      ex.date <= end
+      ex.date <= end &&
+      ex.tipo_lancamento !== 'falta' &&
+      !!ex.start_time &&
+      !!ex.end_time
     )
 
-    return overtimeLaunches.map(ex => {
-      const hours = Number((ex as any).horas_extras || 0)
-      const hourlyValue = Number((ex as any).valor_hora_extra || getDefaultOvertimeHourlyValue(employee))
-      const rawTotalValue = (ex as any).valor_hora_extra_total ?? hours * hourlyValue
-      const totalValue = Number(Number(rawTotalValue).toFixed(2))
-      const dateLabel = formatDatePDF(ex.date)
-      const period = ex.start_time && ex.end_time ? ` ${ex.start_time}-${ex.end_time}` : ''
+    const overtimeHourlyValue = getDefaultOvertimeHourlyValue(employee)
+    const baseHourlyValue = getDefaultBaseHourlyValue(employee)
 
-      return {
-        descricao: `Hora Extra ${dateLabel}${period} (${hours}h)`,
-        tipo: 'provento' as const,
-        valor: totalValue,
+    if (employee.salario_tipo?.startsWith('plantao_')) {
+      const expectedHours = Number((getPlantaoPackageCount(employee) * getPlantaoPackageHours(employee) * multiplier).toFixed(2))
+      const workedHours = Number(attendanceLaunches.reduce((sum, ex) => sum + calculateHoursBetween(ex.start_time, ex.end_time), 0).toFixed(2))
+      const balance = Number((workedHours - expectedHours).toFixed(2))
+
+      if (balance > 0) {
+        return [{
+          descricao: `Hora Extra por Frequência (${balance}h)`,
+          tipo: 'provento' as const,
+          valor: Number((balance * overtimeHourlyValue).toFixed(2)),
+        }]
       }
-    }).filter(a => a.valor > 0)
+      if (balance < 0) {
+        const owedHours = Math.abs(balance)
+        return [{
+          descricao: `Horas Devidas por Frequência (${owedHours}h)`,
+          tipo: 'desconto' as const,
+          valor: Number((owedHours * baseHourlyValue).toFixed(2)),
+        }]
+      }
+      return []
+    }
+
+    return attendanceLaunches.flatMap(ex => {
+      const workedHours = calculateHoursBetween(ex.start_time, ex.end_time)
+      const scheduledHours = calculateScheduledShiftHours(employee)
+      const balance = Number((workedHours - scheduledHours).toFixed(2))
+      const dateLabel = formatDatePDF(ex.date)
+      const period = `${ex.start_time}-${ex.end_time}`
+
+      if (balance > 0) {
+        return [{
+          descricao: `Hora Extra ${dateLabel} ${period} (${balance}h)`,
+          tipo: 'provento' as const,
+          valor: Number((balance * overtimeHourlyValue).toFixed(2)),
+        }]
+      }
+      if (balance < 0) {
+        const owedHours = Math.abs(balance)
+        return [{
+          descricao: `Horas Devidas ${dateLabel} ${period} (${owedHours}h)`,
+          tipo: 'desconto' as const,
+          valor: Number((owedHours * baseHourlyValue).toFixed(2)),
+        }]
+      }
+      return []
+    })
   }
 
   function calculateEmployeeSalary(employee: Employee | undefined, multiplier: number, start: string, end: string, tipoPeriodo: typeof form.tipo_periodo) {
@@ -385,7 +468,7 @@ export default function FolhaPagamento() {
 
           if (exception) {
             if (exception.tipo_lancamento === 'hora_extra') {
-              works = employeeWorksByDefault(emp, day)
+              works = !!exception.is_working || !!(exception.start_time && exception.end_time) || employeeWorksByDefault(emp, day)
             } else {
               works = exception.is_working
               is_dobra = !!exception.is_dobra || exception.tipo_lancamento === 'plantao_12h'
@@ -409,7 +492,7 @@ export default function FolhaPagamento() {
           const baseSalary = calculateEmployeeSalary(emp, multiplier, format(monthStart, 'yyyy-MM-dd'), format(monthEnd, 'yyyy-MM-dd'), 'mes')
           const fixedDiscounts = emp.descontos_fixos || 0
 
-          const payloadAdicionais: PayrollAdicional[] = getOvertimeAdicionais(emp, format(monthStart, 'yyyy-MM-dd'), format(monthEnd, 'yyyy-MM-dd'))
+          const payloadAdicionais: PayrollAdicional[] = getFrequencyAdicionais(emp, format(monthStart, 'yyyy-MM-dd'), format(monthEnd, 'yyyy-MM-dd'), multiplier, 'mes')
           if (plantao12hCount > 0) {
              payloadAdicionais.push({
                 descricao: `Plantão 12h (${plantao12hCount}x)`,
@@ -446,7 +529,7 @@ export default function FolhaPagamento() {
           const totalProventosGerados = payloadAdicionais.filter(a => a.tipo === 'provento').reduce((s, a) => s + a.valor, 0)
           const totalDescontosGerados = payloadAdicionais.filter(a => a.tipo === 'desconto').reduce((s, a) => s + a.valor, 0)
           const salarioLiquidoGerado = baseSalary + totalProventosGerados - fixedDiscounts - totalDescontosGerados
-          const observacoesGeradas = emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${emp.salario_tipo === 'diaria' ? ', salário calculado por diária' : ''}${isLarSabedoriaCompany && emp.salario_tipo?.startsWith('plantao_') ? `, salário calculado pelo pacote de ${getPlantaoPackageCount(emp)} plantões ${getPlantaoPackageHours(emp)}h` : ''}${emp.vt_tipo === 'diaria' ? ', VT por dia trabalhado' : ''}${plantao12hCount > 0 ? `, incluindo ${plantao12hCount} plantão(ões) 12h extra` : ''}${payloadAdicionais.some(a => a.descricao.startsWith('Hora Extra')) ? ', com hora(s) extra(s)' : ''}${faltasCount > 0 ? `, descontando ${faltasCount} falta(s)` : ''}.`
+          const observacoesGeradas = emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${emp.salario_tipo === 'diaria' ? ', salário calculado por diária' : ''}${isLarSabedoriaCompany && emp.salario_tipo?.startsWith('plantao_') ? `, salário calculado pelo pacote de ${getPlantaoPackageCount(emp)} plantões ${getPlantaoPackageHours(emp)}h` : ''}${emp.vt_tipo === 'diaria' ? ', VT por dia trabalhado' : ''}${plantao12hCount > 0 ? `, incluindo ${plantao12hCount} plantão(ões) 12h extra` : ''}${payloadAdicionais.some(a => a.descricao.startsWith('Hora Extra')) ? ', com hora(s) extra(s)' : ''}${payloadAdicionais.some(a => a.descricao.startsWith('Horas Devidas')) ? ', com hora(s) devida(s)' : ''}${faltasCount > 0 ? `, descontando ${faltasCount} falta(s)` : ''}.`
 
           const payrollPayload = {
             funcionario_id: emp.id,
@@ -522,7 +605,7 @@ export default function FolhaPagamento() {
     
     const initialAdicionais: PayrollAdicional[] = []
     if (firstEmp) {
-      initialAdicionais.push(...getOvertimeAdicionais(firstEmp, start, end))
+      initialAdicionais.push(...getFrequencyAdicionais(firstEmp, start, end, 1, 'mes'))
       if (shouldAutoIncludeVt(firstEmp)) {
         initialAdicionais.push({
           descricao: 'Vale Transporte',
@@ -735,9 +818,9 @@ export default function FolhaPagamento() {
       }
 
       setAdicionais(prevAdics => {
-        const overtimeAdicionais = val === '13_salario' ? [] : getOvertimeAdicionais(emp, start, end)
+        const overtimeAdicionais = val === '13_salario' ? [] : getFrequencyAdicionais(emp, start, end, multiplier, val)
         let updated = prevAdics
-          .filter(a => !a.descricao.startsWith('Hora Extra '))
+          .filter(a => !a.descricao.startsWith('Hora Extra ') && !a.descricao.startsWith('Horas Devidas '))
           .map(a => {
           if (a.descricao === 'Vale Transporte' && shouldAutoIncludeVt(emp)) {
             return { ...a, valor: calculateVtValue(emp, multiplier, workedDays) }
@@ -1159,7 +1242,7 @@ export default function FolhaPagamento() {
                   const salarioBruto = calculateEmployeeSalary(emp, multiplier, form.periodoInicio, form.periodoFim, form.tipo_periodo)
                   setForm({ ...form, funcionarioId: e.target.value, salarioBruto, descontos: emp?.descontos_fixos || 0 })
                   
-                  const newAdicionais: PayrollAdicional[] = getOvertimeAdicionais(emp, form.periodoInicio, form.periodoFim)
+                  const newAdicionais: PayrollAdicional[] = getFrequencyAdicionais(emp, form.periodoInicio, form.periodoFim, multiplier, form.tipo_periodo)
                   if (shouldAutoIncludeVt(emp) && form.tipo_periodo !== '13_salario') {
                     newAdicionais.push({
                       descricao: 'Vale Transporte',
