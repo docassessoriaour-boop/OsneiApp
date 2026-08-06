@@ -575,11 +575,13 @@ export default function Escalas() {
 
     const attendance = monthExceptions.filter(ex =>
       ex.tipo_lancamento !== 'falta' &&
-      !!ex.start_time &&
-      !!ex.end_time
+      (!!ex.is_working || !!ex.start_time || !!ex.end_time)
     )
 
-    const workedHoursTotal = Number(attendance.reduce((sum, ex) => sum + calculateHoursBetween(ex.start_time, ex.end_time), 0).toFixed(2))
+    const getWorkedHours = (ex: ScheduleException) =>
+      ex.start_time && ex.end_time ? calculateHoursBetween(ex.start_time, ex.end_time) : shiftHours
+
+    const workedHoursTotal = Number(attendance.reduce((sum, ex) => sum + getWorkedHours(ex), 0).toFixed(2))
     const expectedHoursTotal = packageExpectedHours || Number(attendance.reduce((sum) => sum + shiftHours, 0).toFixed(2))
     const balanceHours = Number((workedHoursTotal - expectedHoursTotal).toFixed(2))
     const overtimeHours = Math.max(0, balanceHours)
@@ -588,7 +590,7 @@ export default function Escalas() {
     const owedTotal = Number((owedHours * baseHourlyValue).toFixed(2))
 
     const rows = attendance.map(ex => {
-      const workedHours = calculateHoursBetween(ex.start_time, ex.end_time)
+      const workedHours = getWorkedHours(ex)
       const expected = packageExpectedHours ? 0 : shiftHours
       const balance = packageExpectedHours ? 0 : Number((workedHours - expected).toFixed(2))
       const balanceLabel = packageExpectedHours
@@ -608,8 +610,8 @@ export default function Escalas() {
         <tr>
           <td>${format(ex.date ? parseISO(ex.date) : new Date(), 'dd/MM/yyyy')}</td>
           <td>${kind}</td>
-          <td class="text-center">${ex.start_time || '-'}</td>
-          <td class="text-center">${ex.end_time || '-'}</td>
+          <td class="text-center">${ex.start_time || 'Base'}</td>
+          <td class="text-center">${ex.end_time || 'Base'}</td>
           <td class="text-center">${formatHoursToHHMM(workedHours)}</td>
           <td class="text-center">${packageExpectedHours ? '-' : formatHoursToHHMM(expected)}</td>
           <td class="text-center">${balanceLabel}</td>

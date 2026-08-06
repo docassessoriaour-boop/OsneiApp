@@ -313,16 +313,17 @@ export default function FolhaPagamento() {
       ex.date >= start &&
       ex.date <= end &&
       ex.tipo_lancamento !== 'falta' &&
-      !!ex.start_time &&
-      !!ex.end_time
+      (!!ex.is_working || !!ex.start_time || !!ex.end_time)
     )
 
     const overtimeHourlyValue = getDefaultOvertimeHourlyValue(employee)
     const baseHourlyValue = getDefaultBaseHourlyValue(employee)
+    const getWorkedHours = (ex: ScheduleException) =>
+      ex.start_time && ex.end_time ? calculateHoursBetween(ex.start_time, ex.end_time) : calculateScheduledShiftHours(employee)
 
     if (employee.salario_tipo?.startsWith('plantao_')) {
       const expectedHours = Number((getPlantaoPackageCount(employee) * getPlantaoPackageHours(employee) * multiplier).toFixed(2))
-      const workedHours = Number(attendanceLaunches.reduce((sum, ex) => sum + calculateHoursBetween(ex.start_time, ex.end_time), 0).toFixed(2))
+      const workedHours = Number(attendanceLaunches.reduce((sum, ex) => sum + getWorkedHours(ex), 0).toFixed(2))
       const balance = Number((workedHours - expectedHours).toFixed(2))
 
       if (balance > 0) {
@@ -344,11 +345,11 @@ export default function FolhaPagamento() {
     }
 
     return attendanceLaunches.flatMap(ex => {
-      const workedHours = calculateHoursBetween(ex.start_time, ex.end_time)
+      const workedHours = getWorkedHours(ex)
       const scheduledHours = calculateScheduledShiftHours(employee)
       const balance = Number((workedHours - scheduledHours).toFixed(2))
       const dateLabel = formatDatePDF(ex.date)
-      const period = `${ex.start_time}-${ex.end_time}`
+      const period = ex.start_time && ex.end_time ? `${ex.start_time}-${ex.end_time}` : 'horário base'
 
       if (balance > 0) {
         return [{
