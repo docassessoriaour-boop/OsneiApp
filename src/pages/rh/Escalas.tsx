@@ -101,6 +101,35 @@ function getDefaultOvertimeHourlyValue(employee: Employee) {
   return Number((baseHourly * 1.5).toFixed(2))
 }
 
+function getBaseHourlyValue(employee: Employee) {
+  const salary = employee.salario || 0
+  if (employee.salario_tipo === 'diaria') return Number((salary / 8).toFixed(2))
+  if (employee.salario_tipo?.startsWith('plantao_')) {
+    const count = employee.salario_tipo === 'plantao_15_12h' ? 15 : 10
+    const hours = employee.salario_tipo === 'plantao_10_10h' ? 10 : 12
+    const packageSalary = employee.salario_tipo === 'plantao_10_10h'
+      ? salary
+      : (employee.valor_plantao_12h || 0) * count
+    return Number((packageSalary / (count * hours || 220)).toFixed(2))
+  }
+  return Number((salary / 220).toFixed(2))
+}
+
+function getPackageExpectedHours(employee: Employee) {
+  if (employee.salario_tipo === 'plantao_10_10h') return 100
+  if (employee.salario_tipo === 'plantao_10_12h') return 120
+  if (employee.salario_tipo === 'plantao_15_12h') return 180
+  return 0
+}
+
+function getSalaryTypeLabel(employee: Employee) {
+  if (employee.salario_tipo === 'diaria') return 'Diária'
+  if (employee.salario_tipo === 'plantao_10_10h') return '10 plantões de 10h'
+  if (employee.salario_tipo === 'plantao_10_12h') return '10 plantões de 12h'
+  if (employee.salario_tipo === 'plantao_15_12h') return '15 plantões de 12h'
+  return 'Mensal'
+}
+
 export default function Escalas() {
   const { data: rawEmployees, loading: loadingEmployees } = useDb<Employee>('employees')
   // Normaliza: DB retorna data_admissao (snake_case), código usa dataAdmissao (camelCase)
@@ -527,6 +556,123 @@ export default function Escalas() {
     })
   }
 
+  function printEmployeeFrequency(employee: Employee) {
+    const monthName = format(currentDate, 'MMMM yyyy', { locale: ptBR }).replace(/^\w/, c => c.toUpperCase())
+    const shiftHours = calculateScheduledHours(employee)
+    const packageExpectedHours = getPackageExpectedHours(employee)
+    const overtimeHourlyValue = getDefaultOvertimeHourlyValue(employee)
+    const baseHourlyValue = getBaseHourlyValue(employee)
+    const monthExceptions = exceptions
+      .filter(ex => ex.employee_id === employee.id && ex.date >= format(monthStart, 'yyyy-MM-dd') && ex.date <= format(monthEnd, 'yyyy-MM-dd'))
+      .sort((a, b) => a.date.localeCompare(b.date))
+
+    const attendance = monthExceptions.filter(ex =>
+      ex.tipo_lancamento !== 'falta' &&
+      !!ex.start_time &&
+      !!ex.end_time
+    )
+
+    const workedHoursTotal = Number(attendance.reduce((sum, ex) => sum + calculateHoursBetween(ex.start_time, ex.end_time), 0).toFixed(2))
+    const expectedHoursTotal = packageExpectedHours || Number(attendance.reduce((sum) => sum + shiftHours, 0).toFixed(2))
+    const balanceHours = Number((workedHoursTotal - expectedHoursTotal).toFixed(2))
+    const overtimeHours = Math.max(0, balanceHours)
+    const owedHours = Math.max(0, -balanceHours)
+    const overtimeTotal = Number((overtimeHours * overtimeHourlyValue).toFixed(2))
+    const owedTotal = Number((owedHours * baseHourlyValue).toFixed(2))
+
+    const rows = attendance.map(ex => {
+      const workedHours = calculateHoursBetween(ex.start_time, ex.end_time)
+      const expected = packageExpectedHours ? 0 : shiftHours
+      const balance = packageExpectedHours ? 0 : Number((workedHours - expected).toFixed(2))
+      const balanceLabel = packageExpectedHours
+        ? '-'
+        : balance > 0
+          ? `+${formatHoursToHHMM(balance)}`
+          : balance < 0
+            ? `-${formatHoursToHHMM(Math.abs(balance))}`
+            : '00:00'
+      const kind = ex.tipo_lancamento === 'plantao_12h'
+        ? 'Plantão 12h'
+        : ex.tipo_lancamento === 'hora_extra'
+          ? 'Frequência / HE'
+          : 'Frequência'
+
+      return `
+        <tr>
+          <td>${format(ex.date ? parseISO(ex.date) : new Date(), 'dd/MM/yyyy')}</td>
+          <td>${kind}</td>
+          <td class="text-center">${ex.start_time || '-'}</td>
+          <td class="text-center">${ex.end_time || '-'}</td>
+          <td class="text-center">${formatHoursToHHMM(workedHours)}</td>
+          <td class="text-center">${packageExpectedHours ? '-' : formatHoursToHHMM(expected)}</td>
+          <td class="text-center">${balanceLabel}</td>
+          <td>${ex.observacoes || ''}</td>
+        </tr>
+      `
+    }).join('')
+
+    const faltasRows = monthExceptions
+      .filter(ex => ex.tipo_lancamento === 'falta')
+      .map(ex => `
+        <tr>
+          <td>${format(parseISO(ex.date), 'dd/MM/yyyy')}</td>
+          <td>Falta</td>
+          <td class="text-center">-</td>
+          <td class="text-center">-</td>
+          <td class="text-center">00:00</td>
+          <td class="text-center">${formatHoursToHHMM(shiftHours)}</td>
+          <td class="text-center">-${formatHoursToHHMM(shiftHours)}</td>
+          <td>${ex.observacoes || ''}</td>
+        </tr>
+      `).join('')
+
+    const html = `
+      <div style="font-size: 10pt; margin-bottom: 12px;">
+        <p><strong>Funcionário:</strong> ${employee.nome}</p>
+        <p><strong>Cargo:</strong> ${employee.cargo || '-'}</p>
+        <p><strong>Competência:</strong> ${monthName}</p>
+        <p><strong>Tipo de salário:</strong> ${getSalaryTypeLabel(employee)}</p>
+        <p><strong>Horário base:</strong> ${getEmployeeShiftTime(employee)} (${formatHoursToHHMM(shiftHours)})</p>
+        <p><strong>Valor hora extra:</strong> ${formatCurrency(overtimeHourlyValue)}</p>
+      </div>
+
+      <table style="font-size: 8.5pt;">
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Lançamento</th>
+            <th class="text-center">Entrada</th>
+            <th class="text-center">Saída</th>
+            <th class="text-center">Horas</th>
+            <th class="text-center">Base</th>
+            <th class="text-center">Saldo</th>
+            <th>Observações</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows || faltasRows ? `${rows}${faltasRows}` : '<tr><td colspan="8" class="text-center">Nenhuma frequência lançada no período.</td></tr>'}
+        </tbody>
+      </table>
+
+      <div class="divider"></div>
+      <table style="font-size: 9pt;">
+        <tbody>
+          <tr><td><strong>Horas previstas</strong></td><td class="text-right">${formatHoursToHHMM(expectedHoursTotal)}</td></tr>
+          <tr><td><strong>Horas lançadas</strong></td><td class="text-right">${formatHoursToHHMM(workedHoursTotal)}</td></tr>
+          <tr><td><strong>Horas extras a receber</strong></td><td class="text-right text-green">${formatHoursToHHMM(overtimeHours)} (${formatCurrency(overtimeTotal)})</td></tr>
+          <tr><td><strong>Horas devidas</strong></td><td class="text-right text-red">${formatHoursToHHMM(owedHours)} (${formatCurrency(owedTotal)})</td></tr>
+        </tbody>
+      </table>
+
+      <div style="margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 50px;">
+        <div style="text-align: center;"><hr/><span>Responsável</span></div>
+        <div style="text-align: center;"><hr/><span>Funcionário</span></div>
+      </div>
+    `
+
+    printPDF(`Folha de Frequência - ${employee.nome} - ${monthName}`, html, clinic)
+  }
+
   return (
     <div>
       <PageHeader
@@ -628,11 +774,21 @@ export default function Escalas() {
                           {employee.is_pro_labore && (
                             <span className="text-[9px] text-emerald-600 font-bold border border-emerald-200 px-1 rounded bg-emerald-50">PRO-LABORE</span>
                           )}
+                          <button
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              printEmployeeFrequency(employee)
+                            }}
+                            title="Imprimir folha de frequência individual"
+                            className="ml-auto p-0.5 hover:bg-muted rounded text-primary transition-colors"
+                          >
+                            <FileText className="h-3 w-3" />
+                          </button>
                           {employee.escala === '12x36' && (
                             <button 
                               onClick={() => invertCycle12x36(employee)}
                               title="Inverter Ciclo (A/B)"
-                              className="ml-auto p-0.5 hover:bg-muted rounded text-primary transition-colors"
+                              className="p-0.5 hover:bg-muted rounded text-primary transition-colors"
                             >
                               <div className="text-[10px] underline decoration-primary/30">Inverter</div>
                             </button>
