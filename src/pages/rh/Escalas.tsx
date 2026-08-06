@@ -108,9 +108,7 @@ function getBaseHourlyValue(employee: Employee) {
   if (employee.salario_tipo?.startsWith('plantao_')) {
     const count = employee.salario_tipo === 'plantao_15_12h' ? 15 : 10
     const hours = employee.salario_tipo === 'plantao_10_10h' ? 10 : 12
-    const packageSalary = employee.salario_tipo === 'plantao_10_10h'
-      ? salary
-      : (employee.valor_plantao_12h || 0) * count
+    const packageSalary = salary > 0 ? salary : (employee.valor_plantao_12h || 0) * count
     return Number((packageSalary / (count * hours || 220)).toFixed(2))
   }
   return Number((salary / 220).toFixed(2))

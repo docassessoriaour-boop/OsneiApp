@@ -102,16 +102,16 @@ function getEmployeeShiftLabel(employee: Employee) {
 function getEmployeeSalaryLabel(employee: Employee) {
   if (employee.salario_tipo === 'diaria') return `${formatCurrency(employee.salario)} / dia`
   if (employee.salario_tipo === 'plantao_10_10h') return `${formatCurrency(employee.salario)} / 10 plantões 10h`
-  if (employee.salario_tipo === 'plantao_10_12h') return `${formatCurrency(employee.valor_plantao_12h || 0)} x 10 plantões`
-  if (employee.salario_tipo === 'plantao_15_12h') return `${formatCurrency(employee.valor_plantao_12h || 0)} x 15 plantões`
+  if (employee.salario_tipo === 'plantao_10_12h') return employee.salario > 0 ? `${formatCurrency(employee.salario)} / 10 plantões 12h` : `${formatCurrency(employee.valor_plantao_12h || 0)} x 10 plantões`
+  if (employee.salario_tipo === 'plantao_15_12h') return employee.salario > 0 ? `${formatCurrency(employee.salario)} / 15 plantões 12h` : `${formatCurrency(employee.valor_plantao_12h || 0)} x 15 plantões`
   return `${formatCurrency(employee.salario)}`
 }
 
 function getEmployeeSalaryLabelPDF(employee: Employee) {
   if (employee.salario_tipo === 'diaria') return `${formatCurrencyPDF(employee.salario)} por dia`
   if (employee.salario_tipo === 'plantao_10_10h') return `${formatCurrencyPDF(employee.salario)} por 10 plantões de 10h`
-  if (employee.salario_tipo === 'plantao_10_12h') return `${formatCurrencyPDF(employee.valor_plantao_12h || 0)} por plantão 12h (10 plantões)`
-  if (employee.salario_tipo === 'plantao_15_12h') return `${formatCurrencyPDF(employee.valor_plantao_12h || 0)} por plantão 12h (15 plantões)`
+  if (employee.salario_tipo === 'plantao_10_12h') return employee.salario > 0 ? `${formatCurrencyPDF(employee.salario)} por 10 plantões de 12h` : `${formatCurrencyPDF(employee.valor_plantao_12h || 0)} por plantão 12h (10 plantões)`
+  if (employee.salario_tipo === 'plantao_15_12h') return employee.salario > 0 ? `${formatCurrencyPDF(employee.salario)} por 15 plantões de 12h` : `${formatCurrencyPDF(employee.valor_plantao_12h || 0)} por plantão 12h (15 plantões)`
   return `${formatCurrencyPDF(employee.salario)} por mês`
 }
 
@@ -633,9 +633,9 @@ export default function Funcionarios() {
     const salaryValue = emp.salario_tipo === 'plantao_10_10h'
       ? emp.salario
       : emp.salario_tipo === 'plantao_10_12h'
-      ? (emp.valor_plantao_12h || 0) * 10
+      ? (emp.salario > 0 ? emp.salario : (emp.valor_plantao_12h || 0) * 10)
       : emp.salario_tipo === 'plantao_15_12h'
-        ? (emp.valor_plantao_12h || 0) * 15
+        ? (emp.salario > 0 ? emp.salario : (emp.valor_plantao_12h || 0) * 15)
         : emp.salario
     setReceiptItems([
       { desc: salaryDesc, val: salaryValue },
@@ -1290,7 +1290,7 @@ export default function Funcionarios() {
               </Select>
             </div>
             <div>
-              <Label>{form.salario_tipo === 'diaria' ? 'Valor da Diária' : form.salario_tipo === 'plantao_10_10h' ? 'Salário Base do Pacote' : form.salario_tipo?.startsWith('plantao_') ? 'Salário Base Mensal (opcional)' : 'Salário Base Mensal'}</Label>
+              <Label>{form.salario_tipo === 'diaria' ? 'Valor da Diária' : form.salario_tipo?.startsWith('plantao_') ? 'Salário Base do Pacote' : 'Salário Base Mensal'}</Label>
               <Input type="number" value={form.salario} onChange={(e) => setForm({ ...form, salario: Number(e.target.value) })} className="mt-1" />
             </div>
             <div>

@@ -187,7 +187,7 @@ function getPlantaoPackageHours(employee: Employee | undefined) {
 function getPlantaoPackageSalary(employee: Employee | undefined) {
   const count = getPlantaoPackageCount(employee)
   if (!employee || count <= 0) return 0
-  if (employee.salario_tipo === 'plantao_10_10h') return Number((employee.salario || 0).toFixed(2))
+  if (employee.salario && employee.salario > 0) return Number(employee.salario.toFixed(2))
   return Number(((employee.valor_plantao_12h || 0) * count).toFixed(2))
 }
 
