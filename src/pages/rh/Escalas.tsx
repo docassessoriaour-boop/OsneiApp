@@ -65,8 +65,15 @@ function calculateHoursBetween(start?: string | null, end?: string | null) {
 }
 
 function getDefaultOvertimeHourlyValue(employee: Employee) {
+  if (employee.valor_hora_extra && employee.valor_hora_extra > 0) return Number(employee.valor_hora_extra.toFixed(2))
   const salary = employee.salario || 0
-  const baseHourly = employee.salario_tipo === 'diaria' ? salary / 8 : salary / 220
+  const plantaoCount = employee.salario_tipo === 'plantao_10_12h' ? 10 : employee.salario_tipo === 'plantao_15_12h' ? 15 : 0
+  const plantaoSalary = (employee.valor_plantao_12h || 0) * plantaoCount
+  const baseHourly = employee.salario_tipo === 'diaria'
+    ? salary / 8
+    : plantaoCount > 0
+      ? plantaoSalary / (plantaoCount * 12)
+      : salary / 220
   return Number((baseHourly * 1.5).toFixed(2))
 }
 
@@ -86,7 +93,7 @@ export default function Escalas() {
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false)
   const [timeDialogOpen, setTimeDialogOpen] = useState(false)
   const [selectedCell, setSelectedCell] = useState<{ employee: Employee, day: Date } | null>(null)
-  const [manualTimes, setManualTimes] = useState({ start: '', end: '', hourlyValue: 0, notes: '' })
+  const [manualTimes, setManualTimes] = useState({ type: 'hora_extra' as ScheduleException['tipo_lancamento'], start: '', end: '', hourlyValue: 0, notes: '' })
 
   useEffect(() => {
     setUnidadeFilter(companyWorkUnit)
@@ -176,6 +183,7 @@ export default function Escalas() {
     
     setSelectedCell({ employee, day })
     setManualTimes({
+      type: exception?.tipo_lancamento || 'hora_extra',
       start: exception?.start_time || '',
       end: exception?.end_time || '',
       hourlyValue: (exception as any)?.valor_hora_extra || getDefaultOvertimeHourlyValue(employee),
@@ -189,11 +197,17 @@ export default function Escalas() {
     const { employee, day } = selectedCell
     const dateStr = format(day, 'yyyy-MM-dd')
     const exception = exceptions.find(ex => ex.employee_id === employee.id && ex.date === dateStr)
-    const horasExtras = calculateHoursBetween(manualTimes.start, manualTimes.end)
+    const tipoLancamento = manualTimes.type || 'hora_extra'
+    const horasRegistradas = calculateHoursBetween(manualTimes.start, manualTimes.end)
+    const horasExtras = tipoLancamento === 'hora_extra' ? horasRegistradas : 0
     const valorTotal = Number((horasExtras * (manualTimes.hourlyValue || 0)).toFixed(2))
 
-    if (!manualTimes.start || !manualTimes.end || horasExtras <= 0) {
-      alert('Informe entrada e saída válidas para a hora extra.')
+    if (tipoLancamento !== 'falta' && (!manualTimes.start || !manualTimes.end)) {
+      alert('Informe entrada e saída válidas.')
+      return
+    }
+    if (tipoLancamento === 'hora_extra' && horasExtras <= 0) {
+      alert('Informe horários válidos para calcular a hora extra.')
       return
     }
 
@@ -201,9 +215,9 @@ export default function Escalas() {
       const payload = {
         start_time: manualTimes.start || null,
         end_time: manualTimes.end || null,
-        is_working: getBaseSchedule(employee, day).working,
-        is_dobra: false,
-        tipo_lancamento: 'hora_extra' as ScheduleException['tipo_lancamento'],
+        is_working: tipoLancamento !== 'falta',
+        is_dobra: tipoLancamento === 'plantao_12h',
+        tipo_lancamento: tipoLancamento,
         horas_extras: horasExtras,
         valor_hora_extra: manualTimes.hourlyValue || 0,
         valor_hora_extra_total: valorTotal,
@@ -609,7 +623,7 @@ export default function Escalas() {
                               e.preventDefault()
                               handleOpenTimeDialog(employee, day)
                             }}
-                            title={`${tipo_lancamento === 'hora_extra' ? 'Hora Extra' : tipo_lancamento === 'plantao_12h' ? 'Plantão 12h' : tipo_lancamento === 'falta' ? 'Falta' : (working ? 'Trabalha' : 'Folga')} - Clique esquerdo alternar, Direito p/ Hora Extra`}
+                            title={`${tipo_lancamento === 'hora_extra' ? 'Hora Extra' : tipo_lancamento === 'plantao_12h' ? 'Plantão 12h' : tipo_lancamento === 'falta' ? 'Falta' : (working ? 'Trabalha' : 'Folga')} - Clique esquerdo alternar, Direito p/ Frequência`}
                             className={`w-full h-10 flex flex-col items-center justify-center transition-all relative ${
                               tipo_lancamento === 'hora_extra'
                                 ? 'bg-emerald-100 text-emerald-700 font-bold hover:bg-emerald-200'
@@ -645,19 +659,31 @@ export default function Escalas() {
           <div className="flex items-center gap-1"><div className="w-3 h-3 bg-red-50 border border-red-200 rounded flex items-center justify-center text-[8px] font-bold text-red-700">F</div> Falta</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 bg-transparent border rounded flex items-center justify-center text-[8px]">—</div> Folga</div>
           <div className="flex items-center gap-1"><div className="w-3 h-3 border border-amber-400 rounded"></div> Editado manualmente</div>
-          <div className="ml-auto italic font-medium text-amber-600 animate-pulse">Dica: clique com o botão direito para lançar hora extra</div>
+          <div className="ml-auto italic font-medium text-amber-600 animate-pulse">Dica: clique com o botão direito para lançar frequência</div>
         </div>
       </Card>
 
       <Dialog open={timeDialogOpen} onOpenChange={setTimeDialogOpen}>
         <DialogHeader>
-          <DialogTitle>Lançar Hora Extra</DialogTitle>
+          <DialogTitle>Folha de Frequência</DialogTitle>
           <p className="text-sm text-muted-foreground">
             {selectedCell?.employee.nome} - {selectedCell?.day && format(selectedCell.day, 'dd/MM/yyyy')}
           </p>
         </DialogHeader>
         <DialogContent className="max-w-xs">
           <div className="grid grid-cols-2 gap-4 py-4">
+            <div className="col-span-2 space-y-2">
+              <Label>Tipo de lançamento</Label>
+              <Select
+                value={manualTimes.type || 'hora_extra'}
+                onChange={(e) => setManualTimes({ ...manualTimes, type: e.target.value as ScheduleException['tipo_lancamento'] })}
+              >
+                <option value="trabalho">Trabalho / frequência</option>
+                <option value="plantao_12h">Plantão 12h</option>
+                <option value="hora_extra">Hora extra</option>
+                <option value="falta">Falta</option>
+              </Select>
+            </div>
             <div className="space-y-2">
               <Label>Entrada</Label>
               <Input 
@@ -675,7 +701,7 @@ export default function Escalas() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Horas Calculadas</Label>
+              <Label>{manualTimes.type === 'hora_extra' ? 'Horas Extras' : 'Horas Registradas'}</Label>
               <Input value={calculateHoursBetween(manualTimes.start, manualTimes.end)} readOnly />
             </div>
             <div className="space-y-2">
@@ -690,21 +716,21 @@ export default function Escalas() {
             </div>
             <div className="col-span-2 rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-sm flex items-center justify-between">
               <span>Total para folha</span>
-              <strong>{formatCurrency(calculateHoursBetween(manualTimes.start, manualTimes.end) * (manualTimes.hourlyValue || 0))}</strong>
+              <strong>{formatCurrency((manualTimes.type === 'hora_extra' ? calculateHoursBetween(manualTimes.start, manualTimes.end) : 0) * (manualTimes.hourlyValue || 0))}</strong>
             </div>
             <div className="col-span-2 space-y-2">
               <Label>Observações</Label>
               <Input
                 value={manualTimes.notes}
                 onChange={(e) => setManualTimes({ ...manualTimes, notes: e.target.value })}
-                placeholder="Ex: cobertura de plantão, atraso na saída..."
+                placeholder="Ex: entrada, saída, cobertura, falta ou atraso..."
               />
             </div>
           </div>
         </DialogContent>
         <DialogFooter>
           <Button variant="outline" onClick={() => setTimeDialogOpen(false)}>Cancelar</Button>
-          <Button onClick={saveManualTimes}>Salvar Hora Extra</Button>
+          <Button onClick={saveManualTimes}>Salvar Frequência</Button>
         </DialogFooter>
       </Dialog>
 

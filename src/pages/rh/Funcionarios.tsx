@@ -75,6 +75,7 @@ const emptyEmployee: Omit<Employee, 'id'> = {
   is_pro_labore: false,
   descontos_fixos: 0,
   valor_plantao_12h: 0,
+  valor_hora_extra: 0,
   cep: '',
   cidade: '',
   uf: '',
@@ -99,13 +100,17 @@ function getEmployeeShiftLabel(employee: Employee) {
 }
 
 function getEmployeeSalaryLabel(employee: Employee) {
-  const tipo = employee.salario_tipo === 'diaria' ? ' / dia' : ''
-  return `${formatCurrency(employee.salario)}${tipo}`
+  if (employee.salario_tipo === 'diaria') return `${formatCurrency(employee.salario)} / dia`
+  if (employee.salario_tipo === 'plantao_10_12h') return `${formatCurrency(employee.valor_plantao_12h || 0)} x 10 plantões`
+  if (employee.salario_tipo === 'plantao_15_12h') return `${formatCurrency(employee.valor_plantao_12h || 0)} x 15 plantões`
+  return `${formatCurrency(employee.salario)}`
 }
 
 function getEmployeeSalaryLabelPDF(employee: Employee) {
-  const tipo = employee.salario_tipo === 'diaria' ? ' por dia' : ' por mês'
-  return `${formatCurrencyPDF(employee.salario)}${tipo}`
+  if (employee.salario_tipo === 'diaria') return `${formatCurrencyPDF(employee.salario)} por dia`
+  if (employee.salario_tipo === 'plantao_10_12h') return `${formatCurrencyPDF(employee.valor_plantao_12h || 0)} por plantão 12h (10 plantões)`
+  if (employee.salario_tipo === 'plantao_15_12h') return `${formatCurrencyPDF(employee.valor_plantao_12h || 0)} por plantão 12h (15 plantões)`
+  return `${formatCurrencyPDF(employee.salario)} por mês`
 }
 
 function getVtDescription(employee: Employee) {
@@ -473,7 +478,8 @@ function isMissingRhMigrationError(error: unknown) {
     text.includes('mei_endereco') ||
     text.includes('mei_responsavel_nome') ||
     text.includes('mei_responsavel_cpf') ||
-    text.includes('mei_responsavel_rg')
+    text.includes('mei_responsavel_rg') ||
+    text.includes('valor_hora_extra')
 }
 
 export default function Funcionarios() {
@@ -556,6 +562,8 @@ export default function Funcionarios() {
       unidade: normalizeWorkUnit(employee.unidade, clinicConfig) as Employee['unidade'],
       turno_inicio: normalizeTime(employee.turno_inicio) || defaultTimes.turno_inicio,
       turno_fim: normalizeTime(employee.turno_fim) || defaultTimes.turno_fim,
+      valor_plantao_12h: employee.valor_plantao_12h || 0,
+      valor_hora_extra: employee.valor_hora_extra || 0,
       dataAdmissao: data_admissao || employee.dataAdmissao || ''
     })
     setEditingId(employee.id)
@@ -606,10 +614,22 @@ export default function Funcionarios() {
 
   function openReceipt(emp: Employee) {
     setSelectedEmp(emp)
+    const salaryDesc = emp.salario_tipo === 'diaria'
+      ? 'Diária'
+      : emp.salario_tipo === 'plantao_10_12h'
+        ? 'Pacote 10 plantões 12h'
+        : emp.salario_tipo === 'plantao_15_12h'
+          ? 'Pacote 15 plantões 12h'
+          : 'Salário Base'
+    const salaryValue = emp.salario_tipo === 'plantao_10_12h'
+      ? (emp.valor_plantao_12h || 0) * 10
+      : emp.salario_tipo === 'plantao_15_12h'
+        ? (emp.valor_plantao_12h || 0) * 15
+        : emp.salario
     setReceiptItems([
-      { desc: emp.salario_tipo === 'diaria' ? 'Diária' : 'Salário Base', val: emp.salario },
+      { desc: salaryDesc, val: salaryValue },
       ...(emp.tem_vt ? [{ desc: emp.vt_tipo === 'diaria' ? 'Vale Transporte (por dia trabalhado)' : 'Vale Transporte', val: emp.vt_valor }] : []),
-      ...(emp.tem_insalubridade ? [{ desc: 'Adicional Insalubridade', val: (emp.salario * (emp.insalubridade_percentual / 100)) }] : [])
+      ...(emp.tem_insalubridade ? [{ desc: 'Adicional Insalubridade', val: (salaryValue * (emp.insalubridade_percentual / 100)) }] : [])
     ])
     setReceiptDialogOpen(true)
   }
@@ -1259,18 +1279,30 @@ export default function Funcionarios() {
               </Select>
             </div>
             <div>
-              <Label>{form.salario_tipo === 'diaria' ? 'Valor da Diária' : 'Salário Base Mensal'}</Label>
+              <Label>{form.salario_tipo === 'diaria' ? 'Valor da Diária' : form.salario_tipo?.startsWith('plantao_') ? 'Salário Base Mensal (opcional)' : 'Salário Base Mensal'}</Label>
               <Input type="number" value={form.salario} onChange={(e) => setForm({ ...form, salario: Number(e.target.value) })} className="mt-1" />
             </div>
             <div>
               <Label>Valor do Plantão 12h</Label>
               <Input type="number" value={form.valor_plantao_12h || 0} onChange={(e) => setForm({ ...form, valor_plantao_12h: Number(e.target.value) })} className="mt-1" />
             </div>
+            {isLarSabedoriaCompany && (
+              <div>
+                <Label>Valor da Hora Extra</Label>
+                <Input type="number" value={form.valor_hora_extra || 0} onChange={(e) => setForm({ ...form, valor_hora_extra: Number(e.target.value) })} className="mt-1" />
+              </div>
+            )}
             <div>
               <Label>Tipo de Salário</Label>
               <Select value={form.salario_tipo || 'mensal'} onChange={(e) => setForm({ ...form, salario_tipo: e.target.value as Employee['salario_tipo'] })} className="mt-1">
                 <option value="mensal">Mensal</option>
                 <option value="diaria">Diária</option>
+                {isLarSabedoriaCompany && (
+                  <>
+                    <option value="plantao_10_12h">10 plantões de 12h</option>
+                    <option value="plantao_15_12h">15 plantões de 12h</option>
+                  </>
+                )}
               </Select>
             </div>
             <div>

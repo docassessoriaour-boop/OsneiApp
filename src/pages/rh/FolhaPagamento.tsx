@@ -109,9 +109,27 @@ function employeeWorksByDefault(employee: Employee, day: Date) {
 }
 
 function getDefaultOvertimeHourlyValue(employee: Employee) {
+  if (employee.valor_hora_extra && employee.valor_hora_extra > 0) return Number(employee.valor_hora_extra.toFixed(2))
   const salary = employee.salario || 0
-  const baseHourly = employee.salario_tipo === 'diaria' ? salary / 8 : salary / 220
+  const plantaoPackageSalary = getPlantaoPackageSalary(employee)
+  const baseHourly = employee.salario_tipo === 'diaria'
+    ? salary / 8
+    : employee.salario_tipo?.startsWith('plantao_')
+      ? plantaoPackageSalary / (getPlantaoPackageCount(employee) * 12 || 220)
+      : salary / 220
   return Number((baseHourly * 1.5).toFixed(2))
+}
+
+function getPlantaoPackageCount(employee: Employee | undefined) {
+  if (employee?.salario_tipo === 'plantao_10_12h') return 10
+  if (employee?.salario_tipo === 'plantao_15_12h') return 15
+  return 0
+}
+
+function getPlantaoPackageSalary(employee: Employee | undefined) {
+  const count = getPlantaoPackageCount(employee)
+  if (!employee || count <= 0) return 0
+  return Number(((employee.valor_plantao_12h || 0) * count).toFixed(2))
 }
 
 export default function FolhaPagamento() {
@@ -249,6 +267,9 @@ export default function FolhaPagamento() {
     if (employee?.salario_tipo === 'diaria' && tipoPeriodo !== '13_salario') {
       return Number((baseSalary * countWorkedDays(employee, start, end)).toFixed(2))
     }
+    if (isLarSabedoriaCompany && employee?.salario_tipo?.startsWith('plantao_') && tipoPeriodo !== '13_salario') {
+      return Number((getPlantaoPackageSalary(employee) * multiplier).toFixed(2))
+    }
     return Number((baseSalary * multiplier).toFixed(2))
   }
 
@@ -377,9 +398,7 @@ export default function FolhaPagamento() {
         if (workedDays > 0 || emp.escala === 'Mensalista' || emp.is_pro_labore) {
           let multiplier = 1
 
-          const baseSalary = emp.salario_tipo === 'diaria'
-            ? Number(((emp.salario || 0) * workedDays).toFixed(2))
-            : Number(((emp.salario || 0) * multiplier).toFixed(2))
+          const baseSalary = calculateEmployeeSalary(emp, multiplier, format(monthStart, 'yyyy-MM-dd'), format(monthEnd, 'yyyy-MM-dd'), 'mes')
           const fixedDiscounts = emp.descontos_fixos || 0
 
           const payloadAdicionais: PayrollAdicional[] = getOvertimeAdicionais(emp, format(monthStart, 'yyyy-MM-dd'), format(monthEnd, 'yyyy-MM-dd'))
@@ -391,9 +410,11 @@ export default function FolhaPagamento() {
              })
           }
           if (faltasCount > 0) {
-             const dailyDiscount = emp.salario_tipo === 'diaria'
-               ? emp.salario || 0
-               : (emp.salario || 0) / getDaysInMonth(targetMonth)
+             const dailyDiscount = isLarSabedoriaCompany && emp.salario_tipo?.startsWith('plantao_')
+               ? emp.valor_plantao_12h || 0
+               : emp.salario_tipo === 'diaria'
+                 ? emp.salario || 0
+                 : (emp.salario || 0) / getDaysInMonth(targetMonth)
              payloadAdicionais.push({
                 descricao: `Faltas (${faltasCount}x)`,
                 tipo: 'desconto',
@@ -428,7 +449,7 @@ export default function FolhaPagamento() {
             status: 'pendente',
             periodo_inicio: format(monthStart, 'yyyy-MM-dd'),
             periodo_fim: format(monthEnd, 'yyyy-MM-dd'),
-            observacoes: emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${emp.salario_tipo === 'diaria' ? ', salário calculado por diária' : ''}${emp.vt_tipo === 'diaria' ? ', VT por dia trabalhado' : ''}${plantao12hCount > 0 ? `, incluindo ${plantao12hCount} plantão(ões) 12h` : ''}${payloadAdicionais.some(a => a.descricao.startsWith('Hora Extra')) ? ', com hora(s) extra(s)' : ''}${faltasCount > 0 ? `, descontando ${faltasCount} falta(s)` : ''}.`,
+            observacoes: emp.is_pro_labore ? 'Retirada de Pró-Labore.' : `Gerado via escala: ${workedDays} turnos/dias identificados${emp.salario_tipo === 'diaria' ? ', salário calculado por diária' : ''}${isLarSabedoriaCompany && emp.salario_tipo?.startsWith('plantao_') ? `, salário calculado pelo pacote de ${getPlantaoPackageCount(emp)} plantões 12h` : ''}${emp.vt_tipo === 'diaria' ? ', VT por dia trabalhado' : ''}${plantao12hCount > 0 ? `, incluindo ${plantao12hCount} plantão(ões) 12h extra` : ''}${payloadAdicionais.some(a => a.descricao.startsWith('Hora Extra')) ? ', com hora(s) extra(s)' : ''}${faltasCount > 0 ? `, descontando ${faltasCount} falta(s)` : ''}.`,
             adicionais: payloadAdicionais
           } as any)
 
@@ -457,11 +478,10 @@ export default function FolhaPagamento() {
     const start = format(startOfMonth(new Date()), 'yyyy-MM-dd')
     const end = format(endOfMonth(new Date()), 'yyyy-MM-dd')
     const workedDays = countWorkedDays(firstEmp, start, end)
+    const firstSalary = calculateEmployeeSalary(firstEmp, 1, start, end, 'mes')
     setForm({
       funcionarioId: firstEmp?.id || '',
-      salarioBruto: firstEmp?.salario_tipo === 'diaria'
-        ? Number(((firstEmp?.salario || 0) * workedDays).toFixed(2))
-        : firstEmp?.salario || 0,
+      salarioBruto: firstSalary,
       descontos: firstEmp?.descontos_fixos || 0,
       mesReferencia: new Date().toISOString().slice(0, 7),
       status: 'pendente',
@@ -482,9 +502,7 @@ export default function FolhaPagamento() {
         })
       }
       if (firstEmp.tem_insalubridade && firstEmp.insalubridade_percentual) {
-        const salaryBase = firstEmp.salario_tipo === 'diaria'
-          ? Number(((firstEmp.salario || 0) * workedDays).toFixed(2))
-          : firstEmp.salario || 0
+        const salaryBase = firstSalary
         const fullInsalubridade = salaryBase * (firstEmp.insalubridade_percentual / 100)
         initialAdicionais.push({
           descricao: `Adicional Insalubridade (${firstEmp.insalubridade_percentual}%)`,
