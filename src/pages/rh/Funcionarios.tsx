@@ -594,7 +594,7 @@ export default function Funcionarios() {
       if (error && typeof error === 'object' && 'code' in error && error.code === '23505') {
         alert('Este CPF já está cadastrado para outro funcionário.')
       } else if (isMissingRhMigrationError(error)) {
-        alert('Atualização necessária no banco de dados: aplique o arquivo supabase_rh_diaria_turno_vt.sql no Supabase e tente salvar novamente.')
+        alert('Atualização necessária no banco de dados: aplique os arquivos supabase_rh_diaria_turno_vt.sql e supabase_lar_sabedoria_plantoes_frequencia.sql no Supabase e tente salvar novamente.')
       } else {
         alert('Erro ao salvar funcionário. Verifique os dados e tente novamente.')
       }
