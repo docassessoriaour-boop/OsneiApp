@@ -325,6 +325,8 @@ export interface PayrollAdicional {
   descricao: string
   tipo: 'provento' | 'desconto'
   valor: number
+  codigo?: 'vt_automatico' | 'vale_pago' | 'vt_pago'
+  data_pagamento?: string
 }
 
 export interface Payroll {

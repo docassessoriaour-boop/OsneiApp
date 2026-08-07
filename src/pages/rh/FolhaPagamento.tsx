@@ -23,6 +23,27 @@ import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, parseISO, 
 const emptyAdicional: PayrollAdicional = { descricao: '', tipo: 'provento', valor: 0 }
 
 type PayrollDateFilter = 'current' | 'previous' | 'period'
+type PayrollForm = {
+  funcionarioId: string
+  salarioBruto: number
+  descontos: number
+  mesReferencia: string
+  status: Payroll['status']
+  periodoInicio: string
+  periodoFim: string
+  tipo_periodo: 'mes' | 'periodo' | '13_salario'
+  observacoes: string
+  valePago: boolean
+  valePagoValor: number
+  valePagoData: string
+  vtPago: boolean
+  vtPagoValor: number
+  vtPagoData: string
+}
+
+const VALE_PAGO_PREFIX = 'Vale (Adiantamento) já pago'
+const VT_PAGO_PREFIX = 'Vale Transporte já pago'
+const VT_DESCRICAO = 'Vale Transporte'
 
 function monthBounds(month: string) {
   const date = parseISO(`${month}-01`)
@@ -191,6 +212,24 @@ function getPlantaoPackageSalary(employee: Employee | undefined) {
   return Number(((employee.valor_plantao_12h || 0) * count).toFixed(2))
 }
 
+function formatPaidDescription(prefix: string, date?: string) {
+  return date ? `${prefix} em ${formatDatePDF(date)}` : prefix
+}
+
+function isManagedPayrollAdicional(adicional: PayrollAdicional) {
+  return adicional.codigo === 'vt_automatico'
+    || adicional.codigo === 'vale_pago'
+    || adicional.codigo === 'vt_pago'
+    || adicional.descricao === VT_DESCRICAO
+    || adicional.descricao.startsWith(`${VT_DESCRICAO} (`)
+    || adicional.descricao.startsWith(VALE_PAGO_PREFIX)
+    || adicional.descricao.startsWith(VT_PAGO_PREFIX)
+}
+
+function inferPaidDate(adicional: PayrollAdicional | undefined) {
+  return adicional?.data_pagamento || ''
+}
+
 function normalizeEmployee(raw: any): Employee {
   return {
     ...raw,
@@ -257,7 +296,7 @@ export default function FolhaPagamento() {
   const [baixaSaving, setBaixaSaving] = useState(false)
 
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<PayrollForm>({
     funcionarioId: '',
     salarioBruto: 0,
     descontos: 0,
@@ -267,6 +306,12 @@ export default function FolhaPagamento() {
     periodoFim: '',
     tipo_periodo: 'mes' as 'mes' | 'periodo' | '13_salario',
     observacoes: '',
+    valePago: false,
+    valePagoValor: 0,
+    valePagoData: '',
+    vtPago: false,
+    vtPagoValor: 0,
+    vtPagoData: '',
   })
   const [adicionais, setAdicionais] = useState<PayrollAdicional[]>([])
   const weeklyVtTotal = Number((weeklyVtForm.diasTrabalhados * weeklyVtForm.valorDiario).toFixed(2))
@@ -430,9 +475,41 @@ export default function FolhaPagamento() {
     } as any)
   }
 
+  const selectedEmployee = employees.find(e => e.id === form.funcionarioId)
+  const formWorkedDays = countWorkedDays(selectedEmployee, form.periodoInicio, form.periodoFim)
+  const formPeriodDays = form.periodoInicio && form.periodoFim
+    ? differenceInCalendarDays(parseISO(form.periodoFim), parseISO(form.periodoInicio)) + 1
+    : 30
+  const formVtMultiplier = form.tipo_periodo === 'periodo' && formPeriodDays > 0 ? formPeriodDays / 30 : 1
+  const formVtValue = calculateVtValue(selectedEmployee, formVtMultiplier, formWorkedDays)
+  const shouldIncludePayrollVt = !!selectedEmployee?.tem_vt && form.tipo_periodo !== '13_salario' && (shouldAutoIncludeVt(selectedEmployee) || isLarSabedoriaCompany)
+  const managedAdicionais: PayrollAdicional[] = [
+    ...(shouldIncludePayrollVt && formVtValue > 0 ? [{
+      descricao: selectedEmployee?.vt_tipo === 'diaria' ? `${VT_DESCRICAO} (${formWorkedDays} dia${formWorkedDays === 1 ? '' : 's'})` : VT_DESCRICAO,
+      tipo: 'provento' as const,
+      valor: formVtValue,
+      codigo: 'vt_automatico' as const,
+    }] : []),
+    ...(isLarSabedoriaCompany && form.valePago && form.valePagoValor > 0 ? [{
+      descricao: formatPaidDescription(VALE_PAGO_PREFIX, form.valePagoData),
+      tipo: 'desconto' as const,
+      valor: Number(form.valePagoValor.toFixed(2)),
+      codigo: 'vale_pago' as const,
+      data_pagamento: form.valePagoData || undefined,
+    }] : []),
+    ...(isLarSabedoriaCompany && form.vtPago && form.vtPagoValor > 0 ? [{
+      descricao: formatPaidDescription(VT_PAGO_PREFIX, form.vtPagoData),
+      tipo: 'desconto' as const,
+      valor: Number(form.vtPagoValor.toFixed(2)),
+      codigo: 'vt_pago' as const,
+      data_pagamento: form.vtPagoData || undefined,
+    }] : []),
+  ]
+  const payrollAdicionais = [...adicionais.filter(a => !isManagedPayrollAdicional(a)), ...managedAdicionais]
+
   // Computed totals
-  const totalProventos = adicionais.filter(a => a.tipo === 'provento').reduce((s, a) => s + a.valor, 0)
-  const totalDescontos = adicionais.filter(a => a.tipo === 'desconto').reduce((s, a) => s + a.valor, 0)
+  const totalProventos = payrollAdicionais.filter(a => a.tipo === 'provento').reduce((s, a) => s + a.valor, 0)
+  const totalDescontos = payrollAdicionais.filter(a => a.tipo === 'desconto').reduce((s, a) => s + a.valor, 0)
   const salarioLiquidoCalc = form.salarioBruto + totalProventos - form.descontos - totalDescontos
 
   async function handleSave() {
@@ -450,7 +527,7 @@ export default function FolhaPagamento() {
       status: form.status,
       periodo_inicio: form.periodoInicio || null,
       periodo_fim: form.periodoFim || null,
-      adicionais: adicionais.length > 0 ? adicionais : [],
+      adicionais: payrollAdicionais.length > 0 ? payrollAdicionais : [],
       tipo_periodo: form.tipo_periodo,
       observacoes: form.observacoes || '',
     }
@@ -550,11 +627,12 @@ export default function FolhaPagamento() {
                 valor: Number((dailyDiscount * faltasCount).toFixed(2))
              })
           }
-          if (shouldAutoIncludeVt(emp)) {
+          if (emp.tem_vt && (shouldAutoIncludeVt(emp) || isLarSabedoriaCompany)) {
              payloadAdicionais.push({
-                descricao: 'Vale Transporte',
+                descricao: emp.vt_tipo === 'diaria' ? `Vale Transporte (${workedDays} dia${workedDays === 1 ? '' : 's'})` : 'Vale Transporte',
                 tipo: 'provento',
-                valor: calculateVtValue(emp, multiplier, workedDays)
+                valor: calculateVtValue(emp, multiplier, workedDays),
+                codigo: 'vt_automatico',
              })
           }
           if (emp.tem_insalubridade && emp.insalubridade_percentual) {
@@ -639,18 +717,17 @@ export default function FolhaPagamento() {
       periodoFim: end,
       tipo_periodo: 'mes' as 'mes' | 'periodo' | '13_salario',
       observacoes: '',
+      valePago: false,
+      valePagoValor: 0,
+      valePagoData: '',
+      vtPago: false,
+      vtPagoValor: firstEmp?.tem_vt ? calculateVtValue(firstEmp, 1, workedDays) : 0,
+      vtPagoData: '',
     })
     
     const initialAdicionais: PayrollAdicional[] = []
     if (firstEmp) {
       initialAdicionais.push(...getFrequencyAdicionais(firstEmp, start, end, 1, 'mes'))
-      if (shouldAutoIncludeVt(firstEmp)) {
-        initialAdicionais.push({
-          descricao: 'Vale Transporte',
-          tipo: 'provento',
-          valor: calculateVtValue(firstEmp, 1, workedDays)
-        })
-      }
       if (firstEmp.tem_insalubridade && firstEmp.insalubridade_percentual) {
         const salaryBase = firstSalary
         const fullInsalubridade = salaryBase * (firstEmp.insalubridade_percentual / 100)
@@ -669,6 +746,10 @@ export default function FolhaPagamento() {
 
   function openEdit(p: Payroll) {
     const descAdicionais = p.adicionais?.filter(a => a.tipo === 'desconto').reduce((s, a) => s + a.valor, 0) || 0
+    const valePago = p.adicionais?.find(a => a.codigo === 'vale_pago' || a.descricao.startsWith(VALE_PAGO_PREFIX))
+    const vtPago = p.adicionais?.find(a => a.codigo === 'vt_pago' || a.descricao.startsWith(VT_PAGO_PREFIX))
+    const vtLancado = p.adicionais?.find(a => a.codigo === 'vt_automatico' || a.descricao === VT_DESCRICAO || a.descricao.startsWith(`${VT_DESCRICAO} (`))
+    const emp = employees.find(e => e.id === p.funcionarioId)
     setForm({
       funcionarioId: p.funcionarioId,
       salarioBruto: p.salarioBruto,
@@ -679,8 +760,14 @@ export default function FolhaPagamento() {
       periodoFim: p.periodoFim || '',
       tipo_periodo: p.tipo_periodo || (p.periodoInicio && p.periodoFim ? 'periodo' : 'mes'),
       observacoes: p.observacoes || '',
+      valePago: !!valePago,
+      valePagoValor: valePago?.valor || 0,
+      valePagoData: inferPaidDate(valePago),
+      vtPago: !!vtPago,
+      vtPagoValor: vtPago?.valor || vtLancado?.valor || calculateVtValue(emp, 1, countWorkedDays(emp, p.periodoInicio || '', p.periodoFim || '')),
+      vtPagoData: inferPaidDate(vtPago),
     })
-    setAdicionais(p.adicionais || [])
+    setAdicionais((p.adicionais || []).filter(a => !isManagedPayrollAdicional(a)))
     setEditingId(p.id)
     setDialogOpen(true)
   }
@@ -880,23 +967,26 @@ export default function FolhaPagamento() {
       setAdicionais(prevAdics => {
         const overtimeAdicionais = val === '13_salario' ? [] : getFrequencyAdicionais(emp, start, end, multiplier, val)
         let updated = prevAdics
-          .filter(a => !a.descricao.startsWith('Hora Extra ') && !a.descricao.startsWith('Horas Devidas '))
+          .filter(a => !a.descricao.startsWith('Hora Extra ') && !a.descricao.startsWith('Horas Devidas ') && !isManagedPayrollAdicional(a))
           .map(a => {
-          if (a.descricao === 'Vale Transporte' && shouldAutoIncludeVt(emp)) {
-            return { ...a, valor: calculateVtValue(emp, multiplier, workedDays) }
-          }
           if (a.descricao.startsWith('Adicional Insalubridade') && emp?.tem_insalubridade) {
             return { ...a, valor: Number((novoSalario * (emp.insalubridade_percentual / 100)).toFixed(2)) }
           }
           return a
         })
-        if (val === '13_salario' || !shouldAutoIncludeVt(emp)) {
-          updated = updated.filter(a => a.descricao !== 'Vale Transporte');
-        }
         return [...overtimeAdicionais, ...updated];
       })
 
-      return { ...prev, tipo_periodo: val, periodoInicio: start, periodoFim: end, mesReferencia: month, salarioBruto: novoSalario }
+      const nextVtValue = calculateVtValue(emp, multiplier, workedDays)
+      return {
+        ...prev,
+        tipo_periodo: val,
+        periodoInicio: start,
+        periodoFim: end,
+        mesReferencia: month,
+        salarioBruto: novoSalario,
+        vtPagoValor: prev.vtPago || !prev.vtPagoValor ? nextVtValue : prev.vtPagoValor,
+      }
     })
   }
 
@@ -1313,16 +1403,16 @@ export default function FolhaPagamento() {
                   }
                   
                   const salarioBruto = calculateEmployeeSalary(emp, multiplier, form.periodoInicio, form.periodoFim, form.tipo_periodo)
-                  setForm({ ...form, funcionarioId: e.target.value, salarioBruto, descontos: emp?.descontos_fixos || 0 })
+                  const nextVtValue = calculateVtValue(emp, multiplier, workedDays)
+                  setForm({
+                    ...form,
+                    funcionarioId: e.target.value,
+                    salarioBruto,
+                    descontos: emp?.descontos_fixos || 0,
+                    vtPagoValor: form.vtPago || !form.vtPagoValor ? nextVtValue : form.vtPagoValor,
+                  })
                   
                   const newAdicionais: PayrollAdicional[] = getFrequencyAdicionais(emp, form.periodoInicio, form.periodoFim, multiplier, form.tipo_periodo)
-                  if (shouldAutoIncludeVt(emp) && form.tipo_periodo !== '13_salario') {
-                    newAdicionais.push({
-                      descricao: 'Vale Transporte',
-                      tipo: 'provento',
-                      valor: calculateVtValue(emp, multiplier, workedDays)
-                    })
-                  }
                   if (emp?.tem_insalubridade && emp.insalubridade_percentual) {
                     newAdicionais.push({
                       descricao: `Adicional Insalubridade (${emp.insalubridade_percentual}%)`,
@@ -1424,10 +1514,99 @@ export default function FolhaPagamento() {
               </div>
             </div>
 
+            {isLarSabedoriaCompany && (
+              <div className="border rounded-lg p-4 space-y-4 bg-emerald-50/40">
+                <div className="flex flex-col gap-1">
+                  <Label className="text-sm font-semibold">Vales e Transporte</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Dias pela escala: <strong>{formWorkedDays}</strong>
+                    {selectedEmployee?.tem_vt && form.tipo_periodo !== '13_salario' && (
+                      <> | VT do cadastro: <strong>{formatCurrency(formVtValue)}</strong></>
+                    )}
+                  </p>
+                </div>
+
+                {selectedEmployee?.tem_vt && form.tipo_periodo !== '13_salario' && (
+                  <div className="rounded-md border bg-background p-3 text-sm flex items-center justify-between">
+                    <span>Vale Transporte lançado automaticamente</span>
+                    <strong className="text-emerald-700">{formatCurrency(formVtValue)}</strong>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_140px_160px] gap-3 items-end">
+                  <label className="flex items-center gap-2 rounded-md border bg-background p-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.valePago}
+                      onChange={(e) => setForm({ ...form, valePago: e.target.checked })}
+                      className="h-4 w-4"
+                    />
+                    <span>Vale/adiantamento já pago</span>
+                  </label>
+                  <div>
+                    <Label className="text-xs">Valor Pago</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={form.valePagoValor}
+                      onChange={(e) => setForm({ ...form, valePagoValor: Number(e.target.value) })}
+                      disabled={!form.valePago}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Data do Pagamento</Label>
+                    <Input
+                      type="date"
+                      value={form.valePagoData}
+                      onChange={(e) => setForm({ ...form, valePagoData: e.target.value })}
+                      disabled={!form.valePago}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_140px_160px] gap-3 items-end">
+                  <label className="flex items-center gap-2 rounded-md border bg-background p-3 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={form.vtPago}
+                      onChange={(e) => setForm({ ...form, vtPago: e.target.checked, vtPagoValor: e.target.checked && !form.vtPagoValor ? formVtValue : form.vtPagoValor })}
+                      className="h-4 w-4"
+                    />
+                    <span>Vale transporte já pago</span>
+                  </label>
+                  <div>
+                    <Label className="text-xs">Valor Pago</Label>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={form.vtPagoValor}
+                      onChange={(e) => setForm({ ...form, vtPagoValor: Number(e.target.value) })}
+                      disabled={!form.vtPago}
+                      className="mt-1"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Data do Pagamento</Label>
+                    <Input
+                      type="date"
+                      value={form.vtPagoData}
+                      onChange={(e) => setForm({ ...form, vtPagoData: e.target.value })}
+                      disabled={!form.vtPago}
+                      className="mt-1"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Adicionais */}
             <div className="border rounded-lg p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <Label className="text-sm font-semibold">Adicionais (Proventos & Descontos)</Label>
+                <Label className="text-sm font-semibold">Adicionais Manuais (Proventos & Descontos)</Label>
                 <Button variant="outline" size="sm" onClick={addAdicional} className="gap-1">
                   <Plus className="h-3 w-3" /> Adicionar
                 </Button>
@@ -1462,6 +1641,12 @@ export default function FolhaPagamento() {
             {/* Totals preview */}
             <div className="bg-muted/50 rounded-lg p-4 space-y-1 text-sm">
               <div className="flex justify-between"><span>Salário Bruto</span><span>{formatCurrency(form.salarioBruto)}</span></div>
+              {managedAdicionais.map((a, idx) => (
+                <div key={`${a.descricao}-${idx}`} className={`flex justify-between ${a.tipo === 'provento' ? 'text-green-600' : 'text-red-600'}`}>
+                  <span>{a.tipo === 'provento' ? '+ ' : '- '}{a.descricao}</span>
+                  <span>{formatCurrency(a.valor)}</span>
+                </div>
+              ))}
               {totalProventos > 0 && <div className="flex justify-between text-green-600"><span>+ Proventos</span><span>{formatCurrency(totalProventos)}</span></div>}
               <div className="flex justify-between text-red-600"><span>- Descontos Fixos</span><span>{formatCurrency(form.descontos)}</span></div>
               {totalDescontos > 0 && <div className="flex justify-between text-red-600"><span>- Descontos Adicionais</span><span>{formatCurrency(totalDescontos)}</span></div>}
