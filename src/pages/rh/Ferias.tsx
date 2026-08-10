@@ -77,9 +77,24 @@ function parseMoneyInput(value: string) {
   return Number.isFinite(parsed) ? parsed : 0
 }
 
+function normalizeEmployee(raw: any): Employee {
+  return {
+    ...raw,
+    dataAdmissao: raw.dataAdmissao || raw.data_admissao || '',
+    tipo_contrato_inicial: raw.tipo_contrato_inicial || raw.tipo_contrato || 'autonomo',
+    data_inicio_clt: raw.data_inicio_clt || '',
+  } as Employee
+}
+
+function getCltStartDate(employee: Employee) {
+  if (employee.tipo_contrato !== 'clt') return ''
+  return employee.data_inicio_clt || employee.dataAdmissao || ''
+}
+
 export default function Ferias() {
   const [clinic] = useClinic()
-  const { data: employees } = useDb<Employee>('employees')
+  const { data: rawEmployees } = useDb<Employee>('employees')
+  const employees = useMemo(() => rawEmployees.map(normalizeEmployee), [rawEmployees])
   const { data: rawVacations, loading, insert, update, remove } = useDb<Vacation>('vacations')
   const { data: bills, insert: insertBill, update: updateBill } = useDb<Bill>('bills')
   const { data: categories } = useDb<TransactionCategory>('transaction_categories')
@@ -147,12 +162,16 @@ export default function Ferias() {
   const vacationOverview = useMemo(() => {
     const today = new Date()
     const activeEmployees = employees
-      .filter(e => e.status === 'ativo')
+      .filter(e => e.status === 'ativo' && e.tipo_contrato === 'clt')
       .sort((a, b) => (a.nome || '').localeCompare(b.nome || ''))
 
     return activeEmployees.map(employee => {
-      const admissionDate = parseLocalDate((employee as any).dataAdmissao || (employee as any).data_admissao)
-      const employeeVacations = vacations.filter(v => v.funcionarioId === employee.id)
+      const cltStartDate = getCltStartDate(employee)
+      const admissionDate = parseLocalDate(cltStartDate)
+      const employeeVacations = vacations.filter(v =>
+        v.funcionarioId === employee.id &&
+        (!cltStartDate || !v.dataInicio || v.dataInicio >= cltStartDate)
+      )
       const completedVacations = employeeVacations.filter(v => v.status === 'concluida')
       const takenDays = completedVacations.reduce((sum, vacation) => sum + vacationDays(vacation), 0)
       const lastVacation = [...completedVacations]
@@ -167,7 +186,7 @@ export default function Ferias() {
           availableDays: 0,
           nextDate: null,
           daysToNext: null,
-          statusText: 'Sem data de admissão',
+          statusText: 'Sem início CLT',
           statusTone: 'muted' as const,
           lastVacation,
         }
@@ -191,7 +210,7 @@ export default function Ferias() {
 
       return {
         employee,
-        admissionDate,
+          admissionDate,
         earnedPeriods,
         takenDays,
         availableDays,
@@ -252,7 +271,12 @@ export default function Ferias() {
     if (form.funcionarioId) {
       const emp = employees.find(e => e.id === form.funcionarioId)
       if (emp) {
-        setForm(prev => ({ ...prev, salarioBase: emp.salario || 0 }))
+        const cltStartDate = getCltStartDate(emp)
+        setForm(prev => ({
+          ...prev,
+          salarioBase: emp.salario || 0,
+          dataInicio: !prev.dataInicio || (cltStartDate && prev.dataInicio < cltStartDate) ? cltStartDate : prev.dataInicio,
+        }))
       }
     }
   }, [form.funcionarioId, employees])
@@ -274,9 +298,10 @@ export default function Ferias() {
   }
 
   function openNewForEmployee(employee: Employee) {
+    const cltStartDate = getCltStartDate(employee)
     setForm({
       funcionarioId: employee.id,
-      dataInicio: '',
+      dataInicio: cltStartDate,
       dataFim: '',
       status: 'agendada',
       salarioBase: employee.salario || 0,
@@ -293,6 +318,15 @@ export default function Ferias() {
     const emp = employees.find(e => e.id === form.funcionarioId)
     if (!emp || !form.dataInicio || !form.dataFim) {
       alert('Preencha os campos obrigatórios e selecione o funcionário.')
+      return
+    }
+    const cltStartDate = getCltStartDate(emp)
+    if (emp.tipo_contrato !== 'clt' || !cltStartDate) {
+      alert('Férias devem ser lançadas somente para funcionário CLT com data de início CLT informada.')
+      return
+    }
+    if (form.dataInicio < cltStartDate) {
+      alert(`As férias deste funcionário só podem ser calculadas a partir do início CLT (${formatDate(cltStartDate)}).`)
       return
     }
     
@@ -474,7 +508,7 @@ export default function Ferias() {
           <div>
             <h3 className="text-lg font-semibold text-foreground">Controle de Períodos Aquisitivos</h3>
             <p className="text-sm text-muted-foreground">
-              Baseado na data de admissão e nas férias concluídas de cada funcionário.
+              Baseado na data de início CLT e nas férias concluídas de cada funcionário.
             </p>
           </div>
           <Badge variant="outline">{vacationOverview.length} funcionários</Badge>
@@ -485,7 +519,7 @@ export default function Ferias() {
             <TableHeader>
               <TableRow>
                 <TableHead>Funcionário</TableHead>
-                <TableHead>Admissão</TableHead>
+                <TableHead>Início CLT</TableHead>
                 <TableHead>Períodos</TableHead>
                 <TableHead>Férias Tiradas</TableHead>
                 <TableHead>Saldo</TableHead>
@@ -701,7 +735,7 @@ export default function Ferias() {
                 <Label>Funcionário</Label>
                 <Select value={form.funcionarioId} onChange={(e) => setForm({ ...form, funcionarioId: e.target.value })} className="mt-1">
                   <option value="">Selecionar...</option>
-                  {employees.filter(e => e.status === 'ativo').map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
+                  {employees.filter(e => e.status === 'ativo' && e.tipo_contrato === 'clt').map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
                 </Select>
               </div>
 

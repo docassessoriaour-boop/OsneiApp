@@ -234,8 +234,30 @@ function normalizeEmployee(raw: any): Employee {
   return {
     ...raw,
     dataAdmissao: raw.dataAdmissao || raw.data_admissao || '',
+    tipo_contrato_inicial: raw.tipo_contrato_inicial || raw.tipo_contrato || 'autonomo',
+    data_inicio_clt: raw.data_inicio_clt || '',
     valor_hora_extra: Number(raw.valor_hora_extra ?? raw.valorHoraExtra ?? raw.valor_hora_extra_cadastrado ?? 0),
   } as Employee
+}
+
+function isCltContract(employee: Employee | undefined) {
+  return employee?.tipo_contrato === 'clt'
+}
+
+function getCltStart(employee: Employee | undefined) {
+  if (!isCltContract(employee)) return ''
+  return employee?.data_inicio_clt || employee?.dataAdmissao || ''
+}
+
+function clampStartByClt(employee: Employee | undefined, start: string) {
+  const cltStart = getCltStart(employee)
+  if (!cltStart || !start) return start
+  return cltStart > start ? cltStart : start
+}
+
+function isBeforeCltPeriod(employee: Employee | undefined, end: string) {
+  const cltStart = getCltStart(employee)
+  return !!cltStart && !!end && end < cltStart
 }
 
 export default function FolhaPagamento() {
@@ -333,7 +355,9 @@ export default function FolhaPagamento() {
 
   function countWorkedDays(employee: Employee | undefined, start: string, end: string) {
     if (!employee || !start || !end) return 0
-    const periodStartDate = parseISO(start)
+    if (isBeforeCltPeriod(employee, end)) return 0
+    const effectiveStart = clampStartByClt(employee, start)
+    const periodStartDate = parseISO(effectiveStart)
     const periodEndDate = parseISO(end)
     const periodDays = eachDayOfInterval({ start: periodStartDate, end: periodEndDate })
 
@@ -352,10 +376,12 @@ export default function FolhaPagamento() {
   function getFrequencyAdicionais(employee: Employee | undefined, start: string, end: string, multiplier = 1, tipoPeriodo: typeof form.tipo_periodo = 'mes') {
     if (!employee || !start || !end) return []
     if (tipoPeriodo === '13_salario') return []
+    if (isBeforeCltPeriod(employee, end)) return []
+    const effectiveStart = clampStartByClt(employee, start)
 
     const attendanceLaunches = exceptions.filter(ex =>
       ex.employee_id === employee.id &&
-      ex.date >= start &&
+      ex.date >= effectiveStart &&
       ex.date <= end &&
       ex.tipo_lancamento !== 'falta' &&
       (!!ex.is_working || !!ex.start_time || !!ex.end_time)
@@ -417,13 +443,45 @@ export default function FolhaPagamento() {
 
   function calculateEmployeeSalary(employee: Employee | undefined, multiplier: number, start: string, end: string, tipoPeriodo: typeof form.tipo_periodo) {
     const baseSalary = employee?.salario || 0
+    if (!employee || (start && end && isBeforeCltPeriod(employee, end))) return 0
+    const effectiveStart = start && end ? clampStartByClt(employee, start) : start
+    const effectiveMultiplier = isCltContract(employee) && tipoPeriodo !== '13_salario' && start && end && effectiveStart > start
+      ? Math.max(0, (differenceInCalendarDays(parseISO(end), parseISO(effectiveStart)) + 1) / Math.max(1, differenceInCalendarDays(parseISO(end), parseISO(start)) + 1)) * multiplier
+      : multiplier
     if (employee?.salario_tipo === 'diaria' && tipoPeriodo !== '13_salario') {
-      return Number((baseSalary * countWorkedDays(employee, start, end)).toFixed(2))
+      return Number((baseSalary * countWorkedDays(employee, effectiveStart, end)).toFixed(2))
     }
     if (isLarSabedoriaCompany && employee?.salario_tipo?.startsWith('plantao_') && tipoPeriodo !== '13_salario') {
-      return Number((getPlantaoPackageSalary(employee) * multiplier).toFixed(2))
+      return Number((getPlantaoPackageSalary(employee) * effectiveMultiplier).toFixed(2))
     }
-    return Number((baseSalary * multiplier).toFixed(2))
+    return Number((baseSalary * effectiveMultiplier).toFixed(2))
+  }
+
+  function calculateThirteenthMultiplier(employee: Employee | undefined, month: string, end: string) {
+    if (!employee || !isCltContract(employee)) return 0
+    const year = parseInt(month.split('-')[0], 10) || new Date().getFullYear()
+    const endCalculated = end ? parseISO(end) : parseISO(`${year}-12-31`)
+    const cltStart = getCltStart(employee)
+    if (!cltStart) return 0
+    const start = parseISO(cltStart)
+    if (start.getFullYear() > year) return 0
+
+    let months = 0
+    const firstMonth = start.getFullYear() < year ? 0 : start.getMonth()
+    for (let m = firstMonth; m <= endCalculated.getMonth(); m++) {
+      if (m === firstMonth && start.getFullYear() === year) {
+        const daysInAdmissionMonth = getDaysInMonth(start)
+        const workedInAdmissionMonth = m === endCalculated.getMonth()
+          ? endCalculated.getDate() - start.getDate() + 1
+          : daysInAdmissionMonth - start.getDate() + 1
+        if (workedInAdmissionMonth >= 15) months++
+      } else if (m === endCalculated.getMonth()) {
+        if (endCalculated.getDate() >= 15) months++
+      } else {
+        months++
+      }
+    }
+    return months / 12
   }
 
   function calculateVtValue(employee: Employee | undefined, multiplier: number, workedDays: number) {
@@ -576,6 +634,7 @@ export default function FolhaPagamento() {
         let faltasCount = 0
         days.forEach(day => {
           const dateStr = format(day, 'yyyy-MM-dd')
+          if (isCltContract(emp) && isBeforeCltPeriod(emp, dateStr)) return
           const exception = exceptions.find(ex => ex.employee_id === emp.id && ex.date === dateStr)
           
           let works = false
@@ -923,42 +982,7 @@ export default function FolhaPagamento() {
           novoSalario = calculateEmployeeSalary(emp, multiplier, start, end, val)
         }
       } else if (val === '13_salario') {
-        const year = parseInt(month.split('-')[0], 10) || new Date().getFullYear();
-        const endCalculated = end ? parseISO(end) : parseISO(`${year}-12-31`);
-        if (emp?.dataAdmissao) {
-          const admissao = parseISO(emp.dataAdmissao);
-          const anoAdmissao = admissao.getFullYear();
-          if (anoAdmissao < year) {
-            let meses = 0;
-            for (let m = 0; m <= endCalculated.getMonth(); m++) {
-               if (m === endCalculated.getMonth()) {
-                 if (endCalculated.getDate() >= 15) meses++;
-               } else {
-                 meses++;
-               }
-            }
-            multiplier = meses / 12;
-          } else if (anoAdmissao > year) {
-            multiplier = 0;
-          } else {
-            let meses = 0;
-            for (let m = admissao.getMonth(); m <= endCalculated.getMonth(); m++) {
-              if (m === admissao.getMonth() && m === endCalculated.getMonth()) {
-                 const diasTrabalhados = endCalculated.getDate() - admissao.getDate() + 1;
-                 if (diasTrabalhados >= 15) meses++;
-              } else if (m === admissao.getMonth()) {
-                const daysInMonth = getDaysInMonth(admissao);
-                const diasTrabalhados = daysInMonth - admissao.getDate() + 1;
-                if (diasTrabalhados >= 15) meses++;
-              } else if (m === endCalculated.getMonth()) {
-                if (endCalculated.getDate() >= 15) meses++;
-              } else {
-                meses++;
-              }
-            }
-            multiplier = meses / 12;
-          }
-        }
+        multiplier = calculateThirteenthMultiplier(emp, month, end)
         novoSalario = calculateEmployeeSalary(emp, multiplier, start, end, val);
       } else {
         novoSalario = calculateEmployeeSalary(emp, multiplier, start, end, val)
@@ -1364,42 +1388,7 @@ export default function FolhaPagamento() {
                     const dias = differenceInCalendarDays(parseISO(form.periodoFim), parseISO(form.periodoInicio)) + 1
                     if (dias > 0) multiplier = dias / 30
                   } else if (form.tipo_periodo === '13_salario') {
-                    const year = parseInt(form.mesReferencia.split('-')[0], 10) || new Date().getFullYear();
-                    const endCalculated = form.periodoFim ? parseISO(form.periodoFim) : parseISO(`${year}-12-31`);
-                    if (emp?.dataAdmissao) {
-                      const admissao = parseISO(emp.dataAdmissao);
-                      const anoAdmissao = admissao.getFullYear();
-                      if (anoAdmissao < year) {
-                        let meses = 0;
-                        for (let m = 0; m <= endCalculated.getMonth(); m++) {
-                           if (m === endCalculated.getMonth()) {
-                             if (endCalculated.getDate() >= 15) meses++;
-                           } else {
-                             meses++;
-                           }
-                        }
-                        multiplier = meses / 12;
-                      } else if (anoAdmissao > year) {
-                        multiplier = 0;
-                      } else {
-                        let meses = 0;
-                        for (let m = admissao.getMonth(); m <= endCalculated.getMonth(); m++) {
-                          if (m === admissao.getMonth() && m === endCalculated.getMonth()) {
-                             const diasTrabalhados = endCalculated.getDate() - admissao.getDate() + 1;
-                             if (diasTrabalhados >= 15) meses++;
-                          } else if (m === admissao.getMonth()) {
-                            const daysInMonth = getDaysInMonth(admissao);
-                            const diasTrabalhados = daysInMonth - admissao.getDate() + 1;
-                            if (diasTrabalhados >= 15) meses++;
-                          } else if (m === endCalculated.getMonth()) {
-                            if (endCalculated.getDate() >= 15) meses++;
-                          } else {
-                            meses++;
-                          }
-                        }
-                        multiplier = meses / 12;
-                      }
-                    }
+                    multiplier = calculateThirteenthMultiplier(emp, form.mesReferencia, form.periodoFim)
                   }
                   
                   const salarioBruto = calculateEmployeeSalary(emp, multiplier, form.periodoInicio, form.periodoFim, form.tipo_periodo)

@@ -44,6 +44,8 @@ const emptyEmployee: Omit<Employee, 'id'> = {
   salario: 0,
   salario_tipo: 'mensal',
   tipo_contrato: 'autonomo',
+  tipo_contrato_inicial: 'autonomo',
+  data_inicio_clt: '',
   possui_beneficio_governamental: false,
   mei_razao_social: '',
   mei_cnpj: '',
@@ -122,7 +124,18 @@ function getVtDescription(employee: Employee) {
 }
 
 function getContractTypeLabel(employee: Employee) {
+  if (employee.tipo_contrato === 'clt') return 'CLT'
   return employee.tipo_contrato === 'mei' ? 'MEI' : 'Autônomo'
+}
+
+function getInitialContractTypeLabel(employee: Employee) {
+  if (employee.tipo_contrato_inicial === 'clt') return 'CLT'
+  return employee.tipo_contrato_inicial === 'mei' ? 'MEI' : 'Autônomo'
+}
+
+function getCltStartDate(employee: Employee) {
+  if (employee.tipo_contrato !== 'clt') return ''
+  return employee.data_inicio_clt || employee.dataAdmissao || ''
 }
 
 function getChildrenUnder14Label(employee: Employee) {
@@ -147,6 +160,8 @@ function normalizeEmployee(raw: EmployeeDb | any): Employee {
   return {
     ...raw,
     dataAdmissao: raw.dataAdmissao || raw.data_admissao || '',
+    tipo_contrato_inicial: raw.tipo_contrato_inicial || raw.tipo_contrato || 'autonomo',
+    data_inicio_clt: raw.data_inicio_clt || '',
     valor_hora_extra: Number(raw.valor_hora_extra ?? raw.valorHoraExtra ?? raw.valor_hora_extra_cadastrado ?? 0),
   } as Employee
 }
@@ -562,6 +577,8 @@ export default function Funcionarios() {
       ...rest,
       salario_tipo: employee.salario_tipo || 'mensal',
       tipo_contrato: employee.tipo_contrato || 'autonomo',
+      tipo_contrato_inicial: employee.tipo_contrato_inicial || employee.tipo_contrato || 'autonomo',
+      data_inicio_clt: employee.data_inicio_clt || '',
       possui_beneficio_governamental: !!employee.possui_beneficio_governamental,
       possui_filhos_menores_14: !!employee.possui_filhos_menores_14,
       quantidade_filhos_menores_14: employee.quantidade_filhos_menores_14 || 0,
@@ -583,8 +600,12 @@ export default function Funcionarios() {
     // Sanitize data: empty strings in date fields should be null for Postgres
     // dataAdmissao in TS = data_admissao in DB (snake_case)
     const { dataAdmissao, ...rest } = form
+    const tipoContrato = form.tipo_contrato || 'autonomo'
     const payload = {
       ...rest,
+      tipo_contrato: tipoContrato,
+      tipo_contrato_inicial: tipoContrato === 'clt' ? (form.tipo_contrato_inicial || 'autonomo') : tipoContrato,
+      data_inicio_clt: tipoContrato === 'clt' ? (form.data_inicio_clt || dataAdmissao || null) : null,
       data_nascimento: form.data_nascimento || null,
       data_admissao: dataAdmissao || null
     }
@@ -951,6 +972,8 @@ export default function Funcionarios() {
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Turno:</strong></td><td style="border:none; padding: 4px;">${employee.turno || 'Diurno'}${getEmployeeShiftLabel(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Escala:</strong></td><td style="border:none; padding: 4px;">${employee.escala}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Tipo de Contrato:</strong></td><td style="border:none; padding: 4px;">${getContractTypeLabel(employee)}</td></tr>
+          ${employee.tipo_contrato === 'clt' ? `<tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Contrato Inicial:</strong></td><td style="border:none; padding: 4px;">${getInitialContractTypeLabel(employee)}</td></tr>` : ''}
+          ${employee.tipo_contrato === 'clt' ? `<tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Início CLT:</strong></td><td style="border:none; padding: 4px;">${formatDatePDF(getCltStartDate(employee))}</td></tr>` : ''}
           ${isLarSabedoriaCompany && employee.tipo_contrato === 'autonomo' ? `<tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Benefício Governamental:</strong></td><td style="border:none; padding: 4px;">${employee.possui_beneficio_governamental ? 'SIM' : 'NÃO'}</td></tr>` : ''}
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Contrato de Experiência:</strong></td><td style="border:none; padding: 4px;">${getExperienceContractLabel(employee)}</td></tr>
           <tr style="border:none;"><td style="border:none; padding: 4px;"><strong>Data de Admissão:</strong></td><td style="border:none; padding: 4px;">${formatDatePDF(employee.dataAdmissao)}</td></tr>
@@ -1055,6 +1078,9 @@ export default function Funcionarios() {
                         <Badge variant="outline" className="text-[10px]">{normalizeWorkUnit(employee.unidade, clinicConfig)}</Badge>
                         <Badge variant="outline" className="text-[10px] bg-blue-50/50">
                           {employee.turno || 'Diurno'}{getEmployeeShiftLabel(employee)}
+                        </Badge>
+                        <Badge variant="outline" className="text-[10px]">
+                          {getContractTypeLabel(employee)}
                         </Badge>
                       </div>
                     </TableCell>
@@ -1337,13 +1363,41 @@ export default function Funcionarios() {
                 setForm({
                   ...form,
                   tipo_contrato: tipoContrato,
+                  tipo_contrato_inicial: tipoContrato === 'clt' ? (form.tipo_contrato_inicial || 'autonomo') : tipoContrato,
+                  data_inicio_clt: tipoContrato === 'clt' ? (form.data_inicio_clt || form.dataAdmissao || new Date().toISOString().slice(0, 10)) : '',
                   possui_beneficio_governamental: tipoContrato === 'autonomo' ? form.possui_beneficio_governamental : false
                 })
               }} className="mt-1">
                 <option value="autonomo">Autônomo</option>
                 <option value="mei">MEI</option>
+                <option value="clt">CLT</option>
               </Select>
             </div>
+            {form.tipo_contrato === 'clt' && (
+              <>
+                <div>
+                  <Label>Tipo de Contrato Inicial</Label>
+                  <Select
+                    value={form.tipo_contrato_inicial || 'autonomo'}
+                    onChange={(e) => setForm({ ...form, tipo_contrato_inicial: e.target.value as Employee['tipo_contrato_inicial'] })}
+                    className="mt-1"
+                  >
+                    <option value="autonomo">Autônomo</option>
+                    <option value="mei">MEI</option>
+                    <option value="clt">CLT desde a admissão</option>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Data de Início CLT</Label>
+                  <Input
+                    type="date"
+                    value={form.data_inicio_clt || ''}
+                    onChange={(e) => setForm({ ...form, data_inicio_clt: e.target.value })}
+                    className="mt-1"
+                  />
+                </div>
+              </>
+            )}
             {isLarSabedoriaCompany && form.tipo_contrato === 'autonomo' && (
               <div className="flex items-center gap-2 p-3 bg-primary/5 rounded-lg border border-primary/10">
                 <input

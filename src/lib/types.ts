@@ -21,7 +21,9 @@ export interface Employee {
   vt_tipo?: string
   vt_valor: number
   salario_tipo?: 'mensal' | 'diaria' | 'plantao_10_10h' | 'plantao_10_12h' | 'plantao_15_12h'
-  tipo_contrato?: 'autonomo' | 'mei'
+  tipo_contrato?: 'autonomo' | 'mei' | 'clt'
+  tipo_contrato_inicial?: 'autonomo' | 'mei' | 'clt'
+  data_inicio_clt?: string
   possui_beneficio_governamental?: boolean
   mei_razao_social?: string
   mei_cnpj?: string
