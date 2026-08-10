@@ -602,8 +602,6 @@ export default function Escalas() {
           <td class="text-center">${expectedEnd}</td>
           <td class="manual-cell"></td>
           <td class="manual-cell"></td>
-          <td class="manual-cell"></td>
-          <td class="manual-cell"></td>
           <td class="signature-cell"></td>
         </tr>
       `
@@ -631,11 +629,9 @@ export default function Escalas() {
             <col style="width: 12%;" />
             <col style="width: 10%;" />
             <col style="width: 10%;" />
-            <col style="width: 9%;" />
-            <col style="width: 9%;" />
-            <col style="width: 9%;" />
-            <col style="width: 9%;" />
-            <col style="width: 15%;" />
+            <col style="width: 11%;" />
+            <col style="width: 11%;" />
+            <col style="width: 29%;" />
           </colgroup>
           <thead>
             <tr>
@@ -644,8 +640,6 @@ export default function Escalas() {
               <th>Tipo</th>
               <th>Entrada base</th>
               <th>Saída base</th>
-              <th>Entrada</th>
-              <th>Saída</th>
               <th>Entrada</th>
               <th>Saída</th>
               <th>Assinatura</th>
@@ -691,7 +685,7 @@ export default function Escalas() {
         .point-sheet-table td {
           border: 1px solid #999;
           padding: 2px;
-          height: 19px;
+          height: 23px;
           font-size: 6.4pt;
         }
         .point-sheet-table th {
