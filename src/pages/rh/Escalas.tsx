@@ -34,6 +34,14 @@ function getEmployeeShiftTime(employee: Employee) {
   return start && end ? `${start}h/${end}h` : ''
 }
 
+function getEmployeeShiftParts(employee: Employee) {
+  const defaults = getDefaultShiftTimes(employee)
+  return {
+    start: normalizeTime(employee.turno_inicio) || defaults.start,
+    end: normalizeTime(employee.turno_fim) || defaults.end
+  }
+}
+
 type ScheduleCell = {
   working: boolean
   dobra: boolean
@@ -563,9 +571,149 @@ export default function Escalas() {
     })
   }
 
+  function buildPointSheetHtml(employee: Employee) {
+    const monthName = format(currentDate, 'MMMM yyyy', { locale: ptBR }).replace(/^\w/, c => c.toUpperCase())
+    const shift = getEmployeeShiftParts(employee)
+    const shiftTime = getEmployeeShiftTime(employee) || '-'
+    const rows = days.map(day => {
+      const schedule = getSchedule(employee, day)
+      const isAbsence = schedule.tipo_lancamento === 'falta'
+      const isWorking = schedule.working || schedule.tipo_lancamento === 'hora_extra' || schedule.tipo_lancamento === 'plantao_12h'
+      const expectedStart = isWorking && !isAbsence ? (normalizeTime(schedule.start_time) || shift.start || '-') : '-'
+      const expectedEnd = isWorking && !isAbsence ? (normalizeTime(schedule.end_time) || shift.end || '-') : '-'
+      const dayLabel = format(day, 'dd/MM/yyyy')
+      const weekday = format(day, 'eee', { locale: ptBR }).replace('.', '').toUpperCase()
+      const kind = isAbsence
+        ? 'Falta'
+        : schedule.tipo_lancamento === 'hora_extra'
+          ? 'Hora extra'
+          : schedule.tipo_lancamento === 'plantao_12h' || schedule.dobra
+            ? 'Plantão 12h'
+            : isWorking
+              ? 'Trabalho'
+              : 'Folga'
+
+      return `
+        <tr>
+          <td class="text-center">${dayLabel}</td>
+          <td class="text-center">${weekday}</td>
+          <td>${kind}</td>
+          <td class="text-center">${expectedStart}</td>
+          <td class="text-center">${expectedEnd}</td>
+          <td class="manual-cell"></td>
+          <td class="manual-cell"></td>
+          <td class="manual-cell"></td>
+          <td class="manual-cell"></td>
+          <td class="signature-cell"></td>
+        </tr>
+      `
+    }).join('')
+
+    return `
+      <section class="point-sheet-page">
+        <div class="point-sheet-header">
+          <div>
+            <p><strong>Funcionário:</strong> ${employee.nome}</p>
+            <p><strong>Cargo:</strong> ${employee.cargo || '-'}</p>
+            <p><strong>Competência:</strong> ${monthName}</p>
+          </div>
+          <div>
+            <p><strong>Unidade:</strong> ${employee.unidade || unidadeFilter}</p>
+            <p><strong>Escala:</strong> ${employee.escala} - ${employee.turno || 'Diurno'}</p>
+            <p><strong>Horário cadastrado:</strong> ${shiftTime}</p>
+          </div>
+        </div>
+
+        <table class="point-sheet-table">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Dia</th>
+              <th>Tipo</th>
+              <th>Entrada base</th>
+              <th>Saída base</th>
+              <th>Entrada</th>
+              <th>Saída</th>
+              <th>Entrada</th>
+              <th>Saída</th>
+              <th>Assinatura</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+
+        <div class="point-sheet-signatures">
+          <div><hr/><span>Responsável</span></div>
+          <div><hr/><span>Funcionário</span></div>
+        </div>
+      </section>
+    `
+  }
+
+  function printPointSheet(employee?: Employee) {
+    const monthName = format(currentDate, 'MMMM yyyy', { locale: ptBR }).replace(/^\w/, c => c.toUpperCase())
+    const selectedEmployees = employee ? [employee] : activeEmployees
+    const title = employee
+      ? `Folha de Ponto - ${employee.nome} - ${monthName}`
+      : `Folhas de Ponto - ${unidadeFilter} - ${monthName}`
+    const html = `
+      <style>
+        .point-sheet-page { page-break-after: always; }
+        .point-sheet-page:last-child { page-break-after: auto; }
+        .point-sheet-header {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 14px;
+          margin-bottom: 8px;
+          font-size: 8.5pt;
+          line-height: 1.35;
+        }
+        .point-sheet-table {
+          width: 100%;
+          border-collapse: collapse;
+          margin: 0;
+          table-layout: fixed;
+          font-size: 7pt;
+        }
+        .point-sheet-table th,
+        .point-sheet-table td {
+          border: 1px solid #999;
+          padding: 2px 3px;
+          height: 20px;
+          font-size: 7pt;
+        }
+        .point-sheet-table th {
+          background: #f3f4f6;
+          text-align: center;
+          text-transform: none;
+          font-size: 6.5pt;
+        }
+        .manual-cell { background: #fff; }
+        .signature-cell { width: 110px; }
+        .point-sheet-signatures {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 60px;
+          margin-top: 24px;
+          text-align: center;
+          font-size: 9pt;
+        }
+      </style>
+      ${selectedEmployees.map(emp => buildPointSheetHtml(emp)).join('')}
+    `
+
+    printPDF(title, html, clinic, {
+      orientation: 'landscape',
+      compactLayout: true,
+      hideLogo: true,
+      pageMargin: '0.45cm'
+    })
+  }
+
   function printEmployeeFrequency(employee: Employee) {
     const monthName = format(currentDate, 'MMMM yyyy', { locale: ptBR }).replace(/^\w/, c => c.toUpperCase())
     const shiftHours = calculateScheduledHours(employee)
+    const shift = getEmployeeShiftParts(employee)
     const packageExpectedHours = getPackageExpectedHours(employee)
     const overtimeHourlyValue = getDefaultOvertimeHourlyValue(employee)
     const baseHourlyValue = getBaseHourlyValue(employee)
@@ -610,8 +758,8 @@ export default function Escalas() {
         <tr>
           <td>${format(ex.date ? parseISO(ex.date) : new Date(), 'dd/MM/yyyy')}</td>
           <td>${kind}</td>
-          <td class="text-center">${ex.start_time || 'Base'}</td>
-          <td class="text-center">${ex.end_time || 'Base'}</td>
+          <td class="text-center">${normalizeTime(ex.start_time) || shift.start || '-'}</td>
+          <td class="text-center">${normalizeTime(ex.end_time) || shift.end || '-'}</td>
           <td class="text-center">${formatHoursToHHMM(workedHours)}</td>
           <td class="text-center">${packageExpectedHours ? '-' : formatHoursToHHMM(expected)}</td>
           <td class="text-center">${balanceLabel}</td>
@@ -698,6 +846,9 @@ export default function Escalas() {
             </Button>
             <Button variant="outline" onClick={printReport} className="gap-2">
               <FileText className="h-4 w-4" /> PDF
+            </Button>
+            <Button variant="outline" onClick={() => printPointSheet()} className="gap-2">
+              <FileText className="h-4 w-4" /> Folha Ponto PDF
             </Button>
             <Button 
               variant={isManualMode ? "default" : "outline"} 
@@ -786,9 +937,9 @@ export default function Escalas() {
                           <button
                             onClick={(event) => {
                               event.stopPropagation()
-                              printEmployeeFrequency(employee)
+                              printPointSheet(employee)
                             }}
-                            title="Imprimir folha de frequência individual"
+                            title="Imprimir folha de ponto para assinatura"
                             className="ml-auto p-0.5 hover:bg-muted rounded text-primary transition-colors"
                           >
                             <FileText className="h-3 w-3" />
