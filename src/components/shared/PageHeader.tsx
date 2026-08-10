@@ -17,7 +17,7 @@ export function PageHeader({ title, description, actionLabel, onAction, children
         <h1 className="text-2xl font-bold text-foreground">{title}</h1>
         <p className="text-muted-foreground mt-1">{description}</p>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center justify-start gap-2 sm:justify-end">
         {children}
         {actionLabel && onAction && (
           <Button onClick={onAction} className="shrink-0">

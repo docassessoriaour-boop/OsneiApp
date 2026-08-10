@@ -836,8 +836,8 @@ export default function Escalas() {
         title="Escalas de Trabalho"
         description="Visualize e edite as escalas (clique no dia para alternar)"
       >
-        <div className="flex flex-col sm:flex-row items-center gap-4">
-          <div className="flex gap-2">
+        <div className="flex w-full max-w-5xl flex-col items-stretch gap-2">
+          <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
             <Button variant="outline" onClick={() => setHistoryDialogOpen(true)} className="gap-2 text-indigo-600 border-indigo-200 bg-indigo-50 hover:bg-indigo-100 hover:text-indigo-700">
               <History className="h-4 w-4" /> Históricos
             </Button>
@@ -862,27 +862,29 @@ export default function Escalas() {
               Zerar/Limpar Tudo
             </Button>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-start gap-2 sm:justify-end">
+            <div className="flex flex-wrap items-center gap-2">
               <Select value={unidadeFilter} onChange={(e) => setUnidadeFilter(e.target.value as any)} className="w-40 bg-white">
                 <option value={companyWorkUnit}>{companyWorkUnit}</option>
               </Select>
-            <Select value={turnoFilter} onChange={(e) => setTurnoFilter(e.target.value as typeof turnoFilter)} className="w-[120px]">
-              <option value="todos">Todos</option>
-              <option value="Diurno">Diurno</option>
-              <option value="Noturno">Noturno</option>
-              <option value="Intermediário">Intermediário</option>
-            </Select>
-          </div>
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="icon" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="text-sm font-medium min-w-[120px] text-center">
-              {format(currentDate, 'MMMM yyyy', { locale: ptBR }).replace(/^\w/, c => c.toUpperCase())}
-            </span>
-            <Button variant="outline" size="icon" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
+              <Select value={turnoFilter} onChange={(e) => setTurnoFilter(e.target.value as typeof turnoFilter)} className="w-[120px]">
+                <option value="todos">Todos</option>
+                <option value="Diurno">Diurno</option>
+                <option value="Noturno">Noturno</option>
+                <option value="Intermediário">Intermediário</option>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="icon" onClick={() => setCurrentDate(subMonths(currentDate, 1))}>
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm font-medium min-w-[120px] text-center">
+                {format(currentDate, 'MMMM yyyy', { locale: ptBR }).replace(/^\w/, c => c.toUpperCase())}
+              </span>
+              <Button variant="outline" size="icon" onClick={() => setCurrentDate(addMonths(currentDate, 1))}>
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </PageHeader>
