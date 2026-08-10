@@ -625,6 +625,18 @@ export default function Escalas() {
         </div>
 
         <table class="point-sheet-table">
+          <colgroup>
+            <col style="width: 10%;" />
+            <col style="width: 7%;" />
+            <col style="width: 12%;" />
+            <col style="width: 10%;" />
+            <col style="width: 10%;" />
+            <col style="width: 9%;" />
+            <col style="width: 9%;" />
+            <col style="width: 9%;" />
+            <col style="width: 9%;" />
+            <col style="width: 15%;" />
+          </colgroup>
           <thead>
             <tr>
               <th>Data</th>
@@ -665,7 +677,7 @@ export default function Escalas() {
           grid-template-columns: 1fr 1fr;
           gap: 14px;
           margin-bottom: 8px;
-          font-size: 8.5pt;
+          font-size: 8pt;
           line-height: 1.35;
         }
         .point-sheet-table {
@@ -673,23 +685,23 @@ export default function Escalas() {
           border-collapse: collapse;
           margin: 0;
           table-layout: fixed;
-          font-size: 7pt;
+          font-size: 6.4pt;
         }
         .point-sheet-table th,
         .point-sheet-table td {
           border: 1px solid #999;
-          padding: 2px 3px;
-          height: 20px;
-          font-size: 7pt;
+          padding: 2px;
+          height: 19px;
+          font-size: 6.4pt;
         }
         .point-sheet-table th {
           background: #f3f4f6;
           text-align: center;
           text-transform: none;
-          font-size: 6.5pt;
+          font-size: 6pt;
         }
         .manual-cell { background: #fff; }
-        .signature-cell { width: 110px; }
+        .signature-cell { background: #fff; }
         .point-sheet-signatures {
           display: grid;
           grid-template-columns: 1fr 1fr;
@@ -703,10 +715,10 @@ export default function Escalas() {
     `
 
     printPDF(title, html, clinic, {
-      orientation: 'landscape',
+      orientation: 'portrait',
       compactLayout: true,
       hideLogo: true,
-      pageMargin: '0.45cm'
+      pageMargin: '0.5cm'
     })
   }
 
