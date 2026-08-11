@@ -65,6 +65,9 @@ export default function ContasPagar() {
   const [sortKey, setSortKey] = useState<SortKey>('vencimento')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [deleteScope, setDeleteScope] = useState<'current' | 'following'>('current')
+  const [editScope, setEditScope] = useState<'current' | 'following'>('current')
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   
   // States for split category
@@ -125,6 +128,26 @@ export default function ContasPagar() {
       : String(aValue).localeCompare(String(bValue), 'pt-BR', { numeric: true })
     return sortDir === 'asc' ? result : -result
   })
+  const filteredIds = filtered.map(b => b.id)
+  const selectedFilteredIds = selectedIds.filter(id => filteredIds.includes(id))
+  const deleteTarget = deleteConfirmId ? bills.find(b => b.id === deleteConfirmId) : null
+
+  function getFollowingBills(source: Bill | null | undefined) {
+    if (!source) return []
+    const sourceCategory = source.category_id || source.categoria || ''
+    return bills
+      .filter(b => {
+        const billCategory = b.category_id || b.categoria || ''
+        return b.descricao === source.descricao &&
+          billCategory === sourceCategory &&
+          Number(b.valor || 0) === Number(source.valor || 0) &&
+          (b.vencimento || '') >= (source.vencimento || '')
+      })
+      .sort((a, b) => String(a.vencimento || '').localeCompare(String(b.vencimento || '')))
+  }
+
+  const editFollowingCount = editingId ? getFollowingBills(bills.find(b => b.id === editingId)).length : 0
+  const deleteFollowingCount = getFollowingBills(deleteTarget).length
 
   function openNew() { 
     setForm(emptyBill); 
@@ -134,6 +157,7 @@ export default function ContasPagar() {
     setRepeticoesFixas(12);
     setIsSplit(false);
     setSplitForm({ category2_id: '', valor2: 0 });
+    setEditScope('current');
     setDialogOpen(true) 
   }
 
@@ -152,6 +176,7 @@ export default function ContasPagar() {
     })
     setParcelas(1)
     setEditingId(b.id)
+    setEditScope('current')
     setIsSplit(false)
     setSplitForm({ category2_id: '', valor2: 0 })
     setDialogOpen(true)
@@ -466,6 +491,62 @@ export default function ContasPagar() {
       if (payload.category_id) {
         payload.categoria = categories.find(c => c.id === payload.category_id)?.nome || (payload.categoria || '')
       }
+
+      if (editingId && editScope === 'following') {
+        if (isSplit) {
+          alert("O rateio em duas categorias deve ser aplicado em um lançamento por vez.")
+          return
+        }
+
+        const source = bills.find(b => b.id === editingId)
+        const targets = getFollowingBills(source)
+        const baseDate = new Date(`${payload.vencimento || source?.vencimento || new Date().toISOString().slice(0, 10)}T12:00:00Z`)
+
+        for (let i = 0; i < targets.length; i++) {
+          const target = targets[i]
+          const nextPayload = {
+            ...payload,
+            vencimento: addMonths(baseDate, i).toISOString().slice(0, 10),
+            bank_transaction_id: (target as any).bank_transaction_id || null
+          }
+
+          if (nextPayload.status === 'pago' && (nextPayload as any).bank_account_id) {
+            const btData = {
+              data: (nextPayload as any).payment_date || nextPayload.vencimento,
+              descricao: `Pagamento: ${nextPayload.descricao}`,
+              valor: nextPayload.valor,
+              tipo: 'debito' as const,
+              origem: 'manual' as const,
+              bank_account_id: (nextPayload as any).bank_account_id,
+              categoria: nextPayload.categoria,
+              category_id: nextPayload.category_id
+            }
+
+            if ((target as any).bank_transaction_id) {
+              await updateBankTransaction((target as any).bank_transaction_id, btData)
+            } else {
+              const bt = await insertBankTransaction(btData as any)
+              ;(nextPayload as any).bank_transaction_id = bt.id
+            }
+          } else if ((target as any).bank_transaction_id) {
+            await removeBankTransaction((target as any).bank_transaction_id)
+            ;(nextPayload as any).bank_transaction_id = null
+          }
+
+          await update(target.id, nextPayload)
+
+          if (nextPayload.status === 'pago' && (target as any).termination_id) {
+            await updateTermination((target as any).termination_id, { status: 'pago' })
+          }
+          if (nextPayload.status === 'pago' && (target as any).payroll_id) {
+            await updatePayroll((target as any).payroll_id, { status: 'pago' })
+          }
+        }
+
+        setDialogOpen(false)
+        setEditScope('current')
+        return
+      }
       
       let btId = (payload as any).bank_transaction_id
 
@@ -606,16 +687,36 @@ export default function ContasPagar() {
 
   function handleDeleteClick(id: string) {
     setDeleteConfirmId(id)
+    setDeleteScope('current')
   }
 
   async function confirmDelete() {
     if (!deleteConfirmId) return
     try {
-      await remove(deleteConfirmId)
+      const target = bills.find(b => b.id === deleteConfirmId)
+      const idsToRemove = deleteScope === 'following'
+        ? getFollowingBills(target).map(b => b.id)
+        : [deleteConfirmId]
+
+      await Promise.all(idsToRemove.map(id => remove(id)))
+      setSelectedIds(prev => prev.filter(id => !idsToRemove.includes(id)))
       setDeleteConfirmId(null)
+      setDeleteScope('current')
     } catch (error: any) {
       console.error('Erro ao excluir:', error)
       alert('Erro ao excluir: ' + (error.message || 'Erro desconhecido'))
+    }
+  }
+
+  async function confirmBulkDelete() {
+    if (selectedFilteredIds.length === 0) return
+    try {
+      await Promise.all(selectedFilteredIds.map(id => remove(id)))
+      setSelectedIds(prev => prev.filter(id => !selectedFilteredIds.includes(id)))
+      setBulkDeleteOpen(false)
+    } catch (error: any) {
+      console.error('Erro ao excluir selecionadas:', error)
+      alert('Erro ao excluir selecionadas: ' + (error.message || 'Erro desconhecido'))
     }
   }
 
@@ -750,7 +851,7 @@ export default function ContasPagar() {
               <TableHead className="w-10">
                 <input
                   type="checkbox"
-                  checked={filtered.length > 0 && selectedIds.length === filtered.length}
+                  checked={filtered.length > 0 && selectedFilteredIds.length === filtered.length}
                   onChange={(e) => setSelectedIds(e.target.checked ? filtered.map(b => b.id) : [])}
                   className="h-4 w-4"
                 />
@@ -774,10 +875,23 @@ export default function ContasPagar() {
                 <div className="flex items-center gap-1">Status <SortIcon column="status" /></div>
               </TableHead>
               <TableHead>
-                Ações
-                {selectedIds.length > 0 && (
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">{selectedIds.length} selecionada(s)</span>
-                )}
+                <div className="flex items-center gap-2">
+                  <span>Ações</span>
+                  {selectedFilteredIds.length > 0 && (
+                    <>
+                      <span className="text-xs font-normal text-muted-foreground">{selectedFilteredIds.length} selecionada(s)</span>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => setBulkDeleteOpen(true)}
+                        className="h-7 gap-1"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Excluir selecionadas
+                      </Button>
+                    </>
+                  )}
+                </div>
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -1014,6 +1128,29 @@ export default function ContasPagar() {
                   onChange={(e) => setRepeticoesFixas(Number(e.target.value))}
                   className="mt-1 w-1/3"
                 />
+              </div>
+            )}
+            {editingId && editFollowingCount > 1 && !contaFixa && parcelas === 1 && (
+              <div className="rounded-lg border p-3 text-sm">
+                <Label>Aplicar alteração</Label>
+                <div className="mt-2 grid gap-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      checked={editScope === 'current'}
+                      onChange={() => setEditScope('current')}
+                    />
+                    <span>Somente este lançamento</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      checked={editScope === 'following'}
+                      onChange={() => setEditScope('following')}
+                    />
+                    <span>Este e os próximos {editFollowingCount - 1} lançamento(s)</span>
+                  </label>
+                </div>
               </div>
             )}
           </div>
@@ -1277,9 +1414,52 @@ export default function ContasPagar() {
         <DialogContent>
           <div className="space-y-4">
             <p className="text-sm text-gray-600">Tem certeza que deseja excluir esta conta? Esta ação não pode ser desfeita.</p>
+            {deleteFollowingCount > 1 && (
+              <div className="rounded-lg border p-3 text-sm">
+                <Label>Excluir</Label>
+                <div className="mt-2 grid gap-2">
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      checked={deleteScope === 'current'}
+                      onChange={() => setDeleteScope('current')}
+                    />
+                    <span>Somente este lançamento</span>
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="radio"
+                      checked={deleteScope === 'following'}
+                      onChange={() => setDeleteScope('following')}
+                    />
+                    <span>Este e os próximos {deleteFollowingCount - 1} lançamento(s)</span>
+                  </label>
+                </div>
+              </div>
+            )}
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancelar</Button>
-              <Button variant="destructive" onClick={confirmDelete}>Excluir</Button>
+              <Button variant="destructive" onClick={confirmDelete}>
+                {deleteScope === 'following' && deleteFollowingCount > 1 ? `Excluir ${deleteFollowingCount}` : 'Excluir'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <DialogHeader>
+          <DialogTitle>Excluir Selecionadas</DialogTitle>
+          <DialogClose onClose={() => setBulkDeleteOpen(false)} />
+        </DialogHeader>
+        <DialogContent>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Tem certeza que deseja excluir {selectedFilteredIds.length} conta(s) selecionada(s)? Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setBulkDeleteOpen(false)}>Cancelar</Button>
+              <Button variant="destructive" onClick={confirmBulkDelete}>Excluir selecionadas</Button>
             </div>
           </div>
         </DialogContent>
