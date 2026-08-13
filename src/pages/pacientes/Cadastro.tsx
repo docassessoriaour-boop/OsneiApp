@@ -903,6 +903,93 @@ export default function Cadastro() {
     }
   }
 
+  function printPersonalItemsReport() {
+    if (!editingId || !form.nome) return
+
+    const items = allPersonalItems
+      .filter(i => i.paciente_id === editingId)
+      .sort((a, b) => new Date(a.data).getTime() - new Date(b.data).getTime())
+
+    const rows = items.map(item => `
+      <tr>
+        <td>${formatDate(item.data)}</td>
+        <td>${item.tipo === 'fralda' ? 'Fralda' : 'Bem pessoal'}</td>
+        <td>${item.item}</td>
+        <td>${item.quantidade} ${item.unidade || ''}</td>
+        <td>${item.entregue_por || '-'}</td>
+        <td>${item.observacoes || '-'}</td>
+      </tr>
+    `).join('')
+
+    const totals = items.reduce((acc, item) => {
+      const key = `${item.tipo}|${item.item}|${item.unidade || ''}`
+      acc[key] = (acc[key] || 0) + Number(item.quantidade || 0)
+      return acc
+    }, {} as Record<string, number>)
+
+    const totalRows = Object.entries(totals).map(([key, quantity]) => {
+      const [tipo, item, unidade] = key.split('|')
+      return `
+        <tr>
+          <td>${tipo === 'fralda' ? 'Fralda' : 'Bem pessoal'}</td>
+          <td>${item}</td>
+          <td class="text-right">${quantity} ${unidade}</td>
+        </tr>
+      `
+    }).join('')
+
+    printPDF(`Fraldas e Pertences - ${form.nome}`, `
+      <style>
+        .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; font-size: 11px; }
+        .box { border: 1px solid #dbe3ef; padding: 8px; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #cbd5e1; padding: 7px; font-size: 10px; text-align: left; vertical-align: top; }
+        th { background: #f8fafc; font-weight: 700; text-transform: uppercase; color: #334155; }
+      </style>
+      <h2 style="text-align:center; text-transform:uppercase;">Controle de Fraldas e Pertences</h2>
+      <div class="summary">
+        <div class="box"><strong>Paciente:</strong> ${form.nome}</div>
+        <div class="box"><strong>Responsavel:</strong> ${form.responsavel || '-'}</div>
+        <div class="box"><strong>CPF:</strong> ${form.cpf || '-'}</div>
+        <div class="box"><strong>Unidade:</strong> ${normalizeWorkUnit(form.unidade, clinic as any)}</div>
+      </div>
+
+      ${items.length === 0 ? '<p>Nenhuma entrada de fralda ou bem pessoal registrada para este paciente.</p>' : `
+        <h3>Registros de entrada</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Tipo</th>
+              <th>Item</th>
+              <th>Qtd</th>
+              <th>Entregue por</th>
+              <th>Observacoes</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+
+        <h3>Resumo por item</h3>
+        <table>
+          <thead><tr><th>Tipo</th><th>Item</th><th class="text-right">Total</th></tr></thead>
+          <tbody>${totalRows}</tbody>
+        </table>
+      `}
+
+      <div style="margin-top: 45px; display: flex; justify-content: space-around;">
+        <div style="text-align: center; width: 250px;">
+          <div style="border-top: 1px solid #000; margin-bottom: 4px;"></div>
+          <div style="font-size: 11px;">Responsavel pela entrega</div>
+        </div>
+        <div style="text-align: center; width: 250px;">
+          <div style="border-top: 1px solid #000; margin-bottom: 4px;"></div>
+          <div style="font-size: 11px;">Conferencia da instituicao</div>
+        </div>
+      </div>
+    `, clinic, { hideLogo: true, orientation: 'landscape', pageMargin: '0.8cm' })
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -1600,21 +1687,26 @@ export default function Cadastro() {
               <h3 className="text-lg font-semibold">Fraldas e Bens Pessoais</h3>
               <p className="text-sm text-muted-foreground">Registre a entrada de fraldas e bens pessoais de {form.nome}</p>
             </div>
-            <Button onClick={() => {
-              setPersonalItemForm({
-                data: new Date().toISOString().slice(0, 10),
-                tipo: 'fralda',
-                item: '',
-                quantidade: 1,
-                unidade: 'pacote',
-                entregue_por: '',
-                observacoes: ''
-              })
-              setEditingPersonalItemId(null)
-              setPersonalItemDialogOpen(true)
-            }} className="gap-2">
-              <Plus className="h-4 w-4" /> Registrar Entrada
-            </Button>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={printPersonalItemsReport} className="gap-2">
+                <FileText className="h-4 w-4" /> PDF
+              </Button>
+              <Button onClick={() => {
+                setPersonalItemForm({
+                  data: new Date().toISOString().slice(0, 10),
+                  tipo: 'fralda',
+                  item: '',
+                  quantidade: 1,
+                  unidade: 'pacote',
+                  entregue_por: '',
+                  observacoes: ''
+                })
+                setEditingPersonalItemId(null)
+                setPersonalItemDialogOpen(true)
+              }} className="gap-2">
+                <Plus className="h-4 w-4" /> Registrar Entrada
+              </Button>
+            </div>
           </div>
 
           <div className="grid gap-4">
