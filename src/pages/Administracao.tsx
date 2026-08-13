@@ -11,6 +11,7 @@ import { useLocalStorage } from '@/hooks/useLocalStorage'
 import {
   getPopById,
   getSanitaryStatusLabel,
+  printAllAppendices,
   printAppendix,
   printPop,
   printSanitaryFolderReport,
@@ -250,6 +251,14 @@ export default function Administracao() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => printAllAppendices(sanitaryAppendices, {}, clinic, 50)} className="gap-2">
+                <Printer className="h-4 w-4" />
+                PDF Manual - Todos
+              </Button>
+              <Button variant="outline" onClick={() => printAllAppendices(sanitaryAppendices, appendixValues, clinic)} className="gap-2">
+                <FileText className="h-4 w-4" />
+                PDF Preenchido - Todos
+              </Button>
               <Button variant="outline" onClick={() => printAppendix(selectedAppendix, {}, clinic, 50)} className="gap-2">
                 <Printer className="h-4 w-4" />
                 PDF Manual

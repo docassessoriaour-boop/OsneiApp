@@ -590,6 +590,15 @@ export function buildAppendixHtml(appendix: SanitaryAppendix, values: Record<str
   `
 }
 
+export function buildAppendicesHtml(appendices: SanitaryAppendix[], valuesByAppendix: Record<string, Record<string, string>> = {}, blankRows = 10) {
+  return appendices.map((appendix, index) => `
+    <section class="appendix-print-section" style="${index > 0 ? 'page-break-before: always; break-before: page;' : ''}">
+      <h2 style="text-align:center; text-transform:uppercase; font-size: 11pt; margin-bottom: 6px;">${appendix.code} - ${escapeHtml(appendix.title)}</h2>
+      ${buildAppendixHtml(appendix, valuesByAppendix[appendix.id] || {}, blankRows)}
+    </section>
+  `).join('')
+}
+
 export function printPop(pop: PopProcedure, clinic?: CompanySettings) {
   printPDF(`${pop.code} - ${pop.title}`, buildPopHtml(pop), clinic, { hideLogo: true, pageMargin: '1.2cm' })
 }
@@ -600,6 +609,10 @@ export function printSanitaryFolderReport(documents: SanitaryDocument[], clinic?
 
 export function printAppendix(appendix: SanitaryAppendix, values: Record<string, string> = {}, clinic?: CompanySettings, blankRows?: number) {
   printPDF(`${appendix.code} - ${appendix.title}`, buildAppendixHtml(appendix, values, blankRows), clinic, { hideLogo: true, orientation: 'landscape', pageMargin: '0.35cm', compactLayout: true })
+}
+
+export function printAllAppendices(appendices: SanitaryAppendix[], valuesByAppendix: Record<string, Record<string, string>> = {}, clinic?: CompanySettings, blankRows?: number) {
+  printPDF('Anexos e Formularios de Registro', buildAppendicesHtml(appendices, valuesByAppendix, blankRows), clinic, { hideLogo: true, hideTitle: true, orientation: 'landscape', pageMargin: '0.35cm', compactLayout: true })
 }
 
 export function getTodayPtBr() {
