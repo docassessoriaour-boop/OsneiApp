@@ -250,7 +250,7 @@ export default function Administracao() {
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" onClick={() => printAppendix(selectedAppendix, {}, clinic, 31)} className="gap-2">
+              <Button variant="outline" onClick={() => printAppendix(selectedAppendix, {}, clinic, 50)} className="gap-2">
                 <Printer className="h-4 w-4" />
                 PDF Manual
               </Button>
