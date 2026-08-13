@@ -559,7 +559,6 @@ export function buildAppendixHtml(appendix: SanitaryAppendix, values: Record<str
       .appendix-table td { height: ${hasValues ? '34px' : '30px'}; vertical-align: top; }
       .appendix-note { font-size: 9.5pt; color: #475569; margin-top: 10px; }
     </style>
-    <h2 style="text-align:center; text-transform:uppercase;">${appendix.code} - ${escapeHtml(appendix.title)}</h2>
     <div class="appendix-meta">
       <div class="appendix-row"><div class="appendix-label">Relacionado a</div><div class="appendix-value">${escapeHtml(appendix.relatedTo)}</div></div>
       <div class="appendix-row"><div class="appendix-label">Finalidade</div><div class="appendix-value">${escapeHtml(appendix.purpose)}</div></div>
@@ -582,15 +581,15 @@ export function buildAppendixHtml(appendix: SanitaryAppendix, values: Record<str
 }
 
 export function printPop(pop: PopProcedure, clinic?: CompanySettings) {
-  printPDF(`${pop.code} - ${pop.title}`, buildPopHtml(pop), clinic, { pageMargin: '1.2cm' })
+  printPDF(`${pop.code} - ${pop.title}`, buildPopHtml(pop), clinic, { hideLogo: true, pageMargin: '1.2cm' })
 }
 
 export function printSanitaryFolderReport(documents: SanitaryDocument[], clinic?: CompanySettings) {
-  printPDF('Controle de Documentos da Pasta Sanitaria', buildSanitaryFolderReportHtml(documents), clinic, { orientation: 'landscape', pageMargin: '0.9cm' })
+  printPDF('Controle de Documentos da Pasta Sanitaria', buildSanitaryFolderReportHtml(documents), clinic, { hideLogo: true, orientation: 'landscape', pageMargin: '0.9cm' })
 }
 
 export function printAppendix(appendix: SanitaryAppendix, values: Record<string, string> = {}, clinic?: CompanySettings, blankRows?: number) {
-  printPDF(`${appendix.code} - ${appendix.title}`, buildAppendixHtml(appendix, values, blankRows), clinic, { orientation: 'landscape', pageMargin: '0.8cm' })
+  printPDF(`${appendix.code} - ${appendix.title}`, buildAppendixHtml(appendix, values, blankRows), clinic, { hideLogo: true, orientation: 'landscape', pageMargin: '0.8cm' })
 }
 
 export function getTodayPtBr() {
