@@ -30,6 +30,21 @@ export interface PopProcedure {
   indicators: string[]
 }
 
+export interface SanitaryAppendixField {
+  key: string
+  label: string
+  type?: 'text' | 'date' | 'datetime-local' | 'time' | 'number' | 'textarea'
+}
+
+export interface SanitaryAppendix {
+  id: string
+  code: string
+  title: string
+  relatedTo: string
+  purpose: string
+  fields: SanitaryAppendixField[]
+}
+
 export const sanitaryDocuments: SanitaryDocument[] = [
   {
     id: 'alvara-sanitario',
@@ -189,6 +204,115 @@ export const sanitaryDocuments: SanitaryDocument[] = [
   },
 ]
 
+export const sanitaryAppendices: SanitaryAppendix[] = [
+  {
+    id: 'anexo-a-limpeza',
+    code: 'Anexo A',
+    title: 'Registro de limpeza de ambientes',
+    relatedTo: 'POP 01 - Higienizacao e Sanificacao de Ambientes / DOC 11',
+    purpose: 'Registrar execucao da limpeza, produto utilizado, responsavel e observacoes do ambiente.',
+    fields: [
+      { key: 'data', label: 'Data', type: 'date' },
+      { key: 'horario', label: 'Horario', type: 'time' },
+      { key: 'ambiente', label: 'Ambiente' },
+      { key: 'produto_usado', label: 'Produto usado' },
+      { key: 'responsavel', label: 'Responsavel' },
+      { key: 'assinatura', label: 'Assinatura' },
+      { key: 'observacoes', label: 'Observacoes', type: 'textarea' },
+    ],
+  },
+  {
+    id: 'anexo-b-temperatura',
+    code: 'Anexo B',
+    title: 'Controle de temperatura',
+    relatedTo: 'POP 05 - Alimentos / DOC 09',
+    purpose: 'Controlar temperatura de geladeira, freezer ou equipamento e registrar conduta quando estiver fora do padrao.',
+    fields: [
+      { key: 'data', label: 'Data', type: 'date' },
+      { key: 'equipamento', label: 'Geladeira/freezer/equipamento' },
+      { key: 'temperatura', label: 'Temperatura', type: 'number' },
+      { key: 'conduta', label: 'Conduta se fora do padrao', type: 'textarea' },
+      { key: 'responsavel', label: 'Responsavel' },
+    ],
+  },
+  {
+    id: 'anexo-c-medicamentos',
+    code: 'Anexo C',
+    title: 'Controle de medicamentos',
+    relatedTo: 'POP 08 - Administracao e Guarda de Medicamentos',
+    purpose: 'Registrar administracao, responsavel e intercorrencias relacionadas a medicamentos.',
+    fields: [
+      { key: 'residente', label: 'Residente' },
+      { key: 'medicamento', label: 'Medicamento' },
+      { key: 'dose', label: 'Dose' },
+      { key: 'horario', label: 'Horario', type: 'time' },
+      { key: 'administrado_por', label: 'Administrado por' },
+      { key: 'intercorrencia', label: 'Intercorrencia', type: 'textarea' },
+    ],
+  },
+  {
+    id: 'anexo-d-quedas',
+    code: 'Anexo D',
+    title: 'Registro de quedas',
+    relatedTo: 'POP 10 - Urgencias, Emergencias e Obitos / DOC 12',
+    purpose: 'Registrar queda, circunstancia, lesao aparente, conduta e comunicacao familiar.',
+    fields: [
+      { key: 'residente', label: 'Residente' },
+      { key: 'data_hora', label: 'Data/hora', type: 'datetime-local' },
+      { key: 'local', label: 'Local' },
+      { key: 'circunstancia', label: 'Circunstancia', type: 'textarea' },
+      { key: 'lesao_aparente', label: 'Lesao aparente', type: 'textarea' },
+      { key: 'conduta', label: 'Conduta', type: 'textarea' },
+      { key: 'familiar_comunicado', label: 'Familiar comunicado' },
+    ],
+  },
+  {
+    id: 'anexo-e-lesao-pressao',
+    code: 'Anexo E',
+    title: 'Registro de lesao por pressao',
+    relatedTo: 'POP 09 - Higiene Pessoal do Residente / Plano de Atencao a Saude',
+    purpose: 'Registrar identificacao, local, estagio quando avaliado, conduta e evolucao da lesao.',
+    fields: [
+      { key: 'residente', label: 'Residente' },
+      { key: 'local_lesao', label: 'Local da lesao' },
+      { key: 'estagio', label: 'Estagio se avaliado' },
+      { key: 'data_identificacao', label: 'Data de identificacao', type: 'date' },
+      { key: 'conduta', label: 'Conduta', type: 'textarea' },
+      { key: 'evolucao', label: 'Evolucao', type: 'textarea' },
+    ],
+  },
+  {
+    id: 'anexo-f-treinamento',
+    code: 'Anexo F',
+    title: 'Controle de treinamento',
+    relatedTo: 'DOC 03 - Responsavel Tecnico e registros profissionais / Educacao permanente',
+    purpose: 'Registrar tema, data, carga horaria, instrutor, participantes e assinaturas.',
+    fields: [
+      { key: 'tema', label: 'Tema' },
+      { key: 'data', label: 'Data', type: 'date' },
+      { key: 'carga_horaria', label: 'Carga horaria' },
+      { key: 'instrutor', label: 'Instrutor' },
+      { key: 'participantes', label: 'Participantes', type: 'textarea' },
+      { key: 'assinaturas', label: 'Assinaturas', type: 'textarea' },
+    ],
+  },
+  {
+    id: 'anexo-g-checklist-fiscalizacao',
+    code: 'Anexo G',
+    title: 'Checklist de fiscalizacao interna',
+    relatedTo: 'DOC 13 - Indicadores e avaliacao continuada',
+    purpose: 'Registrar item verificado, conformidade, prazo, responsavel e evidencia para correcao interna.',
+    fields: [
+      { key: 'item_verificado', label: 'Item verificado' },
+      { key: 'conforme', label: 'Conforme' },
+      { key: 'nao_conforme', label: 'Nao conforme' },
+      { key: 'prazo', label: 'Prazo', type: 'date' },
+      { key: 'responsavel', label: 'Responsavel' },
+      { key: 'evidencia', label: 'Evidencia', type: 'textarea' },
+    ],
+  },
+]
+
 export const popProcedures: PopProcedure[] = [
   {
     id: 'pop-07-admissao-triagem',
@@ -294,6 +418,16 @@ function listItems(items: string[]) {
   return `<ol>${items.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ol>`
 }
 
+function formatFieldValue(field: SanitaryAppendixField, value?: string) {
+  if (!value) return ''
+  if (field.type === 'date') return formatDatePDF(value)
+  if (field.type === 'datetime-local') {
+    const [date, time] = value.split('T')
+    return `${formatDatePDF(date)} ${time || ''}`.trim()
+  }
+  return escapeHtml(value)
+}
+
 export function buildPopHtml(pop: PopProcedure) {
   return `
     <style>
@@ -366,6 +500,15 @@ export function buildSanitaryFolderReportHtml(documents: SanitaryDocument[]) {
     </tr>
   `).join('')
 
+  const appendixRows = sanitaryAppendices.map(appendix => `
+    <tr>
+      <td><strong>${appendix.code}</strong></td>
+      <td>${escapeHtml(appendix.title)}</td>
+      <td>${escapeHtml(appendix.relatedTo)}</td>
+      <td>${escapeHtml(appendix.fields.map(field => field.label).join(', '))}</td>
+    </tr>
+  `).join('')
+
   return `
     <h2 style="text-align:center; text-transform:uppercase;">Controle de Documentos da Pasta Sanitaria</h2>
     <p style="font-size: 11pt; margin-bottom: 14px;">Documento de apoio para organizacao dos registros exigidos para ILPI, com base na RDC Anvisa 502/2021 e normas relacionadas. Deve ser revisado pelo Responsavel Tecnico e adequado as exigencias locais.</p>
@@ -387,9 +530,53 @@ export function buildSanitaryFolderReportHtml(documents: SanitaryDocument[]) {
       <thead><tr><th>POP</th><th>Titulo</th><th>Base normativa</th><th>Status</th></tr></thead>
       <tbody>${popRows}</tbody>
     </table>
+    <h3>Anexos e formularios de registro</h3>
+    <table>
+      <thead><tr><th>Anexo</th><th>Formulario</th><th>Relacionado a</th><th>Campos para registro</th></tr></thead>
+      <tbody>${appendixRows}</tbody>
+    </table>
     <div class="signature">
       <div class="signature-line"><hr />Responsavel Tecnico</div>
       <div class="signature-line"><hr />Administracao</div>
+    </div>
+  `
+}
+
+export function buildAppendixHtml(appendix: SanitaryAppendix, values: Record<string, string> = {}, blankRows = 10) {
+  const hasValues = appendix.fields.some(field => values[field.key])
+  const rows = hasValues
+    ? [appendix.fields.map(field => formatFieldValue(field, values[field.key]))]
+    : Array.from({ length: blankRows }, () => appendix.fields.map(() => '&nbsp;'))
+
+  return `
+    <style>
+      .appendix-meta { border: 1px solid #cbd5e1; margin-bottom: 14px; }
+      .appendix-row { display: grid; grid-template-columns: 145px 1fr; border-bottom: 1px solid #cbd5e1; }
+      .appendix-row:last-child { border-bottom: 0; }
+      .appendix-label { background: #f1f5f9; font-weight: 700; padding: 7px; border-right: 1px solid #cbd5e1; }
+      .appendix-value { padding: 7px; }
+      .appendix-table th { font-size: 9pt; }
+      .appendix-table td { height: ${hasValues ? '34px' : '30px'}; vertical-align: top; }
+      .appendix-note { font-size: 9.5pt; color: #475569; margin-top: 10px; }
+    </style>
+    <h2 style="text-align:center; text-transform:uppercase;">${appendix.code} - ${escapeHtml(appendix.title)}</h2>
+    <div class="appendix-meta">
+      <div class="appendix-row"><div class="appendix-label">Relacionado a</div><div class="appendix-value">${escapeHtml(appendix.relatedTo)}</div></div>
+      <div class="appendix-row"><div class="appendix-label">Finalidade</div><div class="appendix-value">${escapeHtml(appendix.purpose)}</div></div>
+      <div class="appendix-row"><div class="appendix-label">Emissao</div><div class="appendix-value">${new Date().toLocaleDateString('pt-BR')}</div></div>
+    </div>
+    <table class="appendix-table">
+      <thead>
+        <tr>${appendix.fields.map(field => `<th>${escapeHtml(field.label)}</th>`).join('')}</tr>
+      </thead>
+      <tbody>
+        ${rows.map(row => `<tr>${row.map(cell => `<td>${cell || '&nbsp;'}</td>`).join('')}</tr>`).join('')}
+      </tbody>
+    </table>
+    <p class="appendix-note">Formulario para preenchimento pelo sistema ou manualmente. Conferir assinatura, responsavel e arquivamento junto a pasta sanitaria da ILPI.</p>
+    <div class="signature">
+      <div class="signature-line"><hr />Responsavel pelo registro</div>
+      <div class="signature-line"><hr />Responsavel Tecnico / Supervisor</div>
     </div>
   `
 }
@@ -400,6 +587,10 @@ export function printPop(pop: PopProcedure, clinic?: CompanySettings) {
 
 export function printSanitaryFolderReport(documents: SanitaryDocument[], clinic?: CompanySettings) {
   printPDF('Controle de Documentos da Pasta Sanitaria', buildSanitaryFolderReportHtml(documents), clinic, { orientation: 'landscape', pageMargin: '0.9cm' })
+}
+
+export function printAppendix(appendix: SanitaryAppendix, values: Record<string, string> = {}, clinic?: CompanySettings, blankRows?: number) {
+  printPDF(`${appendix.code} - ${appendix.title}`, buildAppendixHtml(appendix, values, blankRows), clinic, { orientation: 'landscape', pageMargin: '0.8cm' })
 }
 
 export function getTodayPtBr() {

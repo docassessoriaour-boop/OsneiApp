@@ -2,16 +2,21 @@ import { useMemo, useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { useClinic } from '@/lib/clinicConfig'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import {
   getPopById,
   getSanitaryStatusLabel,
+  printAppendix,
   printPop,
   printSanitaryFolderReport,
+  sanitaryAppendices,
   sanitaryDocuments,
+  type SanitaryAppendix,
   type SanitaryDocument,
   type SanitaryDocumentStatus,
 } from '@/lib/sanitaryDocuments'
@@ -25,6 +30,7 @@ import {
 } from 'lucide-react'
 
 type StatusOverrides = Record<string, SanitaryDocumentStatus>
+type AppendixValues = Record<string, Record<string, string>>
 
 const statusBadgeVariant: Record<SanitaryDocumentStatus, 'default' | 'success' | 'warning' | 'destructive'> = {
   pendente: 'warning',
@@ -36,8 +42,10 @@ const statusBadgeVariant: Record<SanitaryDocumentStatus, 'default' | 'success' |
 export default function Administracao() {
   const [clinic] = useClinic()
   const [statusOverrides, setStatusOverrides] = useLocalStorage<StatusOverrides>('sanitary-document-status', {})
+  const [appendixValues, setAppendixValues] = useLocalStorage<AppendixValues>('sanitary-appendix-values', {})
   const [categoryFilter, setCategoryFilter] = useState('todos')
   const [statusFilter, setStatusFilter] = useState('todos')
+  const [selectedAppendixId, setSelectedAppendixId] = useState(sanitaryAppendices[0]?.id || '')
 
   const documents = useMemo<SanitaryDocument[]>(() => {
     return sanitaryDocuments.map(doc => ({
@@ -78,6 +86,22 @@ export default function Administracao() {
   }
 
   const categories = Array.from(new Set(documents.map(doc => doc.category)))
+  const selectedAppendix = sanitaryAppendices.find(appendix => appendix.id === selectedAppendixId) || sanitaryAppendices[0]
+  const selectedAppendixValues = appendixValues[selectedAppendix?.id] || {}
+
+  const setAppendixValue = (appendix: SanitaryAppendix, key: string, value: string) => {
+    setAppendixValues(current => ({
+      ...current,
+      [appendix.id]: {
+        ...(current[appendix.id] || {}),
+        [key]: value,
+      },
+    }))
+  }
+
+  const clearAppendixValues = (appendix: SanitaryAppendix) => {
+    setAppendixValues(current => ({ ...current, [appendix.id]: {} }))
+  }
 
   return (
     <div className="space-y-6">
@@ -215,6 +239,73 @@ export default function Administracao() {
           </table>
         </div>
       </Card>
+
+      {selectedAppendix && (
+        <Card className="p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 className="text-lg font-bold">Anexos e Formularios de Registro</h2>
+              <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+                Campos padronizados conforme a secao 7 do modelo da pasta sanitaria. Voce pode imprimir em branco para preenchimento manual ou gerar o PDF ja preenchido com os dados digitados aqui.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => printAppendix(selectedAppendix, {}, clinic, 12)} className="gap-2">
+                <Printer className="h-4 w-4" />
+                PDF Manual
+              </Button>
+              <Button onClick={() => printAppendix(selectedAppendix, selectedAppendixValues, clinic)} className="gap-2">
+                <FileText className="h-4 w-4" />
+                PDF Preenchido
+              </Button>
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-[320px_1fr]">
+            <div className="space-y-2">
+              <Label className="text-xs">Formulario</Label>
+              <Select value={selectedAppendix.id} onChange={e => setSelectedAppendixId(e.target.value)}>
+                {sanitaryAppendices.map(appendix => (
+                  <option key={appendix.id} value={appendix.id}>{appendix.code} - {appendix.title}</option>
+                ))}
+              </Select>
+
+              <div className="rounded-lg border bg-muted/30 p-3 text-sm">
+                <p className="font-bold text-primary">{selectedAppendix.code}</p>
+                <p className="mt-1 font-semibold">{selectedAppendix.title}</p>
+                <p className="mt-2 text-xs text-muted-foreground">{selectedAppendix.purpose}</p>
+                <p className="mt-2 text-xs font-medium text-muted-foreground">Relacionado a: {selectedAppendix.relatedTo}</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {selectedAppendix.fields.map(field => (
+                <div key={field.key} className={field.type === 'textarea' ? 'space-y-1 md:col-span-2' : 'space-y-1'}>
+                  <Label className="text-xs">{field.label}</Label>
+                  {field.type === 'textarea' ? (
+                    <Textarea
+                      value={selectedAppendixValues[field.key] || ''}
+                      onChange={e => setAppendixValue(selectedAppendix, field.key, e.target.value)}
+                      rows={3}
+                    />
+                  ) : (
+                    <Input
+                      type={field.type || 'text'}
+                      value={selectedAppendixValues[field.key] || ''}
+                      onChange={e => setAppendixValue(selectedAppendix, field.key, e.target.value)}
+                    />
+                  )}
+                </div>
+              ))}
+              <div className="flex items-end justify-end md:col-span-2">
+                <Button variant="ghost" onClick={() => clearAppendixValues(selectedAppendix)}>
+                  Limpar campos
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
     </div>
   )
 }
