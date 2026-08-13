@@ -27,7 +27,8 @@ import {
   X,
   LogOut,
   UserCircle,
-  History
+  History,
+  FolderCheck
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -48,6 +49,14 @@ export function AppSidebar({ open, onClose }: SidebarProps) {
         { name: 'Dashboard', href: '/', icon: LayoutDashboard },
       ],
     },
+    ...(isAdmin || profile?.role === 'manager' ? [
+      {
+        section: 'ADMINISTRAÇÃO',
+        items: [
+          { name: 'Pasta Sanitária', href: '/administracao', icon: FolderCheck },
+        ],
+      },
+    ] : []),
     ...(isAdmin || profile?.role === 'manager' ? [
       {
         section: 'RH',

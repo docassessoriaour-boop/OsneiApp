@@ -26,6 +26,7 @@ import Categorias from '@/pages/financeiro/Categorias'
 import Produtos from '@/pages/estoque/Produtos'
 import EntradaNfe from '@/pages/estoque/EntradaNfe'
 import Relatorios from '@/pages/Relatorios'
+import Administracao from '@/pages/Administracao'
 import Configuracoes from '@/pages/Configuracoes'
 import Usuarios from '@/pages/Usuarios'
 import Curriculos from '@/pages/rh/Curriculos'
@@ -91,6 +92,9 @@ export default function App() {
           
           {/* Relatórios */}
           <Route path="/relatorios" element={<ProtectedRoute allowStandard={true}><Relatorios /></ProtectedRoute>} />
+
+          {/* Administração */}
+          <Route path="/administracao" element={<ProtectedRoute><Administracao /></ProtectedRoute>} />
           
           {/* Configurações */}
           <Route path="/configuracoes" element={<Configuracoes />} />

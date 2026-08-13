@@ -3,6 +3,7 @@ import { useDb } from '@/hooks/useDb'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF, formatDatePDF } from '@/lib/pdf'
+import { printSanitaryFolderReport, sanitaryDocuments } from '@/lib/sanitaryDocuments'
 import type { 
   Employee, Patient, Bill, Income, Product, 
   BankTransaction, BankAccount, TransactionCategory, Payroll, Contract
@@ -21,7 +22,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 
-type ReportType = 'geral' | 'contasPagar' | 'contasReceber' | 'bancario' | 'fluxoCaixa' | 'custoPaciente' | 'contratos' | 'aniversariantes' | 'mapaCategoria'
+type ReportType = 'geral' | 'contasPagar' | 'contasReceber' | 'bancario' | 'fluxoCaixa' | 'custoPaciente' | 'contratos' | 'aniversariantes' | 'mapaCategoria' | 'pastaSanitaria'
 type ViewMode = 'sintetico' | 'analitico'
 
 export default function Relatorios() {
@@ -245,6 +246,11 @@ export default function Relatorios() {
   }, [filteredData.patients, contracts, totals.avgCostPerPatient, patientSort])
 
   function printReport() {
+    if (reportType === 'pastaSanitaria') {
+      printSanitaryFolderReport(sanitaryDocuments, clinic)
+      return
+    }
+
     let html = `
       <h2 style="text-align:center; text-transform:uppercase; margin-bottom: 20px;">Relatório de ${reportType.toUpperCase()} (${viewMode.toUpperCase()})</h2>
       <div style="font-size: 12px; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
@@ -506,6 +512,14 @@ export default function Relatorios() {
       filteredData.contratos.forEach(c => rows.push([c.pacienteNome || (c as any).paciente_nome || '', c.dataInicio || (c as any).data_inicio || '', c.dataFim || (c as any).data_fim || '', c.valor, c.status]))
     }
 
+    if (reportType === 'pastaSanitaria') {
+      rows.push(['Controle de Documentos da Pasta Sanitaria'])
+      rows.push(['Codigo', 'Documento', 'Exigencia', 'Base normativa', 'Periodicidade', 'Responsavel', 'Status'])
+      sanitaryDocuments.forEach(doc => rows.push([doc.code, doc.title, doc.requirement, doc.legalBasis, doc.periodicity, doc.responsible, doc.status]))
+      rows.push([], ['POPs disponiveis no sistema'], ['Codigo', 'Titulo', 'Base normativa'])
+      sanitaryDocuments.filter(doc => doc.isPop).forEach(doc => rows.push([doc.code, doc.title, doc.legalBasis]))
+    }
+
     const sheetRows = rows.map(row => `
       <Row>${row.map(cell => {
         const isNumber = typeof cell === 'number'
@@ -570,6 +584,7 @@ export default function Relatorios() {
               <option value="custoPaciente">Custo Efetivo por Paciente</option>
               <option value="contratos">Contratos de Pacientes</option>
               <option value="aniversariantes">Calendário de Aniversariantes</option>
+              <option value="pastaSanitaria">Pasta Sanitária / POPs</option>
             </Select>
           </div>
           <div className="space-y-1">
@@ -631,6 +646,55 @@ export default function Relatorios() {
         </div>
       </Card>
 
+      {reportType === 'pastaSanitaria' && (
+        <Card className="p-6">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" />
+                <h3 className="font-bold text-lg">Controle de Documentos da Pasta Sanitaria</h3>
+              </div>
+              <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
+                Relatorio com documentos exigidos para ILPI e POPs vinculados. Inclui expressamente POP 07 - Admissao e Triagem de Residentes e POP 08 - Administracao e Guarda de Medicamentos.
+              </p>
+            </div>
+            <Button onClick={() => printSanitaryFolderReport(sanitaryDocuments, clinic)} className="gap-2">
+              <Printer className="h-4 w-4" />
+              PDF da Pasta Sanitaria
+            </Button>
+          </div>
+
+          <div className="mt-6 overflow-x-auto rounded-lg border">
+            <table className="w-full min-w-[860px] text-sm">
+              <thead className="bg-muted">
+                <tr>
+                  <th className="p-3 text-left">Codigo</th>
+                  <th className="p-3 text-left">Documento</th>
+                  <th className="p-3 text-left">Base normativa</th>
+                  <th className="p-3 text-left">Periodicidade</th>
+                  <th className="p-3 text-left">Responsavel</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {sanitaryDocuments.map(doc => (
+                  <tr key={doc.id}>
+                    <td className="p-3 font-black text-primary">{doc.code}</td>
+                    <td className="p-3">
+                      <span className="font-semibold">{doc.title}</span>
+                      {doc.isPop && <Badge className="ml-2" variant="success">POP</Badge>}
+                    </td>
+                    <td className="p-3">{doc.legalBasis}</td>
+                    <td className="p-3">{doc.periodicity}</td>
+                    <td className="p-3">{doc.responsible}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {reportType !== 'pastaSanitaria' && (
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-center">
         <Card className="p-6 border-l-4 border-l-green-600">
            <HandCoins className="h-6 w-6 text-green-600 mx-auto mb-2" />
@@ -651,6 +715,7 @@ export default function Relatorios() {
            <p className="text-xs mt-2 text-muted-foreground">Entradas: {formatCurrency(totals.bankIn)} • Saídas: {formatCurrency(totals.bankOut)}</p>
         </Card>
       </div>
+      )}
 
       {viewMode === 'sintetico' && (reportType === 'geral' || reportType === 'contasPagar' || reportType === 'contasReceber' || reportType === 'bancario') && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
