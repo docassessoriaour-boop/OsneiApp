@@ -550,14 +550,24 @@ export function buildAppendixHtml(appendix: SanitaryAppendix, values: Record<str
 
   return `
     <style>
-      .appendix-meta { border: 1px solid #cbd5e1; margin-bottom: 14px; }
-      .appendix-row { display: grid; grid-template-columns: 145px 1fr; border-bottom: 1px solid #cbd5e1; }
+      .appendix-meta { border: 1px solid #cbd5e1; margin-bottom: 6px; }
+      .appendix-row { display: grid; grid-template-columns: 105px 1fr; border-bottom: 1px solid #cbd5e1; }
       .appendix-row:last-child { border-bottom: 0; }
-      .appendix-label { background: #f1f5f9; font-weight: 700; padding: 7px; border-right: 1px solid #cbd5e1; }
-      .appendix-value { padding: 7px; }
-      .appendix-table th { font-size: 9pt; }
-      .appendix-table td { height: ${hasValues ? '34px' : '30px'}; vertical-align: top; }
-      .appendix-note { font-size: 9.5pt; color: #475569; margin-top: 10px; }
+      .appendix-label { background: #f1f5f9; font-size: 7pt; font-weight: 700; padding: 3px 5px; border-right: 1px solid #cbd5e1; }
+      .appendix-value { font-size: 7pt; line-height: 1.15; padding: 3px 5px; }
+      .appendix-table { margin: 4px 0 0 !important; }
+      .appendix-table th,
+      .appendix-table td {
+        padding: 1px 4px !important;
+        font-size: 6.7pt !important;
+        line-height: 1.05 !important;
+      }
+      .appendix-table th { height: 14px; }
+      .appendix-table td { height: ${hasValues ? '24px' : '17px'}; vertical-align: top; }
+      .appendix-note { font-size: 6.8pt; color: #475569; margin-top: 5px; }
+      .signature { margin-top: 24px !important; }
+      .signature-line { font-size: 7pt !important; }
+      .signature-line hr { margin-bottom: 2px !important; }
     </style>
     <div class="appendix-meta">
       <div class="appendix-row"><div class="appendix-label">Relacionado a</div><div class="appendix-value">${escapeHtml(appendix.relatedTo)}</div></div>
@@ -589,7 +599,7 @@ export function printSanitaryFolderReport(documents: SanitaryDocument[], clinic?
 }
 
 export function printAppendix(appendix: SanitaryAppendix, values: Record<string, string> = {}, clinic?: CompanySettings, blankRows?: number) {
-  printPDF(`${appendix.code} - ${appendix.title}`, buildAppendixHtml(appendix, values, blankRows), clinic, { hideLogo: true, orientation: 'landscape', pageMargin: '0.8cm' })
+  printPDF(`${appendix.code} - ${appendix.title}`, buildAppendixHtml(appendix, values, blankRows), clinic, { hideLogo: true, orientation: 'landscape', pageMargin: '0.35cm', compactLayout: true })
 }
 
 export function getTodayPtBr() {
