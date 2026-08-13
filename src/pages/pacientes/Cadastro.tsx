@@ -28,7 +28,19 @@ const emptyPatient: Omit<Patient, 'id'> = {
   resp_is_whatsapp: false,
   resp_nacionalidade: 'Brasileira', resp_estado_civil: 'Casado(a)', resp_profissao: '',
   status: 'ativo', unidade: 'Jardim Matilde', data_entrada: new Date().toISOString().slice(0, 10), observacoes: '',
-  outros_responsaveis: []
+  outros_responsaveis: [],
+  grau_dependencia: '',
+  plano_cuidados_data: new Date().toISOString().slice(0, 10),
+  plano_cuidados_responsavel: '',
+  plano_cuidados_risco_queda: '',
+  plano_cuidados_risco_lesao: '',
+  plano_cuidados_higiene: '',
+  plano_cuidados_mobilidade: '',
+  plano_cuidados_alimentacao: '',
+  plano_cuidados_restricoes: '',
+  plano_cuidados_prioridades: '',
+  plano_cuidados_metas: '',
+  plano_cuidados_observacoes: ''
 }
 
 export default function Cadastro() {
@@ -298,7 +310,8 @@ export default function Cadastro() {
       const payload = {
         ...formData,
         data_nascimento: formData.data_nascimento || null,
-        data_entrada: formData.data_entrada || null
+        data_entrada: formData.data_entrada || null,
+        plano_cuidados_data: formData.plano_cuidados_data || null
       }
 
       if (editingId) {
@@ -385,6 +398,19 @@ export default function Cadastro() {
         <h3 style="background: #f3f4f6; padding: 0.5rem; font-size: 1rem; text-transform: uppercase; margin-bottom: 1rem; border-left: 4px solid #3b82f6;">Observações Gerais</h3>
         <div style="min-height: 100px; padding: 0.5rem; border: 1px solid #e5e7eb; border-radius: 4px; white-space: pre-wrap;">
           ${p.observacoes || 'Nenhuma observação registrada.'}
+        </div>
+      </div>
+
+      <div style="margin-top: 2rem;">
+        <h3 style="background: #f3f4f6; padding: 0.5rem; font-size: 1rem; text-transform: uppercase; margin-bottom: 1rem; border-left: 4px solid #3b82f6;">Plano Inicial de Cuidados - POP 07</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-size: 0.9rem;">
+          <div><strong>Data do plano:</strong> ${formatDate(p.plano_cuidados_data || p.data_entrada)}</div>
+          <div><strong>Grau de dependencia:</strong> ${p.grau_dependencia || 'A avaliar'}</div>
+          <div><strong>Responsavel pelo plano:</strong> ${p.plano_cuidados_responsavel || '---'}</div>
+          <div><strong>Risco de queda:</strong> ${p.plano_cuidados_risco_queda || '---'}</div>
+          <div><strong>Risco de lesao por pressao:</strong> ${p.plano_cuidados_risco_lesao || '---'}</div>
+          <div><strong>Restricoes/alertas:</strong> ${p.plano_cuidados_restricoes || '---'}</div>
+          <div style="grid-column: span 2;"><strong>Cuidados prioritarios:</strong><br/>${p.plano_cuidados_prioridades || '---'}</div>
         </div>
       </div>
 
@@ -647,6 +673,83 @@ export default function Cadastro() {
     `, clinic, { hideClinicHeader: true })
   }
 
+  function printInitialCarePlan(patient?: Patient) {
+    const p = patient || (form as Patient)
+    if (!p.nome) return
+
+    const field = (label: string, value?: string) => `
+      <div style="border: 1px solid #dbe3ef; border-radius: 4px; padding: 8px; min-height: 54px;">
+        <div style="font-size: 10px; color: #64748b; font-weight: 700; text-transform: uppercase; margin-bottom: 4px;">${label}</div>
+        <div style="white-space: pre-wrap; font-size: 12px; line-height: 1.45;">${value || 'A preencher'}</div>
+      </div>
+    `
+
+    const html = `
+      <style>
+        .care-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .care-section { margin-top: 14px; }
+        .care-title { background: #f1f5f9; border-left: 4px solid #1d4ed8; padding: 8px; font-weight: 800; text-transform: uppercase; font-size: 13px; margin-bottom: 8px; }
+      </style>
+      <div style="font-size: 18px; font-weight: 800; text-align: center; text-transform: uppercase; margin-bottom: 12px;">
+        Plano Inicial de Cuidados - POP 07
+      </div>
+      <div style="border: 1px solid #cbd5e1; padding: 10px; margin-bottom: 12px;">
+        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px; font-size: 12px;">
+          <div><strong>Residente:</strong> ${p.nome}</div>
+          <div><strong>CPF:</strong> ${p.cpf || '---'}</div>
+          <div><strong>Data de entrada:</strong> ${formatDate(p.data_entrada)}</div>
+          <div><strong>Responsavel:</strong> ${p.responsavel || '---'}</div>
+          <div><strong>Grau de dependencia:</strong> ${p.grau_dependencia || 'A avaliar'}</div>
+          <div><strong>Data do plano:</strong> ${formatDate(p.plano_cuidados_data || p.data_entrada)}</div>
+        </div>
+      </div>
+      <p style="font-size: 11px; color: #475569; margin-bottom: 10px;">
+        Documento de admissao e triagem conforme POP 07 da Pasta Sanitaria. Deve ser revisado pelo Responsavel Tecnico e atualizado quando houver mudanca relevante no quadro do residente.
+      </p>
+
+      <div class="care-section">
+        <div class="care-title">Avaliacao inicial e riscos</div>
+        <div class="care-grid">
+          ${field('Risco de queda', p.plano_cuidados_risco_queda)}
+          ${field('Risco de lesao por pressao', p.plano_cuidados_risco_lesao)}
+          ${field('Restricoes, alergias e alertas', p.plano_cuidados_restricoes)}
+          ${field('Responsavel pelo plano', p.plano_cuidados_responsavel)}
+        </div>
+      </div>
+
+      <div class="care-section">
+        <div class="care-title">Necessidades de cuidado</div>
+        <div class="care-grid">
+          ${field('Higiene e banho', p.plano_cuidados_higiene)}
+          ${field('Mobilidade e transferencia', p.plano_cuidados_mobilidade)}
+          ${field('Alimentacao e hidratacao', p.plano_cuidados_alimentacao)}
+          ${field('Cuidados prioritarios nas primeiras 72h', p.plano_cuidados_prioridades)}
+        </div>
+      </div>
+
+      <div class="care-section">
+        <div class="care-title">Metas e observacoes</div>
+        <div class="care-grid">
+          ${field('Metas iniciais', p.plano_cuidados_metas)}
+          ${field('Observacoes do plano', p.plano_cuidados_observacoes)}
+        </div>
+      </div>
+
+      <div style="margin-top: 45px; display: flex; justify-content: space-around;">
+        <div style="text-align: center; width: 250px;">
+          <div style="border-top: 1px solid #000; margin-bottom: 4px;"></div>
+          <div style="font-size: 11px;">Responsavel Tecnico</div>
+        </div>
+        <div style="text-align: center; width: 250px;">
+          <div style="border-top: 1px solid #000; margin-bottom: 4px;"></div>
+          <div style="font-size: 11px;">Administracao / Responsavel</div>
+        </div>
+      </div>
+    `
+
+    printPDF(`Plano Inicial de Cuidados - ${p.nome}`, html, clinic, { hideLogo: true, pageMargin: '1cm' })
+  }
+
   function printPatientFullReport(p: Patient) {
     const meds = allMedications
       .filter(m => (m.pacienteId || (m as any).paciente_id) === p.id)
@@ -875,6 +978,7 @@ export default function Cadastro() {
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1">
                         <Button variant="ghost" size="icon" title="Gerar Recibo de Acompanhamento" onClick={() => openReceiptDialog(patient)}><Receipt className="h-4 w-4 text-green-600" /></Button>
+                        <Button variant="ghost" size="icon" title="Plano Inicial POP 07" onClick={() => printInitialCarePlan(patient)}><ShieldAlert className="h-4 w-4 text-amber-600" /></Button>
                         <Button variant="ghost" size="icon" title="Ficha + Medicação" onClick={() => printPatientFullReport(patient)}><FileText className="h-4 w-4 text-purple-600" /></Button>
                         <Button variant="ghost" size="icon" title="Ficha Cadastral" onClick={() => printPatientFile(patient)}><FileText className="h-4 w-4 text-blue-600" /></Button>
                         <Button variant="ghost" size="icon" title={isStandard ? "Ver Medicação" : "Editar"} onClick={() => openEdit(patient)}>
@@ -910,9 +1014,12 @@ export default function Cadastro() {
           </div>
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
             <div className="px-6 pt-3 border-b bg-muted/20">
-              <TabsList className="grid w-full grid-cols-4 mb-3 h-9">
+              <TabsList className="grid w-full grid-cols-5 mb-3 h-9">
                 <TabsTrigger value="dados" className="gap-1.5 text-xs px-2">
                   <FileText className="h-3.5 w-3.5" /> {isStandard ? 'Dados' : 'Dados'}
+                </TabsTrigger>
+                <TabsTrigger value="plano_cuidados" className="gap-1.5 text-xs px-2">
+                  <ShieldAlert className="h-3.5 w-3.5" /> Plano POP 07
                 </TabsTrigger>
                 <TabsTrigger value="medicacao" disabled={!editingId} className="gap-1.5 text-xs px-2">
                   <Pill className="h-3.5 w-3.5" /> Medicações
@@ -1186,6 +1293,100 @@ export default function Cadastro() {
             </div>
 
             <div className=""><Label>Observações</Label><Textarea value={form.observacoes} onChange={(e) => setForm({ ...form, observacoes: e.target.value })} className="mt-1 min-h-[150px] text-base" /></div>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="plano_cuidados" className="m-0 border-0 p-0">
+          <div className="space-y-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold">Plano Inicial de Cuidados - POP 07</h3>
+                <p className="text-sm text-muted-foreground">Registro de admissao, triagem e cuidados prioritarios do residente.</p>
+              </div>
+              <Button onClick={() => printInitialCarePlan()} variant="outline" className="gap-2">
+                <FileText className="h-4 w-4" /> PDF do Plano
+              </Button>
+            </div>
+
+            <Card className="p-4 bg-blue-50/60 border-blue-100">
+              <p className="text-sm text-blue-900">
+                Este plano atende ao POP 07 - Admissao e Triagem de Residentes. Preencha na entrada do residente e revise quando houver mudanca de quadro, intercorrencia ou nova orientacao do Responsavel Tecnico.
+              </p>
+            </Card>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label>Data do Plano</Label>
+                <Input type="date" value={form.plano_cuidados_data || ''} onChange={(e) => setForm({ ...form, plano_cuidados_data: e.target.value })} className="mt-1" />
+              </div>
+              <div>
+                <Label>Grau de Dependencia</Label>
+                <Select value={form.grau_dependencia || ''} onChange={(e) => setForm({ ...form, grau_dependencia: e.target.value as Patient['grau_dependencia'] })} className="mt-1">
+                  <option value="">A avaliar</option>
+                  <option value="I">Grau I</option>
+                  <option value="II">Grau II</option>
+                  <option value="III">Grau III</option>
+                </Select>
+              </div>
+              <div>
+                <Label>Responsavel pelo Plano</Label>
+                <Input value={form.plano_cuidados_responsavel || ''} onChange={(e) => setForm({ ...form, plano_cuidados_responsavel: e.target.value })} className="mt-1" />
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Avaliacao inicial e riscos</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Risco de queda</Label>
+                  <Textarea value={form.plano_cuidados_risco_queda || ''} onChange={(e) => setForm({ ...form, plano_cuidados_risco_queda: e.target.value })} className="mt-1 min-h-[110px]" placeholder="Ex: usa bengala, historico de quedas, levantar acompanhado..." />
+                </div>
+                <div>
+                  <Label>Risco de lesao por pressao</Label>
+                  <Textarea value={form.plano_cuidados_risco_lesao || ''} onChange={(e) => setForm({ ...form, plano_cuidados_risco_lesao: e.target.value })} className="mt-1 min-h-[110px]" placeholder="Ex: pele fragil, mudanca de decubito, hidratacao da pele..." />
+                </div>
+                <div>
+                  <Label>Restricoes, alergias e alertas</Label>
+                  <Textarea value={form.plano_cuidados_restricoes || ''} onChange={(e) => setForm({ ...form, plano_cuidados_restricoes: e.target.value })} className="mt-1 min-h-[110px]" placeholder="Alergias, restricoes alimentares, uso de oxigenio, cuidados especiais..." />
+                </div>
+                <div>
+                  <Label>Cuidados prioritarios nas primeiras 72h</Label>
+                  <Textarea value={form.plano_cuidados_prioridades || ''} onChange={(e) => setForm({ ...form, plano_cuidados_prioridades: e.target.value })} className="mt-1 min-h-[110px]" placeholder="Observacao intensificada, orientacoes para equipe, contato familiar..." />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Necessidades de cuidado</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label>Higiene e banho</Label>
+                  <Textarea value={form.plano_cuidados_higiene || ''} onChange={(e) => setForm({ ...form, plano_cuidados_higiene: e.target.value })} className="mt-1 min-h-[130px]" />
+                </div>
+                <div>
+                  <Label>Mobilidade e transferencia</Label>
+                  <Textarea value={form.plano_cuidados_mobilidade || ''} onChange={(e) => setForm({ ...form, plano_cuidados_mobilidade: e.target.value })} className="mt-1 min-h-[130px]" />
+                </div>
+                <div>
+                  <Label>Alimentacao e hidratacao</Label>
+                  <Textarea value={form.plano_cuidados_alimentacao || ''} onChange={(e) => setForm({ ...form, plano_cuidados_alimentacao: e.target.value })} className="mt-1 min-h-[130px]" />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">Metas e observacoes</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label>Metas iniciais</Label>
+                  <Textarea value={form.plano_cuidados_metas || ''} onChange={(e) => setForm({ ...form, plano_cuidados_metas: e.target.value })} className="mt-1 min-h-[120px]" placeholder="Ex: adaptacao segura, prevencao de quedas, manutencao de autonomia..." />
+                </div>
+                <div>
+                  <Label>Observacoes do plano</Label>
+                  <Textarea value={form.plano_cuidados_observacoes || ''} onChange={(e) => setForm({ ...form, plano_cuidados_observacoes: e.target.value })} className="mt-1 min-h-[120px]" />
+                </div>
+              </div>
+            </div>
           </div>
         </TabsContent>
 

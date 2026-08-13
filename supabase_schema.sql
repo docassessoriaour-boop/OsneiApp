@@ -12,6 +12,18 @@ CREATE TABLE IF NOT EXISTS patients (
   status TEXT DEFAULT 'ativo',
   data_entrada DATE,
   observacoes TEXT,
+  grau_dependencia TEXT,
+  plano_cuidados_data DATE,
+  plano_cuidados_responsavel TEXT,
+  plano_cuidados_risco_queda TEXT,
+  plano_cuidados_risco_lesao TEXT,
+  plano_cuidados_higiene TEXT,
+  plano_cuidados_mobilidade TEXT,
+  plano_cuidados_alimentacao TEXT,
+  plano_cuidados_restricoes TEXT,
+  plano_cuidados_prioridades TEXT,
+  plano_cuidados_metas TEXT,
+  plano_cuidados_observacoes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

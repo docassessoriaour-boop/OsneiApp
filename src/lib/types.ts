@@ -113,6 +113,18 @@ export interface Patient {
   data_entrada: string
   observacoes: string
   outros_responsaveis?: Responsible[]
+  grau_dependencia?: '' | 'I' | 'II' | 'III'
+  plano_cuidados_data?: string
+  plano_cuidados_responsavel?: string
+  plano_cuidados_risco_queda?: string
+  plano_cuidados_risco_lesao?: string
+  plano_cuidados_higiene?: string
+  plano_cuidados_mobilidade?: string
+  plano_cuidados_alimentacao?: string
+  plano_cuidados_restricoes?: string
+  plano_cuidados_prioridades?: string
+  plano_cuidados_metas?: string
+  plano_cuidados_observacoes?: string
 }
 
 export interface Medication {
