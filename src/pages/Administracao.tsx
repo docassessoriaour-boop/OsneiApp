@@ -9,14 +9,18 @@ import { Textarea } from '@/components/ui/textarea'
 import { useClinic } from '@/lib/clinicConfig'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import {
+  getMaintenanceTypeLabel,
   getPopById,
   getSanitaryStatusLabel,
   printAllAppendices,
   printAppendix,
+  printPreventiveMaintenance,
   printPop,
   printSanitaryFolderReport,
   sanitaryAppendices,
   sanitaryDocuments,
+  type PreventiveMaintenanceRecord,
+  type PreventiveMaintenanceType,
   type SanitaryAppendix,
   type SanitaryDocument,
   type SanitaryDocumentStatus,
@@ -27,11 +31,14 @@ import {
   FileText,
   FolderCheck,
   Printer,
+  Save,
   ShieldCheck,
+  Trash2,
 } from 'lucide-react'
 
 type StatusOverrides = Record<string, SanitaryDocumentStatus>
 type AppendixValues = Record<string, Record<string, string>>
+type MaintenanceForm = Omit<PreventiveMaintenanceRecord, 'id'>
 
 const statusBadgeVariant: Record<SanitaryDocumentStatus, 'default' | 'success' | 'warning' | 'destructive'> = {
   pendente: 'warning',
@@ -44,9 +51,17 @@ export default function Administracao() {
   const [clinic] = useClinic()
   const [statusOverrides, setStatusOverrides] = useLocalStorage<StatusOverrides>('sanitary-document-status', {})
   const [appendixValues, setAppendixValues] = useLocalStorage<AppendixValues>('sanitary-appendix-values', {})
+  const [maintenanceRecords, setMaintenanceRecords] = useLocalStorage<PreventiveMaintenanceRecord[]>('preventive-maintenance-records', [])
   const [categoryFilter, setCategoryFilter] = useState('todos')
   const [statusFilter, setStatusFilter] = useState('todos')
   const [selectedAppendixId, setSelectedAppendixId] = useState(sanitaryAppendices[0]?.id || '')
+  const [maintenanceForm, setMaintenanceForm] = useState<MaintenanceForm>({
+    type: 'controle_pragas',
+    date: '',
+    company: '',
+    validUntil: '',
+    notes: '',
+  })
 
   const documents = useMemo<SanitaryDocument[]>(() => {
     return sanitaryDocuments.map(doc => ({
@@ -102,6 +117,34 @@ export default function Administracao() {
 
   const clearAppendixValues = (appendix: SanitaryAppendix) => {
     setAppendixValues(current => ({ ...current, [appendix.id]: {} }))
+  }
+
+  const saveMaintenanceRecord = () => {
+    if (!maintenanceForm.date || !maintenanceForm.company.trim() || !maintenanceForm.validUntil) {
+      alert('Preencha data, empresa responsavel e validade.')
+      return
+    }
+
+    const newRecord: PreventiveMaintenanceRecord = {
+      ...maintenanceForm,
+      id: crypto.randomUUID(),
+      company: maintenanceForm.company.trim(),
+      notes: maintenanceForm.notes?.trim(),
+    }
+
+    setMaintenanceRecords(current => [newRecord, ...current])
+    setMaintenanceForm({
+      type: maintenanceForm.type,
+      date: '',
+      company: '',
+      validUntil: '',
+      notes: '',
+    })
+  }
+
+  const deleteMaintenanceRecord = (id: string) => {
+    if (!confirm('Excluir este certificado do controle?')) return
+    setMaintenanceRecords(current => current.filter(record => record.id !== id))
   }
 
   return (
@@ -236,6 +279,95 @@ export default function Administracao() {
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Card className="p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <h2 className="text-lg font-bold">Manutencao Preventiva</h2>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              Controle de certificados de controle de pragas e limpeza de caixa d'agua, com data de execucao, empresa responsavel e validade.
+            </p>
+          </div>
+          <Button onClick={() => printPreventiveMaintenance(maintenanceRecords, clinic)} className="gap-2">
+            <Printer className="h-4 w-4" />
+            PDF Manutencao
+          </Button>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-3 lg:grid-cols-5">
+          <div className="space-y-1">
+            <Label className="text-xs">Certificado</Label>
+            <Select
+              value={maintenanceForm.type}
+              onChange={e => setMaintenanceForm({ ...maintenanceForm, type: e.target.value as PreventiveMaintenanceType })}
+            >
+              <option value="controle_pragas">Controle de pragas</option>
+              <option value="limpeza_caixa_agua">Limpeza caixa d'agua</option>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Data</Label>
+            <Input type="date" value={maintenanceForm.date} onChange={e => setMaintenanceForm({ ...maintenanceForm, date: e.target.value })} />
+          </div>
+          <div className="space-y-1 lg:col-span-2">
+            <Label className="text-xs">Empresa responsavel</Label>
+            <Input value={maintenanceForm.company} onChange={e => setMaintenanceForm({ ...maintenanceForm, company: e.target.value })} />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Validade</Label>
+            <Input type="date" value={maintenanceForm.validUntil} onChange={e => setMaintenanceForm({ ...maintenanceForm, validUntil: e.target.value })} />
+          </div>
+          <div className="space-y-1 lg:col-span-4">
+            <Label className="text-xs">Observacoes</Label>
+            <Input value={maintenanceForm.notes || ''} onChange={e => setMaintenanceForm({ ...maintenanceForm, notes: e.target.value })} />
+          </div>
+          <div className="flex items-end">
+            <Button onClick={saveMaintenanceRecord} className="w-full gap-2">
+              <Save className="h-4 w-4" />
+              Salvar
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-5 overflow-x-auto rounded-lg border">
+          <table className="w-full min-w-[820px] text-sm">
+            <thead className="bg-muted">
+              <tr>
+                <th className="p-3 text-left">Certificado</th>
+                <th className="p-3 text-left">Data</th>
+                <th className="p-3 text-left">Empresa responsavel</th>
+                <th className="p-3 text-left">Validade</th>
+                <th className="p-3 text-left">Observacoes</th>
+                <th className="p-3 text-right">Acao</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {maintenanceRecords.length === 0 ? (
+                <tr>
+                  <td className="p-6 text-center text-muted-foreground" colSpan={6}>
+                    Nenhum certificado cadastrado.
+                  </td>
+                </tr>
+              ) : (
+                maintenanceRecords.map(record => (
+                  <tr key={record.id} className="hover:bg-muted/30">
+                    <td className="p-3 font-semibold">{getMaintenanceTypeLabel(record.type)}</td>
+                    <td className="p-3">{record.date ? new Date(`${record.date}T12:00:00`).toLocaleDateString('pt-BR') : ''}</td>
+                    <td className="p-3">{record.company}</td>
+                    <td className="p-3">{record.validUntil ? new Date(`${record.validUntil}T12:00:00`).toLocaleDateString('pt-BR') : ''}</td>
+                    <td className="p-3">{record.notes || ''}</td>
+                    <td className="p-3 text-right">
+                      <Button variant="ghost" size="sm" onClick={() => deleteMaintenanceRecord(record.id)} className="text-destructive">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

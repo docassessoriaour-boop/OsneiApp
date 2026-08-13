@@ -45,6 +45,17 @@ export interface SanitaryAppendix {
   fields: SanitaryAppendixField[]
 }
 
+export type PreventiveMaintenanceType = 'controle_pragas' | 'limpeza_caixa_agua'
+
+export interface PreventiveMaintenanceRecord {
+  id: string
+  type: PreventiveMaintenanceType
+  date: string
+  company: string
+  validUntil: string
+  notes?: string
+}
+
 export const sanitaryDocuments: SanitaryDocument[] = [
   {
     id: 'alvara-sanitario',
@@ -406,6 +417,14 @@ export function getSanitaryStatusLabel(status: SanitaryDocumentStatus) {
   return labels[status]
 }
 
+export function getMaintenanceTypeLabel(type: PreventiveMaintenanceType) {
+  const labels: Record<PreventiveMaintenanceType, string> = {
+    controle_pragas: 'Certificado de controle de pragas',
+    limpeza_caixa_agua: "Certificado de limpeza de caixa d'agua",
+  }
+  return labels[type]
+}
+
 function escapeHtml(value: string) {
   return String(value)
     .replace(/&/g, '&amp;')
@@ -613,6 +632,46 @@ export function printAppendix(appendix: SanitaryAppendix, values: Record<string,
 
 export function printAllAppendices(appendices: SanitaryAppendix[], valuesByAppendix: Record<string, Record<string, string>> = {}, clinic?: CompanySettings, blankRows?: number) {
   printPDF('Anexos e Formularios de Registro', buildAppendicesHtml(appendices, valuesByAppendix, blankRows), clinic, { hideLogo: true, hideTitle: true, orientation: 'landscape', pageMargin: '0.35cm', compactLayout: true })
+}
+
+export function buildPreventiveMaintenanceHtml(records: PreventiveMaintenanceRecord[]) {
+  const sortedRecords = [...records].sort((a, b) => (a.validUntil || '').localeCompare(b.validUntil || ''))
+  const rows = sortedRecords.map(record => `
+    <tr>
+      <td>${escapeHtml(getMaintenanceTypeLabel(record.type))}</td>
+      <td>${formatDatePDF(record.date)}</td>
+      <td>${escapeHtml(record.company)}</td>
+      <td>${formatDatePDF(record.validUntil)}</td>
+      <td>${escapeHtml(record.notes || '')}</td>
+    </tr>
+  `).join('')
+
+  return `
+    <h2 style="text-align:center; text-transform:uppercase;">Manutencao Preventiva</h2>
+    <p style="font-size: 10pt; margin-bottom: 12px;">Controle de certificados vinculados a pasta sanitaria da ILPI, incluindo controle de pragas e limpeza de caixa d'agua.</p>
+    <table>
+      <thead>
+        <tr>
+          <th>Documento</th>
+          <th>Data</th>
+          <th>Empresa responsavel</th>
+          <th>Validade</th>
+          <th>Observacoes</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows || '<tr><td colspan="5" class="text-center">Nenhum certificado cadastrado.</td></tr>'}
+      </tbody>
+    </table>
+    <div class="signature">
+      <div class="signature-line"><hr />Administracao</div>
+      <div class="signature-line"><hr />Responsavel Tecnico</div>
+    </div>
+  `
+}
+
+export function printPreventiveMaintenance(records: PreventiveMaintenanceRecord[], clinic?: CompanySettings) {
+  printPDF('Manutencao Preventiva', buildPreventiveMaintenanceHtml(records), clinic, { hideLogo: true, orientation: 'landscape', pageMargin: '0.8cm' })
 }
 
 export function getTodayPtBr() {
