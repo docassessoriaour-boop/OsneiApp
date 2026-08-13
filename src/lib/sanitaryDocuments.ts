@@ -565,7 +565,7 @@ export function buildAppendixHtml(appendix: SanitaryAppendix, values: Record<str
       .appendix-table th { height: 14px; }
       .appendix-table td { height: ${hasValues ? '28px' : '24px'}; vertical-align: top; }
       .appendix-note { font-size: 6.8pt; color: #475569; margin-top: 4px; }
-      .signature { margin-top: ${hasValues ? '28px' : '18px'} !important; page-break-before: ${hasValues ? 'auto' : 'always'}; }
+      .signature { margin-top: ${hasValues ? '28px' : '18px'} !important; page-break-inside: avoid; break-inside: avoid; }
       .signature-line { font-size: 7pt !important; }
       .signature-line hr { margin-bottom: 2px !important; }
     </style>
