@@ -484,6 +484,11 @@ export default function FolhaPagamento() {
     return months / 12
   }
 
+  function getThirteenthYearBounds(month: string) {
+    const year = parseInt(month.split('-')[0], 10) || new Date().getFullYear()
+    return { start: `${year}-01-01`, end: `${year}-12-31` }
+  }
+
   function calculateVtValue(employee: Employee | undefined, multiplier: number, workedDays: number) {
     if (!employee?.tem_vt) return 0
     if (employee.vt_tipo === 'diaria') return Number(((employee.vt_valor || 0) * workedDays).toFixed(2))
@@ -539,6 +544,9 @@ export default function FolhaPagamento() {
     ? differenceInCalendarDays(parseISO(form.periodoFim), parseISO(form.periodoInicio)) + 1
     : 30
   const formVtMultiplier = form.tipo_periodo === 'periodo' && formPeriodDays > 0 ? formPeriodDays / 30 : 1
+  const thirteenthMonths = form.tipo_periodo === '13_salario'
+    ? Math.round(calculateThirteenthMultiplier(selectedEmployee, form.mesReferencia, form.periodoFim) * 12)
+    : 0
   const formVtValue = calculateVtValue(selectedEmployee, formVtMultiplier, formWorkedDays)
   const shouldIncludePayrollVt = !!selectedEmployee?.tem_vt && form.tipo_periodo !== '13_salario' && (shouldAutoIncludeVt(selectedEmployee) || isLarSabedoriaCompany)
   const managedAdicionais: PayrollAdicional[] = [
@@ -1435,6 +1443,10 @@ export default function FolhaPagamento() {
                       const date = parseISO(form.mesReferencia + '-01')
                       start = format(startOfMonth(date), 'yyyy-MM-dd')
                       end = format(endOfMonth(date), 'yyyy-MM-dd')
+                    } else if (val === '13_salario') {
+                      const bounds = getThirteenthYearBounds(form.mesReferencia)
+                      start = bounds.start
+                      end = bounds.end
                     }
                     
                     updatePeriodAndSalary(val, start, end, form.mesReferencia)
@@ -1460,6 +1472,10 @@ export default function FolhaPagamento() {
                       const date = parseISO(month + '-01')
                       start = format(startOfMonth(date), 'yyyy-MM-dd')
                       end = format(endOfMonth(date), 'yyyy-MM-dd')
+                    } else if (form.tipo_periodo === '13_salario' && month) {
+                      const bounds = getThirteenthYearBounds(month)
+                      start = bounds.start
+                      end = bounds.end
                     }
                     
                     updatePeriodAndSalary(form.tipo_periodo, start, end, month)
@@ -1589,6 +1605,18 @@ export default function FolhaPagamento() {
                     />
                   </div>
                 </div>
+              </div>
+            )}
+
+            {form.tipo_periodo === '13_salario' && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+                {isCltContract(selectedEmployee) ? (
+                  <>
+                    Cálculo proporcional de <strong>{thirteenthMonths}/12 avos</strong>, considerando a data de início do contrato CLT e o ano de referência.
+                  </>
+                ) : (
+                  <>O cálculo do 13º salário está disponível somente para funcionários com contrato CLT.</>
+                )}
               </div>
             )}
 
