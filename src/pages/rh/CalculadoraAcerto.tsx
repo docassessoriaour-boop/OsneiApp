@@ -52,7 +52,8 @@ export default function CalculadoraAcerto() {
     fgtsBalance: 0,
     employeeId: '',
     avisoPrevioType: 'indenizado' as 'indenizado' | 'trabalhado' | 'descontado' | 'nao_aplicavel',
-    hasValeTransporte: false
+    hasValeTransporte: false,
+    discountIrrf: true
   })
 
   const [extras, setExtras] = useState<ExtraItem[]>([])
@@ -170,14 +171,14 @@ export default function CalculadoraAcerto() {
     // 4. Aviso Prévio (Já calculado acima para uso na projeção)
 
     // 5. Deduções
-    const irrf = (() => {
+    const irrf = form.discountIrrf ? (() => {
       const base = (saldoSalario + decimoTerceiro + avisoPrevioValue)
       if (base <= 2259.20) return 0
       if (base <= 2826.65) return base * 0.075 - 169.44
       if (base <= 3751.05) return base * 0.15 - 381.44
       if (base <= 4664.68) return base * 0.225 - 662.77
       return base * 0.275 - 896.00
-    })()
+    })() : 0
     
     const extraAdditions = extras.filter(e => e.type === 'addition').reduce((sum, e) => sum + e.value, 0)
     const extraDeductions = extras.filter(e => e.type === 'deduction').reduce((sum, e) => sum + e.value, 0)
@@ -276,7 +277,11 @@ export default function CalculadoraAcerto() {
 
   const handleEditTermination = (t: Termination) => {
     if (t.details?.form) {
-      setForm(t.details.form)
+      setForm(prev => ({
+        ...prev,
+        ...t.details.form,
+        discountIrrf: t.details.form.discountIrrf ?? true
+      }))
     } else {
       // Fallback in case old data doesn't have form details
       setForm(prev => ({
@@ -394,6 +399,7 @@ export default function CalculadoraAcerto() {
       avisoPrevioValue: 0,
       avisoPrevioDiscount: 0,
       valeTransporteDiscount: 0,
+      irrf: 0,
       grossTotal: t.valor_liquido,
       deductionsTotal: 0,
       fgtsPenalty: t.valor_fgts,
@@ -421,6 +427,7 @@ export default function CalculadoraAcerto() {
           ${res.avisoPrevioValue > 0 ? `<tr><td>Aviso Prévio (Indenizado)</td><td class="text-right">${formatCurrency(res.avisoPrevioValue)}</td><td></td></tr>` : ''}
           ${res.avisoPrevioDiscount > 0 ? `<tr><td>Aviso Prévio (Descontado)</td><td></td><td class="text-right">${formatCurrency(res.avisoPrevioDiscount)}</td></tr>` : ''}
           ${(res.valeTransporteDiscount || 0) > 0 ? `<tr><td>Desconto Vale Transporte (6%)</td><td></td><td class="text-right">${formatCurrency(res.valeTransporteDiscount)}</td></tr>` : ''}
+          ${(res.irrf || 0) > 0 ? `<tr><td>IRRF sobre Verbas Rescisórias</td><td></td><td class="text-right">${formatCurrency(res.irrf)}</td></tr>` : ''}
           ${detailsExtras.map((e: any) => `<tr><td>${e.name}</td><td class="text-right">${e.type === 'addition' ? formatCurrency(e.value) : ''}</td><td class="text-right">${e.type === 'deduction' ? formatCurrency(e.value) : ''}</td></tr>`).join('')}
         </tbody>
         <tfoot>
@@ -750,6 +757,17 @@ export default function CalculadoraAcerto() {
                     className="w-4 h-4 text-primary rounded border-gray-300"
                   />
                   <Label htmlFor="valeTransporte" className="cursor-pointer">Descontar Vale Transporte (6%)</Label>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="discountIrrf"
+                    checked={form.discountIrrf}
+                    onChange={e => setForm({...form, discountIrrf: e.target.checked})}
+                    className="w-4 h-4 text-primary rounded border-gray-300"
+                  />
+                  <Label htmlFor="discountIrrf" className="cursor-pointer">Descontar IRRF</Label>
                 </div>
               </div>
             </div>
