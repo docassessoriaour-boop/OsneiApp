@@ -99,6 +99,8 @@ export default function ContasReceber() {
   const [sortKey, setSortKey] = useState<SortKey>('vencimento')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   
   const findPatientForIncome = (income: Income) => {
     const relInv = invoices.find(inv => inv.income_id === income.id)
@@ -620,6 +622,29 @@ export default function ContasReceber() {
     }
   }
 
+  async function confirmBulkDelete() {
+    if (selectedIds.length === 0 || bulkDeleting) return
+
+    setBulkDeleting(true)
+    try {
+      for (const id of selectedIds) {
+        const relatedInvoices = invoices.filter(inv => inv.income_id === id)
+        for (const invoice of relatedInvoices) {
+          await removeInvoice(invoice.id)
+        }
+        await remove(id)
+      }
+
+      setSelectedIds([])
+      setBulkDeleteDialogOpen(false)
+    } catch (error: any) {
+      console.error('Erro ao excluir receitas selecionadas:', error)
+      alert('Erro ao excluir itens selecionados: ' + (error.message || 'Erro desconhecido'))
+    } finally {
+      setBulkDeleting(false)
+    }
+  }
+
   const statusBadge = (status: Income['status']) => {
     const map = { pendente: 'warning', recebido: 'success', vencido: 'destructive' } as const
     const labels = { pendente: 'Pendente', recebido: 'Recebido', vencido: 'Vencido' }
@@ -646,6 +671,15 @@ export default function ContasReceber() {
         </div>
         <div className="flex gap-2">
           <Button variant="outline" onClick={printReport} className="gap-2"><FileText className="h-4 w-4" /> PDF</Button>
+          <Button
+            variant="destructive"
+            onClick={() => setBulkDeleteDialogOpen(true)}
+            disabled={selectedIds.length === 0}
+            className="gap-2"
+          >
+            <Trash2 className="h-4 w-4" />
+            Excluir selecionados{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+          </Button>
           <Button onClick={openNew}>Nova Receita</Button>
         </div>
       </div>
@@ -1213,6 +1247,27 @@ export default function ContasReceber() {
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setDeleteConfirmId(null)}>Cancelar</Button>
               <Button variant="destructive" onClick={confirmDelete}>Excluir</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={bulkDeleteDialogOpen} onOpenChange={(open) => !bulkDeleting && setBulkDeleteDialogOpen(open)}>
+        <DialogHeader>
+          <DialogTitle>Excluir itens selecionados</DialogTitle>
+          <DialogClose onClose={() => !bulkDeleting && setBulkDeleteDialogOpen(false)} />
+        </DialogHeader>
+        <DialogContent>
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Deseja excluir {selectedIds.length} item(ns) selecionado(s)? Os faturamentos vinculados também serão excluídos. Esta ação não pode ser desfeita.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setBulkDeleteDialogOpen(false)} disabled={bulkDeleting}>Cancelar</Button>
+              <Button variant="destructive" onClick={confirmBulkDelete} disabled={bulkDeleting} className="gap-2">
+                {bulkDeleting && <Loader2 className="h-4 w-4 animate-spin" />}
+                {bulkDeleting ? 'Excluindo...' : 'Excluir selecionados'}
+              </Button>
             </div>
           </div>
         </DialogContent>
