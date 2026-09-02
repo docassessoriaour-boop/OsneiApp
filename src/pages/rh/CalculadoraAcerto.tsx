@@ -481,9 +481,13 @@ export default function CalculadoraAcerto() {
         </div>
       </div>
 
-      <Dialog open={isHistoryOpen} onOpenChange={setIsHistoryOpen}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
+      <Dialog
+        open={isHistoryOpen}
+        onOpenChange={setIsHistoryOpen}
+        className="w-[calc(100vw-2rem)] max-w-6xl max-h-[95vh]"
+      >
+        <DialogContent className="px-4 sm:px-6">
+          <DialogHeader className="sticky top-0 z-10 -mx-4 -mt-6 border-b bg-card px-4 sm:-mx-6 sm:px-6">
             <DialogTitle className="flex items-center gap-2">
               <History className="h-5 w-5 text-primary" />
               Histórico de Rescisões
@@ -491,7 +495,7 @@ export default function CalculadoraAcerto() {
             <DialogClose onClose={() => setIsHistoryOpen(false)} />
           </DialogHeader>
           <div className="mt-4 overflow-x-auto">
-            <Table>
+            <Table className="min-w-[760px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Funcionário</TableHead>
