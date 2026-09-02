@@ -304,7 +304,12 @@ export default function CalculadoraAcerto() {
     }
     
     setEditingId(t.id)
+    setSearchTerm(t.funcionario_nome)
+    setShowResults(false)
     setIsHistoryOpen(false)
+    window.requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+    })
   }
 
   const handleClear = () => {
@@ -509,6 +514,16 @@ export default function CalculadoraAcerto() {
                       <TableCell className="font-medium">
                         {t.funcionario_nome}
                         <div className="text-[10px] text-muted-foreground">{(t.tipo_rescisao || '').replace(/_/g, ' ')}</div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleEditTermination(t)}
+                          className="mt-1 h-7 gap-1 px-2 text-xs text-amber-700 hover:bg-amber-50 hover:text-amber-800"
+                          title="Reabrir esta rescisão com os dados usados no cálculo"
+                        >
+                          <Edit className="h-3.5 w-3.5" />
+                          Editar
+                        </Button>
                       </TableCell>
                       <TableCell>{formatDatePDF(t.data_demissao)}</TableCell>
                       <TableCell className="font-bold">{formatCurrency(t.valor_total)}</TableCell>
@@ -521,9 +536,6 @@ export default function CalculadoraAcerto() {
                         <div className="flex justify-end gap-1">
                           <Button variant="ghost" size="icon" onClick={() => handleSendToContasAPagar(t)} title="Enviar para Contas a Pagar">
                             <ExternalLink className="h-4 w-4 text-blue-500" />
-                          </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleEditTermination(t)} title="Editar Rescisão">
-                            <Edit className="h-4 w-4 text-amber-500" />
                           </Button>
                           <Button variant="ghost" size="icon" onClick={() => printSavedTermination(t)} title="Imprimir Recibo">
                             <Printer className="h-4 w-4" />
