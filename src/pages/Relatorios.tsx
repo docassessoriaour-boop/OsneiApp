@@ -16,7 +16,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { 
   Users, Heart, CreditCard, HandCoins, 
-  Package, FileText, Printer, Filter, 
+  Package, FileText, FileSpreadsheet, Printer, Filter,
   BarChart3, Landmark, PieChart, TrendingUp 
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -193,7 +193,7 @@ export default function Relatorios() {
 
   // ── Mapa Comparativo Mês a Mês ─────────────────────────────────────────────
   const mapaData = useMemo(() => {
-    if (reportType !== 'mapaCategoria') return { months: [], categories: [], grid: {}, monthTotals: {}, categoryTotals: {} }
+    if (reportType !== 'mapaCategoria') return { months: [], categories: [], grid: {}, monthTotals: {}, categoryTotals: {}, grandTotal: 0 }
 
     // Last 12 months (regardless of date filter)
     const now = new Date()
@@ -512,6 +512,73 @@ export default function Relatorios() {
       filteredData.contratos.forEach(c => rows.push([c.pacienteNome || (c as any).paciente_nome || '', c.dataInicio || (c as any).data_inicio || '', c.dataFim || (c as any).data_fim || '', c.valor, c.status]))
     }
 
+    if (reportType === 'fluxoCaixa') {
+      rows.push(
+        ['Projeção de Fluxo de Caixa'],
+        ['Mês', 'Entradas', 'Saídas', 'Resultado do Mês', 'Saldo Acumulado']
+      )
+      projectionData.forEach(item => rows.push([
+        item.label,
+        item.in,
+        item.out,
+        item.balance,
+        item.cumulative,
+      ]))
+    }
+
+    if (reportType === 'mapaCategoria') {
+      rows.push(
+        ['Mapa Comparativo de Contas a Pagar'],
+        ['Categoria', ...mapaData.months.map(month => month.label), 'Total']
+      )
+      mapaData.categories.forEach(category => rows.push([
+        category,
+        ...mapaData.months.map(month => mapaData.grid[category]?.[month.key] || 0),
+        mapaData.categoryTotals[category] || 0,
+      ]))
+      rows.push([
+        'Total',
+        ...mapaData.months.map(month => mapaData.monthTotals[month.key] || 0),
+        mapaData.grandTotal || 0,
+      ])
+    }
+
+    if (reportType === 'custoPaciente') {
+      rows.push(
+        ['Custo Efetivo por Paciente'],
+        ['Paciente', 'Mensalidade', 'Custo Médio', 'Margem', 'Percentual do Custo']
+      )
+      sortedPatients.forEach(patient => rows.push([
+        patient.nome,
+        patient.mensalidade,
+        totals.avgCostPerPatient,
+        patient.mensalidade - totals.avgCostPerPatient,
+        patient.pct / 100,
+      ]))
+      rows.push([], ['Despesas Totais', totals.totalExpenses], ['Pacientes Ativos', totals.patientCount])
+    }
+
+    if (reportType === 'aniversariantes') {
+      const people = [
+        ...patients.filter(p => p.status === 'ativo').map(p => ({ nome: p.nome, data: p.data_nascimento, tipo: 'Paciente' })),
+        ...employees.filter(e => e.status === 'ativo').map(e => ({ nome: e.nome, data: e.data_nascimento, tipo: e.is_pro_labore ? 'Sócio' : 'Funcionário' })),
+      ]
+        .filter(person => person.data)
+        .sort((a, b) => String(a.data).slice(5).localeCompare(String(b.data).slice(5)))
+
+      rows.push(['Calendário de Aniversariantes'], ['Nome', 'Data de Nascimento', 'Dia', 'Mês', 'Tipo'])
+      people.forEach(person => {
+        const date = new Date(`${person.data}T12:00:00`)
+        rows.push([
+          person.nome,
+          person.data || '',
+          date.getDate(),
+          date.toLocaleString('pt-BR', { month: 'long' }),
+          person.tipo,
+        ])
+      })
+    }
+
     if (reportType === 'pastaSanitaria') {
       rows.push(['Controle de Documentos da Pasta Sanitaria'])
       rows.push(['Codigo', 'Documento', 'Exigencia', 'Base normativa', 'Periodicidade', 'Responsavel', 'Status'])
@@ -553,7 +620,7 @@ export default function Relatorios() {
           <h1 className="text-2xl font-bold tracking-tight">Centro de Relatórios</h1>
           <p className="text-muted-foreground">Analise os dados financeiros e operacionais com filtros avançados</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap justify-end gap-2">
           <Button variant="outline" onClick={reloadAll} className="gap-2">
             <Filter className="h-4 w-4" /> Atualizar Dados
           </Button>
@@ -561,7 +628,7 @@ export default function Relatorios() {
             <Printer className="h-4 w-4" /> Exportar para PDF
           </Button>
           <Button variant="outline" onClick={downloadExcelXml} className="gap-2">
-            <FileText className="h-4 w-4" /> Exportar Excel XML
+            <FileSpreadsheet className="h-4 w-4" /> Exportar para Excel
           </Button>
         </div>
       </div>
