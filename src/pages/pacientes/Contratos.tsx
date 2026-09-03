@@ -11,6 +11,7 @@ import {
   DEMO_COMPANY_REPRESENTATIVE,
   DEMO_COMPANY_REPRESENTATIVE_DOCS,
   LAR_SABEDORIA_CNPJ_DIGITS,
+  NOVO_HORIZONTE_CNPJ_DIGITS,
   onlyDigits,
 } from '@/lib/companies'
 import type { Patient, Contract } from '@/lib/types'
@@ -299,10 +300,14 @@ export default function Contratos() {
     const contractorTradeName = clinic?.nome_fantasia || (clinic as any)?.name || DEMO_COMPANY_NAME
     const contractorCnpj = clinic?.cnpj || DEMO_COMPANY_CNPJ
     const contractorAddress = clinic?.endereco || DEMO_COMPANY_ADDRESS
-    const isLarSabedoriaContract = onlyDigits((clinic as any)?.cnpj_digits || contractorCnpj) === LAR_SABEDORIA_CNPJ_DIGITS
+    const contractorCnpjDigits = onlyDigits((clinic as any)?.cnpj_digits || contractorCnpj)
+    const isLarSabedoriaContract = contractorCnpjDigits === LAR_SABEDORIA_CNPJ_DIGITS
+    const isNovoHorizonteContract = contractorCnpjDigits === NOVO_HORIZONTE_CNPJ_DIGITS || contractorTradeName.toLowerCase().includes('novo horizonte')
     const contractorRepresentative = isLarSabedoriaContract
       ? 'Érika Teodoro de Araújo'
-      : (clinic as any)?.representante || DEMO_COMPANY_REPRESENTATIVE
+      : isNovoHorizonteContract
+        ? 'Juliana Virginia da Silva Oliveira'
+        : (clinic as any)?.representante || DEMO_COMPANY_REPRESENTATIVE
     const contractorRepresentativeDocs = isLarSabedoriaContract
       ? 'RG nº 27.746.831-0 e CPF nº 516.578.641/20'
       : (clinic as any)?.representante_documentos || DEMO_COMPANY_REPRESENTATIVE_DOCS
@@ -480,12 +485,18 @@ export default function Contratos() {
             <div style="text-align: center;">
               <div style="border-top: 1px solid #000; margin-bottom: 8px;"></div>
               <p style="text-indent: 0; margin: 0;"><strong>TESTEMUNHA 1</strong></p>
-              <p style="text-indent: 0; margin: 3px 0 0;">Nome: __________________________________</p>
+              <div style="display: grid; grid-template-columns: 42px 1fr; gap: 6px; align-items: end; margin-top: 8px;">
+                <span style="text-align: right;">Nome:</span><span style="border-bottom: 1px solid #000; height: 16px;"></span>
+                <span style="text-align: right;">CPF:</span><span style="border-bottom: 1px solid #000; height: 16px;"></span>
+              </div>
             </div>
             <div style="text-align: center;">
               <div style="border-top: 1px solid #000; margin-bottom: 8px;"></div>
               <p style="text-indent: 0; margin: 0;"><strong>TESTEMUNHA 2</strong></p>
-              <p style="text-indent: 0; margin: 3px 0 0;">Nome: __________________________________</p>
+              <div style="display: grid; grid-template-columns: 42px 1fr; gap: 6px; align-items: end; margin-top: 8px;">
+                <span style="text-align: right;">Nome:</span><span style="border-bottom: 1px solid #000; height: 16px;"></span>
+                <span style="text-align: right;">CPF:</span><span style="border-bottom: 1px solid #000; height: 16px;"></span>
+              </div>
             </div>
           </div>
         </div>
