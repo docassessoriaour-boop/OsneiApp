@@ -448,27 +448,45 @@ export default function Contratos() {
           <p style="text-indent: 0;">Ourinhos, ${todayStr}.</p>
         </div>
 
-        <div style="margin-top: 60px; display: flex; justify-content: space-around;">
-          <div style="text-align: center; width: 250px;">
-            <div style="border-top: 1px solid #000; margin-bottom: 0.5rem;"></div>
-            <p style="text-indent: 0;"><strong>CONTRATADA (${contractorTradeName})</strong></p>
-          </div>
-        </div>
-        
-        <div style="margin-top: 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
-          ${allResps.map(r => `
+        <div style="margin-top: 60px; page-break-inside: avoid; break-inside: avoid;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 48px; align-items: start;">
             <div style="text-align: center;">
-              <div style="border-top: 1px solid #000; margin-bottom: 0.5rem;"></div>
-              <p style="text-indent: 0;"><strong>CONTRATANTE (${r.nome})</strong></p>
+              <div style="border-top: 1px solid #000; margin-bottom: 8px;"></div>
+              <p style="text-indent: 0; margin: 0;"><strong>CONTRATADA</strong></p>
+              <p style="text-indent: 0; margin: 3px 0 0;">${contractorTradeName}</p>
+              <p style="text-indent: 0; margin: 3px 0 0;">${contractorRepresentative}</p>
             </div>
-          `).join('')}
-        </div>
+            <div style="text-align: center;">
+              <div style="border-top: 1px solid #000; margin-bottom: 8px;"></div>
+              <p style="text-indent: 0; margin: 0;"><strong>CONTRATANTE</strong></p>
+              <p style="text-indent: 0; margin: 3px 0 0;">${allResps[0]?.nome || '____________________________'}</p>
+            </div>
+          </div>
 
-        <div style="margin-top: 40px;">
-          <p style="text-indent: 0;"><strong>TESTEMUNHAS:</strong></p>
-          <div style="display: flex; justify-content: space-around; margin-top: 30px;">
-            <div style="width: 200px; border-top: 1px solid #000;"></div>
-            <div style="width: 200px; border-top: 1px solid #000;"></div>
+          ${allResps.slice(1).length ? `
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 48px;">
+              ${allResps.slice(1).map((r, index) => `
+                <div style="text-align: center;">
+                  <div style="border-top: 1px solid #000; margin-bottom: 8px;"></div>
+                  <p style="text-indent: 0; margin: 0;"><strong>CO-CONTRATANTE ${index + 1}</strong></p>
+                  <p style="text-indent: 0; margin: 3px 0 0;">${r.nome}</p>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+
+          <p style="text-indent: 0; margin: 48px 0 36px;"><strong>TESTEMUNHAS</strong></p>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 48px;">
+            <div style="text-align: center;">
+              <div style="border-top: 1px solid #000; margin-bottom: 8px;"></div>
+              <p style="text-indent: 0; margin: 0;"><strong>TESTEMUNHA 1</strong></p>
+              <p style="text-indent: 0; margin: 3px 0 0;">Nome: __________________________________</p>
+            </div>
+            <div style="text-align: center;">
+              <div style="border-top: 1px solid #000; margin-bottom: 8px;"></div>
+              <p style="text-indent: 0; margin: 0;"><strong>TESTEMUNHA 2</strong></p>
+              <p style="text-indent: 0; margin: 3px 0 0;">Nome: __________________________________</p>
+            </div>
           </div>
         </div>
       </div>

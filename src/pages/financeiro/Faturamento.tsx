@@ -93,6 +93,7 @@ export default function Faturamento() {
   const [batchDialogOpen, setBatchDialogOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [monthFilter, setMonthFilter] = useState<'all' | 'current' | 'previous'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | Invoice['status']>('all')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
   const [batchForm, setBatchForm] = useState({
     date_issued: new Date().toISOString().slice(0, 10),
@@ -134,7 +135,9 @@ export default function Faturamento() {
         matchesMonth = localInvDate.getMonth() === prevMonth.getMonth() && localInvDate.getFullYear() === prevMonth.getFullYear();
       }
     }
-    return matchesSearch && matchesMonth;
+    const matchesStatus = statusFilter === 'all' || inv.status === statusFilter;
+
+    return matchesSearch && matchesMonth && matchesStatus;
   }).sort((a, b) => {
     return sortDir === 'asc' 
       ? a.due_date.localeCompare(b.due_date)
@@ -604,6 +607,18 @@ export default function Faturamento() {
             <option value="all">Todos os meses</option>
             <option value="current">Mês atual</option>
             <option value="previous">Mês anterior</option>
+          </Select>
+          <Select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value as 'all' | Invoice['status'])}
+            className="w-full sm:w-48"
+            aria-label="Filtrar por status"
+          >
+            <option value="all">Todos os status</option>
+            <option value="pendente">Pendente</option>
+            <option value="parcial">Parcial</option>
+            <option value="pago">Pago</option>
+            <option value="cancelado">Cancelado</option>
           </Select>
         </div>
 
