@@ -45,6 +45,7 @@ export default function CalculadoraAcerto() {
     terminationType: 'dispensa_sem_justa' as TerminationType,
     workSchedule: '44h',
     workedDays: 30,
+    includeVacation: true,
     hasExpiredVacation: false,
     expiredVacationDays: 30,
     hasInsalubridade: false,
@@ -164,8 +165,8 @@ export default function CalculadoraAcerto() {
     const decimoTerceiro = (baseCalculo / 12) * monthsInYear
 
     const feriasPropMeses = calculateVacationAvos()
-    const feriasProporcionais = (baseCalculo / 12) * feriasPropMeses
-    const feriasVencidas = hasExpiredVacation ? (baseCalculo / 30) * (form.expiredVacationDays || 30) : 0
+    const feriasProporcionais = form.includeVacation ? (baseCalculo / 12) * feriasPropMeses : 0
+    const feriasVencidas = form.includeVacation && hasExpiredVacation ? (baseCalculo / 30) * (form.expiredVacationDays || 30) : 0
     const umTercoConstitucional = (feriasProporcionais + feriasVencidas) / 3
 
     // 4. Aviso Prévio (Já calculado acima para uso na projeção)
@@ -280,6 +281,7 @@ export default function CalculadoraAcerto() {
       setForm(prev => ({
         ...prev,
         ...t.details.form,
+        includeVacation: t.details.form.includeVacation ?? true,
         discountIrrf: t.details.form.discountIrrf ?? true
       }))
     } else {
@@ -287,6 +289,7 @@ export default function CalculadoraAcerto() {
       setForm(prev => ({
         ...prev,
         name: t.funcionario_nome,
+        includeVacation: true,
         cpf: t.cpf,
         role: t.cargo,
         salary: t.salario_base,
@@ -354,9 +357,9 @@ export default function CalculadoraAcerto() {
           <tr><td>Saldo de Salário (${form.workedDays} dias)</td><td class="text-right">${formatCurrency(results.saldoSalario - results.saldoInsalubridade)}</td><td></td></tr>
           ${results.saldoInsalubridade > 0 ? `<tr><td>Adicional Insalubridade s/ Saldo</td><td class="text-right">${formatCurrency(results.saldoInsalubridade)}</td><td></td></tr>` : ''}
           <tr><td>13º Salário Proporcional (${results.monthsInYear}/12)</td><td class="text-right">${formatCurrency(results.decimoTerceiro)}</td><td></td></tr>
-          <tr><td>Férias Proporcionais (${results.feriasPropMeses}/12)</td><td class="text-right">${formatCurrency(results.feriasProporcionais)}</td><td></td></tr>
+          ${form.includeVacation ? `<tr><td>Férias Proporcionais (${results.feriasPropMeses}/12)</td><td class="text-right">${formatCurrency(results.feriasProporcionais)}</td><td></td></tr>` : ''}
           ${results.feriasVencidas > 0 ? `<tr><td>Férias Vencidas (${form.expiredVacationDays || 30} dias)</td><td class="text-right">${formatCurrency(results.feriasVencidas)}</td><td></td></tr>` : ''}
-          <tr><td>1/3 Constitucional sobre Férias</td><td class="text-right">${formatCurrency(results.umTercoConstitucional)}</td><td></td></tr>
+          ${form.includeVacation ? `<tr><td>1/3 Constitucional sobre Férias</td><td class="text-right">${formatCurrency(results.umTercoConstitucional)}</td><td></td></tr>` : ''}
           ${results.avisoPrevioValue > 0 ? `<tr><td>Aviso Prévio Indenizado (${results.avisoPrevioDays} dias)</td><td class="text-right">${formatCurrency(results.avisoPrevioValue)}</td><td></td></tr>` : ''}
           ${results.avisoPrevioDiscount > 0 ? `<tr><td>Aviso Prévio Descontado (Não Cumprido)</td><td></td><td class="text-right">${formatCurrency(results.avisoPrevioDiscount)}</td></tr>` : ''}
           ${results.valeTransporteDiscount > 0 ? `<tr><td>Desconto Vale Transporte (6%)</td><td></td><td class="text-right">${formatCurrency(results.valeTransporteDiscount)}</td></tr>` : ''}
@@ -428,7 +431,7 @@ export default function CalculadoraAcerto() {
           ${res.saldoSalario > 0 ? `<tr><td>Verbas Rescisórias / Saldo</td><td class="text-right">${formatCurrency(res.saldoSalario - (res.saldoInsalubridade || 0))}</td><td></td></tr>` : ''}
           ${res.saldoInsalubridade > 0 ? `<tr><td>Adicional Insalubridade s/ Saldo</td><td class="text-right">${formatCurrency(res.saldoInsalubridade)}</td><td></td></tr>` : ''}
           ${res.decimoTerceiro > 0 ? `<tr><td>13º Salário</td><td class="text-right">${formatCurrency(res.decimoTerceiro)}</td><td></td></tr>` : ''}
-          ${res.feriasProporcionais > 0 ? `<tr><td>Férias + 1/3</td><td class="text-right">${formatCurrency(res.feriasProporcionais + (res.umTercoConstitucional || 0))}</td><td></td></tr>` : ''}
+          ${detailsForm.includeVacation !== false && (res.feriasProporcionais + (res.feriasVencidas || 0) + (res.umTercoConstitucional || 0)) > 0 ? `<tr><td>Férias + 1/3</td><td class="text-right">${formatCurrency(res.feriasProporcionais + (res.feriasVencidas || 0) + (res.umTercoConstitucional || 0))}</td><td></td></tr>` : ''}
           ${res.avisoPrevioValue > 0 ? `<tr><td>Aviso Prévio (Indenizado)</td><td class="text-right">${formatCurrency(res.avisoPrevioValue)}</td><td></td></tr>` : ''}
           ${res.avisoPrevioDiscount > 0 ? `<tr><td>Aviso Prévio (Descontado)</td><td></td><td class="text-right">${formatCurrency(res.avisoPrevioDiscount)}</td></tr>` : ''}
           ${(res.valeTransporteDiscount || 0) > 0 ? `<tr><td>Desconto Vale Transporte (6%)</td><td></td><td class="text-right">${formatCurrency(res.valeTransporteDiscount)}</td></tr>` : ''}
@@ -741,17 +744,32 @@ export default function CalculadoraAcerto() {
                   )}
                 </div>
 
+                <div className="space-y-1">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="includeVacation"
+                      checked={form.includeVacation}
+                      onChange={e => setForm({...form, includeVacation: e.target.checked})}
+                      className="w-4 h-4 text-primary rounded border-gray-300"
+                    />
+                    <Label htmlFor="includeVacation" className="cursor-pointer">Incluir férias + 1/3 no cálculo</Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Inclui férias proporcionais, vencidas e o adicional de 1/3.</p>
+                </div>
+
                 <div className="flex items-center gap-3">
                   <input 
                     type="checkbox" 
                     id="expiredVacation"
+                    disabled={!form.includeVacation}
                     checked={form.hasExpiredVacation} 
                     onChange={e => setForm({...form, hasExpiredVacation: e.target.checked})}
                     className="w-4 h-4 text-primary rounded border-gray-300"
                   />
                   <Label htmlFor="expiredVacation" className="cursor-pointer">Possui Férias Vencidas?</Label>
                   
-                  {form.hasExpiredVacation && (
+                  {form.includeVacation && form.hasExpiredVacation && (
                     <div className="flex items-center gap-2 ml-4">
                       <Label className="text-xs">Dias:</Label>
                       <Input 
@@ -865,7 +883,7 @@ export default function CalculadoraAcerto() {
                 )}
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Férias + 1/3:</span>
-                  <span className="font-medium">{formatCurrency(results.feriasProporcionais + results.feriasVencidas + results.umTercoConstitucional)} <span className="text-[10px] text-muted-foreground">({results.feriasPropMeses}/12)</span></span>
+                  <span className="font-medium">{form.includeVacation ? <>{formatCurrency(results.feriasProporcionais + results.feriasVencidas + results.umTercoConstitucional)} <span className="text-[10px] text-muted-foreground">({results.feriasPropMeses}/12)</span></> : 'Não incluídas'}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">13º Proporcional:</span>
