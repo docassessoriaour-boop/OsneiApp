@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
-import { DEMO_COMPANY_NAME, getCompanyLogoSrc, isDemoCompany } from '@/lib/companies'
+import { DEMO_COMPANY_NAME, getCompanyLogoSrc, isDemoCompany, isLarSabedoria } from '@/lib/companies'
 import {
   LayoutDashboard,
   Users,
@@ -54,6 +54,7 @@ export function AppSidebar({ open, onClose }: SidebarProps) {
         section: 'ADMINISTRAÇÃO',
         items: [
           { name: 'Pasta Sanitária', href: '/administracao', icon: FolderCheck },
+          ...(isLarSabedoria(profile?.company) ? [{ name: 'Documentos manuais', href: '/documentos-manuais', icon: FileText }] : []),
         ],
       },
     ] : []),

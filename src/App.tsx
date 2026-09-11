@@ -32,6 +32,7 @@ import Usuarios from '@/pages/Usuarios'
 import Curriculos from '@/pages/rh/Curriculos'
 import CalculadoraAcerto from '@/pages/rh/CalculadoraAcerto'
 import Logs from '@/pages/Logs'
+import DocumentosManuais from '@/pages/lar-sabedoria/DocumentosManuais'
 
 export default function App() {
   const { user, profile, loading, isAdmin, isManager } = useAuth()
@@ -95,6 +96,7 @@ export default function App() {
 
           {/* Administração */}
           <Route path="/administracao" element={<ProtectedRoute><Administracao /></ProtectedRoute>} />
+          <Route path="/documentos-manuais" element={<ProtectedRoute><DocumentosManuais /></ProtectedRoute>} />
           
           {/* Configurações */}
           <Route path="/configuracoes" element={<Configuracoes />} />

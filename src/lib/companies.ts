@@ -9,6 +9,10 @@ export const NOVO_HORIZONTE_CNPJ_DIGITS = '56956061000181'
 export const LAR_SABEDORIA_CNPJ_DIGITS = '52502750000165'
 export const SELECTED_COMPANY_CNPJ_DIGITS_KEY = 'gom-selected-company-cnpj-digits-v1'
 
+export function isLarSabedoria(company?: { cnpj?: string | null, cnpj_digits?: string | null } | null) {
+  return onlyDigits(company?.cnpj_digits || company?.cnpj || '') === LAR_SABEDORIA_CNPJ_DIGITS
+}
+
 export function onlyDigits(value: string) {
   return value.replace(/\D/g, '')
 }
