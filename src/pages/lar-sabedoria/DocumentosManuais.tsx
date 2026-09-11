@@ -6,13 +6,13 @@ import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 const modelos = [
-  { titulo: 'Escala de funcionários', arquivo: '01-escala-funcionarios.pdf', descricao: 'Tabela mensal com data, funcionário, função, entrada, saída, intervalo e assinatura.' },
+  { titulo: 'Escala de funcionários', arquivo: '01-escala-funcionarios.pdf', descricao: 'Escala mensal com coluna para o nome do funcionário e colunas dos dias 01 a 31.' },
   { titulo: 'Recibo de funcionário', arquivo: '02-recibo-funcionario.pdf', descricao: 'Recibo em branco com valor, referência, forma de pagamento, data e assinaturas.' },
   { titulo: 'Recibo de paciente', arquivo: '03-recibo-paciente.pdf', descricao: 'Recibo em branco para paciente ou responsável, com valor, referência e assinaturas.' },
-  { titulo: 'Prontuário de funcionário', arquivo: '04-prontuario-funcionario.pdf', descricao: 'Identificação, histórico e tabela de acompanhamento e ocorrências.' },
-  { titulo: 'Prontuário de paciente', arquivo: '05-prontuario-paciente.pdf', descricao: 'Identificação, informações importantes e páginas para evolução e registros.' },
-  { titulo: 'Contrato de funcionário', arquivo: '06-contrato-funcionario.pdf', descricao: 'Modelo com espaços para qualificação, condições, valores, vigência, cláusulas e assinaturas.' },
-  { titulo: 'Contrato de paciente', arquivo: '07-contrato-paciente.pdf', descricao: 'Modelo com espaços para acolhimento, cuidados, valores, vigência, cláusulas e assinaturas.' },
+  { titulo: 'Prontuário de funcionário', arquivo: '04-prontuario-funcionario.pdf', descricao: 'Ficha completa com dados pessoais, profissionais, MEI, benefícios, documentos e ocorrências.' },
+  { titulo: 'Prontuário de paciente', arquivo: '05-prontuario-paciente.pdf', descricao: 'Ficha completa com responsáveis, plano de cuidados POP 07, medicações e evolução.' },
+  { titulo: 'Contrato de funcionário', arquivo: '06-contrato-funcionario.pdf', descricao: 'Contrato completo no padrão do app, com cláusulas e campos variáveis para preencher à mão.' },
+  { titulo: 'Contrato de paciente', arquivo: '07-contrato-paciente.pdf', descricao: 'Contrato completo no padrão do app, com cláusulas de acolhimento e campos manuais.' },
 ]
 
 export default function DocumentosManuais() {
