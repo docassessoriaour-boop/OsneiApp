@@ -22,7 +22,7 @@ export default function DocumentosManuais() {
   return <div className="space-y-6">
     <div>
       <h1 className="text-2xl font-bold">Modelos para impressão e preenchimento manual</h1>
-      <p className="text-muted-foreground">Lar de Convivência da Sabedoria - arquivos PDF prontos para imprimir e preencher à mão.</p>
+      <p className="text-muted-foreground">Lar de Convivência da Sabedoria - PDFs no padrão visual do app, prontos para imprimir e preencher à mão.</p>
     </div>
     <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900 flex gap-3">
       <Printer className="h-5 w-5 shrink-0" />
