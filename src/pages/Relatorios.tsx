@@ -17,13 +17,15 @@ import { Select } from '@/components/ui/select'
 import { 
   Users, Heart, CreditCard, HandCoins, 
   Package, FileText, FileSpreadsheet, Printer, Filter,
-  BarChart3, Landmark, PieChart, TrendingUp 
+  BarChart3, Landmark, PieChart, TrendingUp, ArrowUp, ArrowDown, ArrowUpDown
 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 
 type ReportType = 'geral' | 'contasPagar' | 'contasReceber' | 'bancario' | 'fluxoCaixa' | 'custoPaciente' | 'contratos' | 'aniversariantes' | 'mapaCategoria' | 'pastaSanitaria'
 type ViewMode = 'sintetico' | 'analitico'
+type SortDirection = 'asc' | 'desc'
+type SortState = { key: string; direction: SortDirection }
 
 export default function Relatorios() {
   const { data: bills, reload: r1 } = useDb<Bill>('bills')
@@ -50,7 +52,55 @@ export default function Relatorios() {
   const [selectedBank, setSelectedBank] = useState('')
   const [selectedCat, setSelectedCat] = useState('')
   const [estMonthlyCost, setEstMonthlyCost] = useState(20000)
-  const [patientSort, setPatientSort] = useState<'nome' | 'pct_asc' | 'pct_desc'>('nome')
+  const [tableSorts, setTableSorts] = useState<Record<string, SortState>>({
+    transactions: { key: 'date', direction: 'desc' },
+    patientCosts: { key: 'patient', direction: 'asc' },
+    categoryMap: { key: 'total', direction: 'desc' }
+  })
+
+  const toggleSort = (table: string, key: string) => {
+    setTableSorts(current => {
+      const active = current[table]
+      return {
+        ...current,
+        [table]: { key, direction: active?.key === key && active.direction === 'asc' ? 'desc' : 'asc' }
+      }
+    })
+  }
+
+  const sortRows = <T,>(rows: readonly T[], table: string, values: Record<string, (row: T) => string | number | null | undefined>) => {
+    const active = tableSorts[table]
+    if (!active || !values[active.key]) return [...rows]
+    const valueOf = values[active.key]
+    const direction = active.direction === 'asc' ? 1 : -1
+
+    return [...rows].sort((a, b) => {
+      const left = valueOf(a) ?? ''
+      const right = valueOf(b) ?? ''
+      const result = typeof left === 'number' && typeof right === 'number'
+        ? left - right
+        : String(left).localeCompare(String(right), 'pt-BR', { numeric: true, sensitivity: 'base' })
+      return result * direction
+    })
+  }
+
+  const sortHeader = (label: string, table: string, key: string, align: 'left' | 'center' | 'right' = 'left') => {
+    const active = tableSorts[table]
+    const Icon = active?.key !== key ? ArrowUpDown : active.direction === 'asc' ? ArrowUp : ArrowDown
+    const justify = align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start'
+
+    return (
+      <button
+        type="button"
+        onClick={() => toggleSort(table, key)}
+        className={`flex w-full items-center gap-1 rounded-sm hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${justify}`}
+        aria-label={`Classificar ${label} em ordem ${active?.key === key && active.direction === 'asc' ? 'decrescente' : 'crescente'}`}
+      >
+        <span>{label}</span>
+        <Icon className={`h-3.5 w-3.5 shrink-0 ${active?.key === key ? 'text-primary' : 'text-muted-foreground'}`} />
+      </button>
+    )
+  }
 
   useEffect(() => {
     if (employees.length > 0) {
@@ -228,22 +278,14 @@ export default function Relatorios() {
     return { months, categories: categoryList, grid, monthTotals, categoryTotals, grandTotal }
   }, [reportType, bills, categories])
 
-  const sortedPatients = useMemo(() => {
-    const list = filteredData.patients.map(p => {
+  const patientCosts = useMemo(() => {
+    return filteredData.patients.map(p => {
       const contract = contracts.find(c => (c.pacienteId || (c as any).paciente_id) === p.id && c.status === 'ativo')
       const mensalidade = contract?.valor || 0
       const pct = mensalidade > 0 ? (totals.avgCostPerPatient / mensalidade) * 100 : 0
       return { ...p, pct, mensalidade }
     })
-
-    if (patientSort === 'pct_asc') {
-      return list.sort((a, b) => a.pct - b.pct)
-    }
-    if (patientSort === 'pct_desc') {
-      return list.sort((a, b) => b.pct - a.pct)
-    }
-    return list.sort((a, b) => a.nome.localeCompare(b.nome))
-  }, [filteredData.patients, contracts, totals.avgCostPerPatient, patientSort])
+  }, [filteredData.patients, contracts, totals.avgCostPerPatient])
 
   function printReport() {
     if (reportType === 'pastaSanitaria') {
@@ -700,16 +742,6 @@ export default function Relatorios() {
                 {categories.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
              </Select>
           </div>
-          {reportType === 'custoPaciente' && (
-            <div className="space-y-1">
-               <Label className="text-xs">Ordenação %</Label>
-               <Select value={patientSort} onChange={e => setPatientSort(e.target.value as any)}>
-                 <option value="nome">Nome (A-Z)</option>
-                 <option value="pct_asc">Crescente %</option>
-                 <option value="pct_desc">Decrescente %</option>
-               </Select>
-            </div>
-          )}
         </div>
       </Card>
 
@@ -735,15 +767,21 @@ export default function Relatorios() {
             <table className="w-full min-w-[860px] text-sm">
               <thead className="bg-muted">
                 <tr>
-                  <th className="p-3 text-left">Codigo</th>
-                  <th className="p-3 text-left">Documento</th>
-                  <th className="p-3 text-left">Base normativa</th>
-                  <th className="p-3 text-left">Periodicidade</th>
-                  <th className="p-3 text-left">Responsavel</th>
+                  <th className="p-3 text-left">{sortHeader('Código', 'sanitary', 'code')}</th>
+                  <th className="p-3 text-left">{sortHeader('Documento', 'sanitary', 'title')}</th>
+                  <th className="p-3 text-left">{sortHeader('Base normativa', 'sanitary', 'legalBasis')}</th>
+                  <th className="p-3 text-left">{sortHeader('Periodicidade', 'sanitary', 'periodicity')}</th>
+                  <th className="p-3 text-left">{sortHeader('Responsável', 'sanitary', 'responsible')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {sanitaryDocuments.map(doc => (
+                {sortRows(sanitaryDocuments, 'sanitary', {
+                  code: doc => doc.code,
+                  title: doc => doc.title,
+                  legalBasis: doc => doc.legalBasis,
+                  periodicity: doc => doc.periodicity,
+                  responsible: doc => doc.responsible
+                }).map(doc => (
                   <tr key={doc.id}>
                     <td className="p-3 font-black text-primary">{doc.code}</td>
                     <td className="p-3">
@@ -861,15 +899,21 @@ export default function Relatorios() {
                   <table className="w-full text-sm">
                     <thead className="bg-muted">
                       <tr>
-                        <th className="p-2 text-left">Vencimento</th>
-                        <th className="p-2 text-left">Descrição</th>
-                        <th className="p-2 text-right">Valor</th>
-                        <th className="p-2 text-right">% Relativa</th>
-                        <th className="p-2 text-center">Status</th>
+                        <th className="p-2 text-left">{sortHeader('Vencimento', 'bills', 'date')}</th>
+                        <th className="p-2 text-left">{sortHeader('Descrição', 'bills', 'description')}</th>
+                        <th className="p-2 text-right">{sortHeader('Valor', 'bills', 'value', 'right')}</th>
+                        <th className="p-2 text-right">{sortHeader('% Relativa', 'bills', 'percentage', 'right')}</th>
+                        <th className="p-2 text-center">{sortHeader('Status', 'bills', 'status', 'center')}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredData.bills.map(b => (
+                      {sortRows(filteredData.bills, 'bills', {
+                        date: b => b.vencimento,
+                        description: b => b.descricao,
+                        value: b => b.valor,
+                        percentage: b => b.valor / (totals.pagar || 1),
+                        status: b => b.status
+                      }).map(b => (
                         <tr key={b.id} className="border-t">
                           <td className="p-2">{formatDate(b.vencimento)}</td>
                           <td className="p-2">{b.descricao}</td>
@@ -893,15 +937,21 @@ export default function Relatorios() {
                   <table className="w-full text-sm">
                     <thead className="bg-muted">
                       <tr>
-                        <th className="p-2 text-left">Vencimento</th>
-                        <th className="p-2 text-left">Descrição</th>
-                        <th className="p-2 text-right">Valor</th>
-                        <th className="p-2 text-right">% Relativa</th>
-                        <th className="p-2 text-center">Status</th>
+                        <th className="p-2 text-left">{sortHeader('Vencimento', 'incomes', 'date')}</th>
+                        <th className="p-2 text-left">{sortHeader('Descrição', 'incomes', 'description')}</th>
+                        <th className="p-2 text-right">{sortHeader('Valor', 'incomes', 'value', 'right')}</th>
+                        <th className="p-2 text-right">{sortHeader('% Relativa', 'incomes', 'percentage', 'right')}</th>
+                        <th className="p-2 text-center">{sortHeader('Status', 'incomes', 'status', 'center')}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredData.incomes.map(i => (
+                      {sortRows(filteredData.incomes, 'incomes', {
+                        date: i => i.vencimento,
+                        description: i => i.descricao,
+                        value: i => i.valor,
+                        percentage: i => i.valor / (totals.receber || 1),
+                        status: i => i.status
+                      }).map(i => (
                         <tr key={i.id} className="border-t">
                           <td className="p-2">{formatDate(i.vencimento)}</td>
                           <td className="p-2">{i.descricao}</td>
@@ -925,15 +975,21 @@ export default function Relatorios() {
                   <table className="w-full text-sm">
                     <thead className="bg-muted">
                       <tr>
-                        <th className="p-2 text-left">Data</th>
-                        <th className="p-2 text-left">Descrição</th>
-                        <th className="p-2 text-left">Categoria</th>
-                        <th className="p-2 text-right">Valor</th>
-                        <th className="p-2 text-center">Tipo</th>
+                        <th className="p-2 text-left">{sortHeader('Data', 'transactions', 'date')}</th>
+                        <th className="p-2 text-left">{sortHeader('Descrição', 'transactions', 'description')}</th>
+                        <th className="p-2 text-left">{sortHeader('Categoria', 'transactions', 'category')}</th>
+                        <th className="p-2 text-right">{sortHeader('Valor', 'transactions', 'value', 'right')}</th>
+                        <th className="p-2 text-center">{sortHeader('Tipo', 'transactions', 'type', 'center')}</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredData.transactions.sort((a,b) => b.data.localeCompare(a.data)).map(t => (
+                      {sortRows(filteredData.transactions, 'transactions', {
+                        date: t => t.data,
+                        description: t => t.descricao,
+                        category: t => t.categoria || 'Não Categorizado',
+                        value: t => t.valor,
+                        type: t => t.tipo
+                      }).map(t => (
                         <tr key={t.id} className="border-t">
                           <td className="p-2">{formatDate(t.data)}</td>
                           <td className="p-2">{t.descricao}</td>
@@ -998,15 +1054,21 @@ export default function Relatorios() {
             <Table>
               <TableHeader>
                 <TableRow className="bg-muted/50">
-                  <TableHead className="w-[120px]">Mês/Ano</TableHead>
-                  <TableHead className="text-right">Entradas Esperadas</TableHead>
-                  <TableHead className="text-right">Saídas Projetadas</TableHead>
-                  <TableHead className="text-right">Resultado Mensal</TableHead>
-                  <TableHead className="text-right font-bold text-primary">Saldo Acumulado</TableHead>
+                  <TableHead className="w-[120px]">{sortHeader('Mês/Ano', 'projection', 'month')}</TableHead>
+                  <TableHead className="text-right">{sortHeader('Entradas Esperadas', 'projection', 'in', 'right')}</TableHead>
+                  <TableHead className="text-right">{sortHeader('Saídas Projetadas', 'projection', 'out', 'right')}</TableHead>
+                  <TableHead className="text-right">{sortHeader('Resultado Mensal', 'projection', 'balance', 'right')}</TableHead>
+                  <TableHead className="text-right font-bold text-primary">{sortHeader('Saldo Acumulado', 'projection', 'cumulative', 'right')}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {projectionData.map((d, idx) => (
+                {sortRows(projectionData, 'projection', {
+                  month: d => d.monthStr,
+                  in: d => d.in,
+                  out: d => d.out,
+                  balance: d => d.balance,
+                  cumulative: d => d.cumulative
+                }).map((d, idx) => (
                   <TableRow key={d.monthStr} className={idx === 0 ? 'bg-primary/5 font-medium' : ''}>
                     <td className="p-3 font-semibold uppercase">{d.label}</td>
                     <td className="p-3 text-right text-green-600 font-medium">{formatCurrency(d.in)}</td>
@@ -1058,15 +1120,21 @@ export default function Relatorios() {
             <table className="w-full text-sm">
               <thead className="bg-muted">
                 <tr>
-                  <th className="p-3 text-left">Paciente</th>
-                  <th className="p-3 text-right">Mensalidade</th>
-                  <th className="p-3 text-right">Custo Médio</th>
-                  <th className="p-3 text-right">Diferença</th>
-                  <th className="p-3 text-right">% Custo</th>
+                  <th className="p-3 text-left">{sortHeader('Paciente', 'patientCosts', 'patient')}</th>
+                  <th className="p-3 text-right">{sortHeader('Mensalidade', 'patientCosts', 'monthly', 'right')}</th>
+                  <th className="p-3 text-right">{sortHeader('Custo Médio', 'patientCosts', 'cost', 'right')}</th>
+                  <th className="p-3 text-right">{sortHeader('Diferença', 'patientCosts', 'difference', 'right')}</th>
+                  <th className="p-3 text-right">{sortHeader('% Custo', 'patientCosts', 'percentage', 'right')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {sortedPatients.map(p => {
+                {sortRows(patientCosts, 'patientCosts', {
+                  patient: p => p.nome,
+                  monthly: p => p.mensalidade,
+                  cost: () => totals.avgCostPerPatient,
+                  difference: p => p.mensalidade - totals.avgCostPerPatient,
+                  percentage: p => p.pct
+                }).map(p => {
                   const diff = p.mensalidade - totals.avgCostPerPatient
                   
                   return (
@@ -1127,18 +1195,24 @@ export default function Relatorios() {
             <table className="w-full text-sm">
               <thead className="bg-muted">
                 <tr>
-                  <th className="p-3 text-left">Paciente</th>
-                  <th className="p-3 text-left">Data Início</th>
-                  <th className="p-3 text-left">Vencimento</th>
-                  <th className="p-3 text-right">Valor</th>
-                  <th className="p-3 text-center">Status</th>
+                  <th className="p-3 text-left">{sortHeader('Paciente', 'contracts', 'patient')}</th>
+                  <th className="p-3 text-left">{sortHeader('Data Início', 'contracts', 'start')}</th>
+                  <th className="p-3 text-left">{sortHeader('Vencimento', 'contracts', 'end')}</th>
+                  <th className="p-3 text-right">{sortHeader('Valor', 'contracts', 'value', 'right')}</th>
+                  <th className="p-3 text-center">{sortHeader('Status', 'contracts', 'status', 'center')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {filteredData.contratos.length === 0 ? (
                   <tr><td colSpan={5} className="p-6 text-center text-muted-foreground">Nenhum contrato encontrado no período</td></tr>
                 ) : (
-                  filteredData.contratos.map(c => (
+                  sortRows(filteredData.contratos, 'contracts', {
+                    patient: c => c.pacienteNome || (c as any).paciente_nome || '',
+                    start: c => c.dataInicio || (c as any).data_inicio,
+                    end: c => c.dataFim || (c as any).data_fim,
+                    value: c => c.valor,
+                    status: c => c.status
+                  }).map(c => (
                     <tr key={c.id} className="hover:bg-muted/30 transition-colors">
                       <td className="p-3 font-medium">{c.pacienteNome || (c as any).paciente_nome || '---'}</td>
                       <td className="p-3">{formatDate(c.dataInicio || (c as any).data_inicio)}</td>
@@ -1178,6 +1252,15 @@ export default function Relatorios() {
           const intensity = Math.round((val / maxCell) * 100)
           return intensity > 60 ? '#fff' : 'inherit'
         }
+        const mapSortValues: Record<string, (category: string) => string | number> = {
+          category: category => category,
+          total: category => categoryTotals[category] || 0,
+          percentage: category => grandTotal > 0 ? (categoryTotals[category] || 0) / grandTotal : 0
+        }
+        months.forEach(month => {
+          mapSortValues[month.key] = category => grid[category]?.[month.key] || 0
+        })
+        const sortedCategories = sortRows(cats, 'categoryMap', mapSortValues)
         return (
           <Card className="p-6">
             <div className="flex items-center gap-2 mb-2">
@@ -1216,19 +1299,19 @@ export default function Relatorios() {
                   <thead>
                     <tr className="bg-muted/60">
                       <th className="p-2 text-left font-bold sticky left-0 bg-muted/60 z-10 min-w-[160px] border-b border-r">
-                        Categoria
+                        {sortHeader('Categoria', 'categoryMap', 'category')}
                       </th>
                       {months.map(m => (
                         <th key={m.key} className="p-2 text-center font-semibold border-b border-r whitespace-nowrap">
-                          {m.label}
+                          {sortHeader(m.label, 'categoryMap', m.key, 'center')}
                         </th>
                       ))}
-                      <th className="p-2 text-right font-bold border-b bg-muted/40 whitespace-nowrap">Total</th>
-                      <th className="p-2 text-right font-bold border-b bg-muted/40 whitespace-nowrap">%</th>
+                      <th className="p-2 text-right font-bold border-b bg-muted/40 whitespace-nowrap">{sortHeader('Total', 'categoryMap', 'total', 'right')}</th>
+                      <th className="p-2 text-right font-bold border-b bg-muted/40 whitespace-nowrap">{sortHeader('%', 'categoryMap', 'percentage', 'right')}</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {cats.map((cat, rowIdx) => (
+                    {sortedCategories.map((cat, rowIdx) => (
                       <tr key={cat} className={rowIdx % 2 === 0 ? 'bg-white dark:bg-background' : 'bg-muted/20'}>
                         <td className="p-2 font-medium sticky left-0 z-10 border-r truncate max-w-[160px]"
                           style={{ background: rowIdx % 2 === 0 ? 'var(--background, #fff)' : 'rgba(0,0,0,0.02)' }}
