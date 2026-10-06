@@ -371,8 +371,8 @@ export default function Escalas() {
   }
 
   async function invertCycle12x36(employee: Employee) {
-    if (employee.escala !== '12x36') return
-    if (!confirm(`Deseja inverter o ciclo 12x36 de ${employee.nome} para este mês?`)) return
+    if (employee.escala !== '12x36' && employee.escala !== 'Dobra') return
+    if (!confirm(`Deseja inverter o ciclo de ${employee.nome} para este mês?`)) return
 
     try {
       for (const day of days) {
@@ -952,7 +952,7 @@ export default function Escalas() {
                           >
                             <FileText className="h-3 w-3" />
                           </button>
-                          {employee.escala === '12x36' && (
+                          {(employee.escala === '12x36' || employee.escala === 'Dobra') && (
                             <button 
                               onClick={() => invertCycle12x36(employee)}
                               title="Inverter Ciclo (A/B)"
@@ -1134,4 +1134,3 @@ export default function Escalas() {
     </div>
   )
 }
-
