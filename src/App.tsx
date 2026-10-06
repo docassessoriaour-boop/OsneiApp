@@ -7,6 +7,7 @@ import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
 import Funcionarios from '@/pages/rh/Funcionarios'
 import Escalas from '@/pages/rh/Escalas'
+import CartaoPonto from '@/pages/rh/CartaoPonto'
 import FolhaPagamento from '@/pages/rh/FolhaPagamento'
 import Ferias from '@/pages/rh/Ferias'
 import Cadastro from '@/pages/pacientes/Cadastro'
@@ -65,6 +66,7 @@ export default function App() {
           <Route path="/rh/funcionarios" element={<ProtectedRoute><Funcionarios /></ProtectedRoute>} />
           <Route path="/rh/curriculos" element={<ProtectedRoute><Curriculos /></ProtectedRoute>} />
           <Route path="/rh/escalas" element={<ProtectedRoute><Escalas /></ProtectedRoute>} />
+          <Route path="/rh/cartao-ponto" element={<ProtectedRoute><CartaoPonto /></ProtectedRoute>} />
           <Route path="/rh/folha-pagamento" element={<ProtectedRoute><FolhaPagamento /></ProtectedRoute>} />
           <Route path="/rh/ferias" element={<ProtectedRoute><Ferias /></ProtectedRoute>} />
           <Route path="/rh/calculadora-acerto" element={<ProtectedRoute><CalculadoraAcerto /></ProtectedRoute>} />

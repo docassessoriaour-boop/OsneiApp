@@ -28,7 +28,8 @@ import {
   LogOut,
   UserCircle,
   History,
-  FolderCheck
+  FolderCheck,
+  Clock3
 } from 'lucide-react'
 
 interface SidebarProps {
@@ -65,6 +66,7 @@ export function AppSidebar({ open, onClose }: SidebarProps) {
           { name: 'Funcionários', href: '/rh/funcionarios', icon: Users },
           { name: 'Currículos', href: '/rh/curriculos', icon: FileText },
           { name: 'Escalas', href: '/rh/escalas', icon: CalendarDays },
+          { name: 'Cartão de Ponto', href: '/rh/cartao-ponto', icon: Clock3 },
           { name: 'Folha de Pagamento', href: '/rh/folha-pagamento', icon: DollarSign },
           { name: 'Férias', href: '/rh/ferias', icon: Palmtree },
           { name: 'Calculadora de Acerto', href: '/rh/calculadora-acerto', icon: Calculator },
