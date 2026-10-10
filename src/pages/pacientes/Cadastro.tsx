@@ -4,7 +4,8 @@ import { useCep } from '@/hooks/useCep'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF } from '@/lib/pdf'
 import { getCompanyWorkUnit, matchesWorkUnit, normalizeWorkUnit } from '@/lib/units'
-import type { Patient, Medication, BaseMedication, MedicationEntry, CompanionEntry, PersonalItemEntry } from '@/lib/types'
+import type { Patient, Medication, BaseMedication, MedicationEntry, CompanionEntry, PersonalItemEntry, Contract } from '@/lib/types'
+import { downloadPatientContractWord } from '@/lib/patientContractWord'
 
 import { SearchBar } from '@/components/shared/SearchBar'
 import { EmptyState } from '@/components/shared/EmptyState'
@@ -18,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
 import { formatCurrency, formatDate } from '@/lib/utils'
-import { Pencil, Trash2, FileText, Loader2, Pill, Plus, Calendar, ShieldAlert, Save, Receipt, Printer, History, ArrowDownToLine, Package } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, Pill, Plus, Calendar, ShieldAlert, Save, Receipt, Printer, History, ArrowDownToLine, Package, FileDown } from 'lucide-react'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
 import { useAuth } from '@/contexts/AuthContext'
 
@@ -48,6 +49,7 @@ export default function Cadastro() {
   const isStandard = profile?.role === 'user'
   
   const { data: patients, loading: loadingPatients, insert, update, remove } = useDb<Patient>('patients')
+  const { data: contracts } = useDb<Contract>('contracts')
   const { data: allMedications, insert: insertMed, update: updateMed, remove: removeMed, reload: reloadMeds } = useDb<Medication>('medications')
   const { data: allMedEntries, insert: insertMedEntry, update: updateMedEntry, remove: removeMedEntry } = useDb<MedicationEntry>('medication_entries')
   const { data: allCompanionships, insert: insertComp, update: updateComp, remove: removeComp } = useDb<CompanionEntry>('patient_companionships')
@@ -673,6 +675,24 @@ export default function Cadastro() {
     `, clinic, { hideClinicHeader: true })
   }
 
+  function downloadPatientContract(patient: Patient) {
+    const patientContracts = contracts
+      .filter(contract => (contract.pacienteId || (contract as any).paciente_id) === patient.id)
+      .sort((a, b) => {
+        const dateA = a.dataInicio || (a as any).data_inicio || ''
+        const dateB = b.dataInicio || (b as any).data_inicio || ''
+        return dateB.localeCompare(dateA)
+      })
+    const contract = patientContracts.find(item => item.status === 'ativo') || patientContracts[0]
+
+    if (!contract) {
+      alert('Este paciente ainda não possui contrato cadastrado.')
+      return
+    }
+
+    downloadPatientContractWord(patient, contract, clinic)
+  }
+
   function printInitialCarePlan(patient?: Patient) {
     const p = patient || (form as Patient)
     if (!p.nome) return
@@ -1068,6 +1088,7 @@ export default function Cadastro() {
                         <Button variant="ghost" size="icon" title="Plano Inicial POP 07" onClick={() => printInitialCarePlan(patient)}><ShieldAlert className="h-4 w-4 text-amber-600" /></Button>
                         <Button variant="ghost" size="icon" title="Ficha + Medicação" onClick={() => printPatientFullReport(patient)}><FileText className="h-4 w-4 text-purple-600" /></Button>
                         <Button variant="ghost" size="icon" title="Ficha Cadastral" onClick={() => printPatientFile(patient)}><FileText className="h-4 w-4 text-blue-600" /></Button>
+                        <Button variant="ghost" size="icon" title="Baixar Contrato em Word" onClick={() => downloadPatientContract(patient)}><FileDown className="h-4 w-4 text-blue-700" /></Button>
                         <Button variant="ghost" size="icon" title={isStandard ? "Ver Medicação" : "Editar"} onClick={() => openEdit(patient)}>
                           {isStandard ? <Pill className="h-4 w-4 text-primary" /> : <Pencil className="h-4 w-4" />}
                         </Button>

@@ -3,6 +3,7 @@ import { useDb } from '@/hooks/useDb'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF, formatCurrencyPDF, formatDatePDF } from '@/lib/pdf'
+import { downloadPatientContractWord } from '@/lib/patientContractWord'
 import {
   DEMO_COMPANY_ADDRESS,
   DEMO_COMPANY_CNPJ,
@@ -27,7 +28,7 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, BarChart3, Loader2, RefreshCw, History } from 'lucide-react'
+import { Pencil, Trash2, FileText, BarChart3, Loader2, RefreshCw, History, FileDown } from 'lucide-react'
 
 export default function Contratos() {
   const { data: patients, loading: loadingPatients } = useDb<Patient>('patients')
@@ -505,6 +506,16 @@ export default function Contratos() {
     printPDF('Contrato de Prestação de Serviços', html, clinic, { hideTitle: true })
   }
 
+  function downloadContractWord(c: Contract) {
+    const patientId = c.pacienteId || (c as any).paciente_id
+    const patient = patients.find(item => item.id === patientId)
+    if (!patient) {
+      alert('Paciente vinculado ao contrato não encontrado.')
+      return
+    }
+    downloadPatientContractWord(patient, c, clinic)
+  }
+
   const handleDateInicioChange = (date: string) => {
     if (!date) {
       setForm({ ...form, dataInicio: date });
@@ -594,6 +605,7 @@ export default function Contratos() {
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Button variant="ghost" size="icon" onClick={() => printContract(c)} title="Imprimir Contrato"><FileText className="h-4 w-4 text-blue-600" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => downloadContractWord(c)} title="Baixar Contrato em Word"><FileDown className="h-4 w-4 text-blue-700" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => openRenovar(c)} title="Renovar Contrato"><RefreshCw className="h-4 w-4 text-green-600" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => openHistorico(c)} title="Histórico de Contratos"><History className="h-4 w-4 text-purple-600" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
@@ -783,9 +795,12 @@ export default function Contratos() {
                     {c.observacoes && (
                       <p className="text-xs text-gray-500 italic mb-2">{c.observacoes}</p>
                     )}
-                    <div className="flex justify-end">
+                    <div className="flex justify-end gap-2">
                       <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => printContract(c)}>
                         <FileText className="h-3 w-3" /> Imprimir
+                      </Button>
+                      <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => downloadContractWord(c)}>
+                        <FileDown className="h-3 w-3" /> Word
                       </Button>
                     </div>
                   </div>
