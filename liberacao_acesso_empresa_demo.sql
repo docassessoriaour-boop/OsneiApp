@@ -201,7 +201,7 @@ ON CONFLICT (id) DO UPDATE SET
 -- O usuario precisa existir antes no Auth. Este UPDATE nao cria nem salva senha.
 UPDATE public.profiles
 SET full_name = COALESCE(NULLIF(full_name, ''), 'Administrador Demo'),
-    role = 'admin', active = TRUE,
+    role = 'admin',
     company_id = (SELECT id FROM public.companies WHERE cnpj_digits = '00000000000191')
 WHERE lower(email) = 'demo@osneiapp.com.br';
 
