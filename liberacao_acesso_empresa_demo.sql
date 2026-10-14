@@ -53,6 +53,13 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_profiles_company_id ON public.profiles(company_id);
 
+-- Remove somente a configuracao anterior desta mesma empresa demo. O banco de
+-- producao nao possui restricao UNIQUE em company_info.cnpj, portanto o upsert
+-- abaixo usa a chave primaria fixa em vez de depender desse campo.
+DELETE FROM public.company_info
+WHERE company_id = (SELECT id FROM public.companies WHERE cnpj_digits = '00000000000191')
+   OR cnpj = '00.000.000/0001-91';
+
 INSERT INTO public.company_info (
   id, nome_fantasia, razao_social, cnpj, endereco, telefone, email, website,
   cep, configuracoes_adicionais, company_id
@@ -65,7 +72,7 @@ VALUES (
   '19900-000', '{"ambiente":"demonstracao","dados":"100% ficticios"}'::jsonb,
   (SELECT id FROM public.companies WHERE cnpj_digits = '00000000000191')
 )
-ON CONFLICT (cnpj) DO UPDATE SET
+ON CONFLICT (id) DO UPDATE SET
   nome_fantasia = EXCLUDED.nome_fantasia, razao_social = EXCLUDED.razao_social,
   endereco = EXCLUDED.endereco, telefone = EXCLUDED.telefone,
   email = EXCLUDED.email, website = EXCLUDED.website, cep = EXCLUDED.cep,
