@@ -53,6 +53,10 @@ END $$;
 
 CREATE INDEX IF NOT EXISTS idx_profiles_company_id ON public.profiles(company_id);
 
+-- Compatibilidade com bancos criados antes dos campos do plano de cuidados.
+ALTER TABLE public.patients
+  ADD COLUMN IF NOT EXISTS grau_dependencia TEXT;
+
 -- Remove somente a configuracao anterior desta mesma empresa demo. O banco de
 -- producao nao possui restricao UNIQUE em company_info.cnpj, portanto o upsert
 -- abaixo usa a chave primaria fixa em vez de depender desse campo.
