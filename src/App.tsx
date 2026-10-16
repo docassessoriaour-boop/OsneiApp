@@ -28,6 +28,7 @@ import Produtos from '@/pages/estoque/Produtos'
 import EntradaNfe from '@/pages/estoque/EntradaNfe'
 import Relatorios from '@/pages/Relatorios'
 import Administracao from '@/pages/Administracao'
+import ModelosContratos from '@/pages/ModelosContratos'
 import Configuracoes from '@/pages/Configuracoes'
 import Usuarios from '@/pages/Usuarios'
 import Curriculos from '@/pages/rh/Curriculos'
@@ -98,6 +99,7 @@ export default function App() {
 
           {/* Administração */}
           <Route path="/administracao" element={<ProtectedRoute><Administracao /></ProtectedRoute>} />
+          <Route path="/administracao/modelos-contratos" element={<ProtectedRoute><ModelosContratos /></ProtectedRoute>} />
           <Route path="/documentos-manuais" element={<ProtectedRoute><DocumentosManuais /></ProtectedRoute>} />
           
           {/* Configurações */}
