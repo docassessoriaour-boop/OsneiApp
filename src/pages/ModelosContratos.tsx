@@ -68,7 +68,8 @@ export default function ModelosContratos() {
       if (input) input.value = ''
     } catch (error) {
       console.error(error)
-      alert('Não foi possível enviar o modelo. Confirme se a migração de modelos foi aplicada no Supabase.')
+      const detail = error instanceof Error ? error.message : String((error as { message?: string })?.message || '')
+      alert(`Não foi possível enviar o modelo.${detail ? `\n\nDetalhe: ${detail}` : ''}`)
     } finally {
       setUploading(false)
     }

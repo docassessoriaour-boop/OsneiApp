@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS public.administrative_file_templates (
 
 CREATE INDEX IF NOT EXISTS idx_administrative_file_templates_company ON public.administrative_file_templates(company_id);
 ALTER TABLE public.administrative_file_templates ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, DELETE ON public.administrative_file_templates TO authenticated;
 
 DROP POLICY IF EXISTS "admin_templates_select_company" ON public.administrative_file_templates;
 CREATE POLICY "admin_templates_select_company" ON public.administrative_file_templates FOR SELECT TO authenticated
