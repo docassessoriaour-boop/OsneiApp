@@ -23,7 +23,7 @@ export default function ModelosContratos() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Modelos de Contratos</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Modelo de Arquivos</h1>
         <p className="text-muted-foreground">Modelos Word para funcionários e pacientes</p>
       </div>
 

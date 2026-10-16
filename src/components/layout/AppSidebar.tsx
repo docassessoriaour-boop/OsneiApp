@@ -55,7 +55,7 @@ export function AppSidebar({ open, onClose }: SidebarProps) {
         section: 'ADMINISTRAÇÃO',
         items: [
           { name: 'Pasta Sanitária', href: '/administracao', icon: FolderCheck },
-          { name: 'Modelos de Contratos', href: '/administracao/modelos-contratos', icon: FileText },
+          { name: 'Modelo de Arquivos', href: '/administracao/modelos-contratos', icon: FileText },
           ...(isLarSabedoria(profile?.company) ? [{ name: 'Documentos manuais', href: '/documentos-manuais', icon: FileText }] : []),
         ],
       },
