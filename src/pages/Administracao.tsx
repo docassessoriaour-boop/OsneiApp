@@ -8,6 +8,9 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useClinic } from '@/lib/clinicConfig'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
+import { useDb } from '@/hooks/useDb'
+import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
 import {
   getMaintenanceTypeLabel,
   getPopById,
@@ -34,11 +37,21 @@ import {
   Save,
   ShieldCheck,
   Trash2,
+  Upload,
+  ExternalLink,
+  Loader2,
 } from 'lucide-react'
 
 type StatusOverrides = Record<string, SanitaryDocumentStatus>
 type AppendixValues = Record<string, Record<string, string>>
 type MaintenanceForm = Omit<PreventiveMaintenanceRecord, 'id'>
+type SanitaryDocumentFile = {
+  id: string
+  document_id: string
+  file_path: string
+  file_name: string
+  uploaded_at?: string
+}
 
 const statusBadgeVariant: Record<SanitaryDocumentStatus, 'default' | 'success' | 'warning' | 'destructive'> = {
   pendente: 'warning',
@@ -49,11 +62,14 @@ const statusBadgeVariant: Record<SanitaryDocumentStatus, 'default' | 'success' |
 
 export default function Administracao() {
   const [clinic] = useClinic()
+  const { profile } = useAuth()
+  const { data: documentFiles, insert: insertDocumentFile, update: updateDocumentFile } = useDb<SanitaryDocumentFile>('sanitary_document_files')
   const [statusOverrides, setStatusOverrides] = useLocalStorage<StatusOverrides>('sanitary-document-status', {})
   const [appendixValues, setAppendixValues] = useLocalStorage<AppendixValues>('sanitary-appendix-values', {})
   const [maintenanceRecords, setMaintenanceRecords] = useLocalStorage<PreventiveMaintenanceRecord[]>('preventive-maintenance-records', [])
   const [categoryFilter, setCategoryFilter] = useState('todos')
   const [statusFilter, setStatusFilter] = useState('todos')
+  const [uploadingDocumentId, setUploadingDocumentId] = useState<string | null>(null)
   const [selectedAppendixId, setSelectedAppendixId] = useState(sanitaryAppendices[0]?.id || '')
   const [maintenanceForm, setMaintenanceForm] = useState<MaintenanceForm>({
     type: 'controle_pragas',
@@ -99,6 +115,70 @@ export default function Administracao() {
 
     const pop = getPopById(doc.id)
     if (pop) printPop(pop, clinic)
+  }
+
+  const getDocumentFile = (documentId: string) => documentFiles.find(file => file.document_id === documentId)
+
+  const uploadDocumentPdf = async (doc: SanitaryDocument, file?: File) => {
+    if (!file) return
+    if (file.type !== 'application/pdf') {
+      alert('Selecione um arquivo PDF.')
+      return
+    }
+    if (file.size > 15 * 1024 * 1024) {
+      alert('O PDF deve ter no máximo 15 MB.')
+      return
+    }
+    if (!profile?.company_id) {
+      alert('Empresa não identificada. Entre novamente no sistema.')
+      return
+    }
+
+    setUploadingDocumentId(doc.id)
+    try {
+      const currentFile = getDocumentFile(doc.id)
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const path = `${profile.company_id}/${doc.id}/${Date.now()}-${safeName}`
+      const { error: uploadError } = await supabase.storage
+        .from('pasta-sanitaria-pdf')
+        .upload(path, file, { contentType: 'application/pdf' })
+      if (uploadError) throw uploadError
+
+      if (currentFile) {
+        await updateDocumentFile(currentFile.id, {
+          file_path: path,
+          file_name: file.name,
+          uploaded_at: new Date().toISOString(),
+        })
+        if (currentFile.file_path) {
+          await supabase.storage.from('pasta-sanitaria-pdf').remove([currentFile.file_path])
+        }
+      } else {
+        await insertDocumentFile({
+          document_id: doc.id,
+          file_path: path,
+          file_name: file.name,
+          uploaded_at: new Date().toISOString(),
+        })
+      }
+      setDocumentStatus(doc.id, 'vigente')
+    } catch (error) {
+      console.error(error)
+      alert('Não foi possível enviar o PDF. Confirme se a migração da Pasta Sanitária foi aplicada no Supabase.')
+    } finally {
+      setUploadingDocumentId(null)
+    }
+  }
+
+  const openDocumentPdf = async (documentId: string) => {
+    const file = getDocumentFile(documentId)
+    if (!file) return
+    const { data, error } = await supabase.storage.from('pasta-sanitaria-pdf').createSignedUrl(file.file_path, 60)
+    if (error || !data?.signedUrl) {
+      alert('Não foi possível abrir o PDF.')
+      return
+    }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
   }
 
   const categories = Array.from(new Set(documents.map(doc => doc.category)))
@@ -272,10 +352,35 @@ export default function Administracao() {
                     </div>
                   </td>
                   <td className="p-3 text-right">
-                    <Button variant={doc.isPop ? 'default' : 'outline'} size="sm" onClick={() => printDocument(doc)} className="gap-2">
-                      <FileText className="h-4 w-4" />
-                      {doc.isPop ? 'POP' : 'Controle'}
-                    </Button>
+                    <div className="flex min-w-[210px] flex-col items-end gap-2">
+                      <div className="flex justify-end gap-1">
+                        <Button variant={doc.isPop ? 'default' : 'outline'} size="sm" onClick={() => printDocument(doc)} className="gap-2">
+                          <FileText className="h-4 w-4" />
+                          {doc.isPop ? 'POP' : 'Controle'}
+                        </Button>
+                        <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-input bg-background px-3 text-xs font-medium hover:bg-accent" title="Enviar PDF deste documento">
+                          {uploadingDocumentId === doc.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4 text-primary" />}
+                          {getDocumentFile(doc.id) ? 'Substituir' : 'Anexar'}
+                          <input
+                            type="file"
+                            accept="application/pdf,.pdf"
+                            className="hidden"
+                            disabled={uploadingDocumentId === doc.id}
+                            onChange={e => { void uploadDocumentPdf(doc, e.target.files?.[0]); e.currentTarget.value = '' }}
+                          />
+                        </label>
+                        {getDocumentFile(doc.id) && (
+                          <Button variant="ghost" size="icon" onClick={() => void openDocumentPdf(doc.id)} title="Abrir PDF anexado">
+                            <ExternalLink className="h-4 w-4 text-emerald-700" />
+                          </Button>
+                        )}
+                      </div>
+                      {getDocumentFile(doc.id) && (
+                        <span className="max-w-[210px] truncate text-[10px] text-muted-foreground" title={getDocumentFile(doc.id)?.file_name}>
+                          {getDocumentFile(doc.id)?.file_name}
+                        </span>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
