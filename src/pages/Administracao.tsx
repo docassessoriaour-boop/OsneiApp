@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useClinic } from '@/lib/clinicConfig'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
+import { downloadContractTemplateWord } from '@/lib/contractTemplates'
 import {
   getMaintenanceTypeLabel,
   getPopById,
@@ -27,6 +28,7 @@ import {
 } from '@/lib/sanitaryDocuments'
 import {
   ClipboardCheck,
+  Download,
   FileDown,
   FileText,
   FolderCheck,
@@ -188,6 +190,25 @@ export default function Administracao() {
           <p className="mt-1 text-2xl font-black text-blue-700">{totals.popCount}</p>
         </Card>
       </div>
+
+      <Card className="p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-lg font-bold">Modelos de Contratos em Word</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Modelos editáveis centralizados na Administração. Os contratos já lançados permanecem bloqueados e preservados no histórico.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => downloadContractTemplateWord('funcionario', clinic)} className="gap-2">
+              <Download className="h-4 w-4" /> Contrato de Funcionário
+            </Button>
+            <Button variant="outline" onClick={() => downloadContractTemplateWord('paciente', clinic)} className="gap-2">
+              <Download className="h-4 w-4" /> Contrato de Paciente
+            </Button>
+          </div>
+        </div>
+      </Card>
 
       <Card className="p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

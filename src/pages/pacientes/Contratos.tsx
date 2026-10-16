@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react'
 import { useDb } from '@/hooks/useDb'
+import { useAuth } from '@/hooks/useAuth'
+import { supabase } from '@/lib/supabase'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF, formatCurrencyPDF, formatDatePDF } from '@/lib/pdf'
-import { downloadPatientContractWord } from '@/lib/patientContractWord'
 import {
   DEMO_COMPANY_ADDRESS,
   DEMO_COMPANY_CNPJ,
@@ -28,23 +29,36 @@ import { Badge } from '@/components/ui/badge'
 import { Textarea } from '@/components/ui/textarea'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogClose, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, BarChart3, Loader2, RefreshCw, History, FileDown } from 'lucide-react'
+import { FileText, BarChart3, Loader2, RefreshCw, History, Upload, ExternalLink, Archive } from 'lucide-react'
+
+type ManagedContract = Omit<Contract, 'status'> & {
+  status: Contract['status'] | 'baixado'
+  motivo_alteracao?: string
+  tipo_alteracao?: 'renovacao' | 'alteracao' | 'cancelamento' | 'baixa'
+  pdf_path?: string
+  pdf_nome?: string
+}
 
 export default function Contratos() {
   const { data: patients, loading: loadingPatients } = useDb<Patient>('patients')
-  const { data: contracts, loading: loadingContracts, insert, update, remove } = useDb<Contract>('contracts')
+  const { data: contracts, loading: loadingContracts, insert, update } = useDb<ManagedContract>('contracts')
+  const { profile } = useAuth()
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingId, setEditingId] = useState<string | null>(null)
-  const [renovandoDe, setRenovandoDe] = useState<Contract | null>(null)
+  const [renovandoDe, setRenovandoDe] = useState<ManagedContract | null>(null)
+  const [actionOpen, setActionOpen] = useState(false)
+  const [actionContract, setActionContract] = useState<ManagedContract | null>(null)
+  const [actionType, setActionType] = useState<'renovacao' | 'alteracao' | 'cancelamento' | 'baixa'>('alteracao')
+  const [actionReason, setActionReason] = useState('')
+  const [uploadingId, setUploadingId] = useState<string | null>(null)
   const [view, setView] = useState<'table' | 'timeline'>('table')
   const [filterStart, setFilterStart] = useState('')
   const [filterEnd, setFilterEnd] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'vencido' | 'cancelado'>('ativo')
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'vencido' | 'cancelado' | 'baixado'>('ativo')
   const [saving, setSaving] = useState(false)
   const [form, setForm] = useState({
-    pacienteId: '', valor: 0, valorExtra: 0, descricaoExtra: '', dataInicio: '', dataFim: '', status: 'ativo' as Contract['status'], observacoes: '',
+    pacienteId: '', valor: 0, valorExtra: 0, descricaoExtra: '', dataInicio: '', dataFim: '', status: 'ativo' as ManagedContract['status'], observacoes: '',
   })
 
   // Histórico
@@ -64,7 +78,7 @@ export default function Contratos() {
         dataFim: (c as any).data_fim || c.dataFim,
         valorExtra: (c as any).valor_extra || c.valorExtra,
         descricaoExtra: (c as any).descricao_extra || c.descricaoExtra,
-      } as Contract
+      } as ManagedContract
       if (!mapped.pacienteNome && mapped.pacienteId) {
         const p = patients.find(px => px.id === mapped.pacienteId)
         if (p) mapped.pacienteNome = p.nome
@@ -90,7 +104,7 @@ export default function Contratos() {
         dataFim: (c as any).data_fim || c.dataFim,
         valorExtra: (c as any).valor_extra || c.valorExtra,
         descricaoExtra: (c as any).descricao_extra || c.descricaoExtra,
-      } as Contract
+      } as ManagedContract
       if (!mapped.pacienteNome && mapped.pacienteId) {
         const p = patients.find(px => px.id === mapped.pacienteId)
         if (p) mapped.pacienteNome = p.nome
@@ -110,12 +124,13 @@ export default function Contratos() {
 
   function openNew() {
     setForm({ pacienteId: patients[0]?.id || '', valor: 0, valorExtra: 0, descricaoExtra: '', dataInicio: '', dataFim: '', status: 'ativo', observacoes: '' })
-    setEditingId(null)
     setRenovandoDe(null)
     setDialogOpen(true)
   }
 
-  function openRenovar(c: Contract) {
+  function openRenovar(c: ManagedContract) {
+    setActionType('renovacao')
+    setActionReason(`Renovação do contrato ${c.numero_contrato || c.id.slice(0, 8).toUpperCase()}`)
     // Calcula nova data início = dia seguinte ao vencimento do contrato atual
     const fimAtual = c.dataFim ? new Date(c.dataFim + 'T12:00:00') : new Date()
     const novoInicio = new Date(fimAtual)
@@ -135,12 +150,11 @@ export default function Contratos() {
       status: 'ativo',
       observacoes: `Renovação do contrato ${c.numero_contrato || c.id.slice(0, 8).toUpperCase()}`,
     })
-    setEditingId(null)
     setRenovandoDe(c)
     setDialogOpen(true)
   }
 
-  function openHistorico(c: Contract) {
+  function openHistorico(c: ManagedContract) {
     setHistoricoPacienteId(c.pacienteId || (c as any).paciente_id)
     setHistoricoPacienteNome(c.pacienteNome)
     setHistoricoOpen(true)
@@ -167,9 +181,7 @@ export default function Contratos() {
         observacoes: form.observacoes,
       }
 
-      if (editingId) {
-        await update(editingId, dbPayload as any)
-      } else {
+      {
         const now = new Date()
         const dd = String(now.getDate()).padStart(2, '0')
         const mm = String(now.getMonth() + 1).padStart(2, '0')
@@ -180,8 +192,18 @@ export default function Contratos() {
 
         // Se for renovação, registra referência ao contrato anterior e marca-o como vencido
         if (renovandoDe) {
-          await insert({ ...dbPayload, numero_contrato: num, contrato_renovado_de: renovandoDe.id } as any)
-          await update(renovandoDe.id, { status: 'vencido' } as any)
+          await insert({
+            ...dbPayload,
+            numero_contrato: num,
+            contrato_renovado_de: renovandoDe.id,
+            tipo_alteracao: actionType,
+            motivo_alteracao: actionReason || form.observacoes,
+          } as any)
+          await update(renovandoDe.id, {
+            status: 'vencido',
+            tipo_alteracao: actionType,
+            motivo_alteracao: actionReason || form.observacoes,
+          } as any)
         } else {
           await insert({ ...dbPayload, numero_contrato: num } as any)
         }
@@ -196,45 +218,90 @@ export default function Contratos() {
     }
   }
 
-  async function handleDelete(id: string) {
-    if (confirm('Deseja excluir este contrato?')) {
-      try {
-        await remove(id)
-      } catch (error) {
-        console.error(error)
-        alert('Erro ao excluir contrato.')
-      }
+  function openContractAction(c: ManagedContract) {
+    setActionContract(c)
+    setActionType('alteracao')
+    setActionReason('')
+    setActionOpen(true)
+  }
+
+  async function confirmContractAction() {
+    if (!actionContract || !actionReason.trim()) {
+      alert('Informe o motivo da alteração, cancelamento ou baixa.')
+      return
+    }
+    if (actionType === 'alteracao') {
+      const c = actionContract
+      setForm({
+        pacienteId: c.pacienteId || (c as any).paciente_id,
+        valor: c.valor,
+        valorExtra: c.valorExtra || 0,
+        descricaoExtra: c.descricaoExtra || '',
+        dataInicio: new Date().toISOString().slice(0, 10),
+        dataFim: c.dataFim,
+        status: 'ativo',
+        observacoes: actionReason.trim(),
+      })
+      setRenovandoDe(c)
+      setActionOpen(false)
+      setDialogOpen(true)
+      return
+    }
+    setSaving(true)
+    try {
+      await update(actionContract.id, {
+        status: actionType === 'baixa' ? 'baixado' : 'cancelado',
+        tipo_alteracao: actionType,
+        motivo_alteracao: actionReason.trim(),
+      } as any)
+      setActionOpen(false)
+    } catch (error) {
+      console.error(error)
+      alert('Não foi possível registrar a movimentação do contrato.')
+    } finally {
+      setSaving(false)
     }
   }
 
-  function openEdit(c: Contract) {
-    const mappedC = {
-      ...c,
-      pacienteId: (c as any).paciente_id || c.pacienteId,
-      valorExtra: (c as any).valor_extra || c.valorExtra,
-      descricaoExtra: (c as any).descricao_extra || c.descricaoExtra,
-      dataInicio: (c as any).data_inicio || c.dataInicio,
-      dataFim: (c as any).data_fim || c.dataFim
+  async function uploadContractPdf(c: ManagedContract, file?: File) {
+    if (!file) return
+    if (file.type !== 'application/pdf') {
+      alert('Selecione um arquivo PDF.')
+      return
     }
-
-    setForm({
-      pacienteId: mappedC.pacienteId,
-      valor: mappedC.valor,
-      valorExtra: mappedC.valorExtra || 0,
-      descricaoExtra: mappedC.descricaoExtra || '',
-      dataInicio: mappedC.dataInicio,
-      dataFim: mappedC.dataFim,
-      status: mappedC.status,
-      observacoes: mappedC.observacoes
-    })
-    setEditingId(c.id)
-    setRenovandoDe(null)
-    setDialogOpen(true)
+    if (file.size > 10 * 1024 * 1024) {
+      alert('O PDF deve ter no máximo 10 MB.')
+      return
+    }
+    setUploadingId(c.id)
+    try {
+      const companyId = profile?.company_id || 'sem-empresa'
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_')
+      const path = `${companyId}/${c.id}/${Date.now()}-${safeName}`
+      const { error } = await supabase.storage.from('contratos-pdf').upload(path, file, { contentType: 'application/pdf' })
+      if (error) throw error
+      await update(c.id, { pdf_path: path, pdf_nome: file.name } as any)
+    } catch (error) {
+      console.error(error)
+      alert('Não foi possível enviar o PDF. Confirme se a migração de contratos foi aplicada no Supabase.')
+    } finally {
+      setUploadingId(null)
+    }
   }
 
-  const statusBadge = (status: Contract['status']) => {
-    const map = { ativo: 'success', vencido: 'warning', cancelado: 'destructive' } as const
-    const labels = { ativo: 'Ativo', vencido: 'Vencido', cancelado: 'Cancelado' }
+  async function openContractPdf(c: ManagedContract) {
+    if (!c.pdf_path) return
+    const { data, error } = await supabase.storage.from('contratos-pdf').createSignedUrl(c.pdf_path, 60)
+    if (error || !data?.signedUrl) {
+      alert('Não foi possível abrir o PDF.')
+      return
+    }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  const statusBadge = (status: ManagedContract['status']) => {
+    const map = { ativo: 'success', vencido: 'warning', cancelado: 'destructive', baixado: 'outline' } as const
+    const labels = { ativo: 'Ativo', vencido: 'Vencido', cancelado: 'Cancelado', baixado: 'Baixado' }
     return <Badge variant={map[status]}>{labels[status]}</Badge>
   }
 
@@ -290,7 +357,7 @@ export default function Contratos() {
     printPDF('Relatório de Timeline de Contratos', html, clinic)
   }
 
-  function printContract(c: Contract) {
+  function printContract(c: ManagedContract) {
     const pid = c.pacienteId || (c as any).paciente_id
     const p = patients.find(px => px.id === pid)
     if (!p) return
@@ -506,16 +573,6 @@ export default function Contratos() {
     printPDF('Contrato de Prestação de Serviços', html, clinic, { hideTitle: true })
   }
 
-  function downloadContractWord(c: Contract) {
-    const patientId = c.pacienteId || (c as any).paciente_id
-    const patient = patients.find(item => item.id === patientId)
-    if (!patient) {
-      alert('Paciente vinculado ao contrato não encontrado.')
-      return
-    }
-    downloadPatientContractWord(patient, c, clinic)
-  }
-
   const handleDateInicioChange = (date: string) => {
     if (!date) {
       setForm({ ...form, dataInicio: date });
@@ -544,6 +601,7 @@ export default function Contratos() {
             <option value="ativo">Ativos</option>
             <option value="vencido">Vencidos</option>
             <option value="cancelado">Cancelados</option>
+            <option value="baixado">Baixados</option>
           </Select>
         </div>
         <div>
@@ -605,11 +663,14 @@ export default function Contratos() {
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <Button variant="ghost" size="icon" onClick={() => printContract(c)} title="Imprimir Contrato"><FileText className="h-4 w-4 text-blue-600" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => downloadContractWord(c)} title="Baixar Contrato em Word"><FileDown className="h-4 w-4 text-blue-700" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => openRenovar(c)} title="Renovar Contrato"><RefreshCw className="h-4 w-4 text-green-600" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => openHistorico(c)} title="Histórico de Contratos"><History className="h-4 w-4 text-purple-600" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(c)}><Pencil className="h-4 w-4" /></Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(c.id)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => openContractAction(c)} title="Alterar, cancelar ou dar baixa"><Archive className="h-4 w-4 text-amber-700" /></Button>
+                          <label className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-md hover:bg-accent" title="Enviar contrato assinado em PDF">
+                            {uploadingId === c.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4 text-sky-700" />}
+                            <input type="file" accept="application/pdf,.pdf" className="hidden" disabled={uploadingId === c.id} onChange={e => { void uploadContractPdf(c, e.target.files?.[0]); e.currentTarget.value = '' }} />
+                          </label>
+                          {c.pdf_path && <Button variant="ghost" size="icon" onClick={() => void openContractPdf(c)} title={c.pdf_nome || 'Abrir PDF'}><ExternalLink className="h-4 w-4 text-emerald-700" /></Button>}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -673,15 +734,15 @@ export default function Contratos() {
         <DialogHeader>
           <DialogTitle>
             {renovandoDe
-              ? `🔄 Renovar Contrato — ${renovandoDe.pacienteNome}`
-              : editingId ? 'Editar Contrato' : 'Novo Contrato'}
+              ? `${actionType === 'alteracao' ? 'Nova versão' : '🔄 Renovar Contrato'} — ${renovandoDe.pacienteNome}`
+              : 'Novo Contrato'}
           </DialogTitle>
           <DialogClose onClose={() => { setDialogOpen(false); setRenovandoDe(null) }} />
         </DialogHeader>
         <DialogContent>
           {renovandoDe && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-2 text-sm text-green-800">
-              <strong>Renovação:</strong> O contrato anterior <span className="font-mono">{renovandoDe.numero_contrato || renovandoDe.id.slice(0, 8).toUpperCase()}</span> será marcado como <strong>Vencido</strong> automaticamente ao salvar.
+              <strong>{actionType === 'alteracao' ? 'Nova versão:' : 'Renovação:'}</strong> O contrato anterior <span className="font-mono">{renovandoDe.numero_contrato || renovandoDe.id.slice(0, 8).toUpperCase()}</span> será marcado como <strong>Vencido</strong> automaticamente ao salvar.
             </div>
           )}
           <div className="grid gap-4">
@@ -704,10 +765,8 @@ export default function Contratos() {
               </div>
               <div>
                 <Label>Status</Label>
-                <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Contract['status'] })} className="mt-1">
+                <Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as ManagedContract['status'] })} className="mt-1">
                   <option value="ativo">Ativo</option>
-                  <option value="vencido">Vencido</option>
-                  <option value="cancelado">Cancelado</option>
                 </Select>
               </div>
             </div>
@@ -741,7 +800,50 @@ export default function Contratos() {
           <Button variant="outline" onClick={() => { setDialogOpen(false); setRenovandoDe(null) }}>Cancelar</Button>
           <Button onClick={handleSave} disabled={saving} className={renovandoDe ? 'bg-green-600 hover:bg-green-700' : ''}>
             {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-            {renovandoDe ? '🔄 Confirmar Renovação' : 'Salvar'}
+            {renovandoDe ? (actionType === 'alteracao' ? 'Salvar nova versão' : '🔄 Confirmar Renovação') : 'Salvar'}
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog open={actionOpen} onOpenChange={setActionOpen}>
+        <DialogHeader>
+          <DialogTitle>Movimentar contrato sem alterar o original</DialogTitle>
+          <DialogClose onClose={() => setActionOpen(false)} />
+        </DialogHeader>
+        <DialogContent>
+          <div className="space-y-4">
+            <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+              <strong>{actionContract?.pacienteNome}</strong>
+              <p className="text-xs text-muted-foreground">O contrato lançado ficará preservado no histórico.</p>
+            </div>
+            <div>
+              <Label>Ação</Label>
+              <Select value={actionType} onChange={e => setActionType(e.target.value as typeof actionType)} className="mt-1">
+                <option value="alteracao">Criar nova versão com alterações</option>
+                <option value="cancelamento">Cancelar contrato</option>
+                <option value="baixa">Dar baixa no contrato</option>
+              </Select>
+            </div>
+            <div>
+              <Label>Motivo / observação *</Label>
+              <Textarea
+                value={actionReason}
+                onChange={e => setActionReason(e.target.value)}
+                className="mt-1"
+                rows={4}
+                placeholder="Descreva o motivo da alteração, cancelamento ou baixa"
+              />
+            </div>
+            {actionType === 'alteracao' && (
+              <p className="text-xs text-muted-foreground">Ao continuar, será aberto um novo contrato com os dados atuais para ajuste. O anterior será marcado como vencido.</p>
+            )}
+          </div>
+        </DialogContent>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setActionOpen(false)}>Voltar</Button>
+          <Button onClick={() => void confirmContractAction()} disabled={saving || !actionReason.trim()}>
+            {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            {actionType === 'alteracao' ? 'Criar nova versão' : actionType === 'baixa' ? 'Confirmar baixa' : 'Confirmar cancelamento'}
           </Button>
         </DialogFooter>
       </Dialog>
@@ -795,13 +897,16 @@ export default function Contratos() {
                     {c.observacoes && (
                       <p className="text-xs text-gray-500 italic mb-2">{c.observacoes}</p>
                     )}
+                    {c.motivo_alteracao && (
+                      <p className="text-xs text-amber-800 bg-amber-50 rounded p-2 mb-2">
+                        <strong>{c.tipo_alteracao || 'Alteração'}:</strong> {c.motivo_alteracao}
+                      </p>
+                    )}
                     <div className="flex justify-end gap-2">
                       <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => printContract(c)}>
                         <FileText className="h-3 w-3" /> Imprimir
                       </Button>
-                      <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => downloadContractWord(c)}>
-                        <FileDown className="h-3 w-3" /> Word
-                      </Button>
+                      {c.pdf_path && <Button variant="outline" size="sm" className="gap-1 text-xs" onClick={() => void openContractPdf(c)}><ExternalLink className="h-3 w-3" /> PDF anexado</Button>}
                     </div>
                   </div>
                 )

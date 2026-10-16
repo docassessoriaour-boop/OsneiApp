@@ -4,7 +4,6 @@ import { useCep } from '@/hooks/useCep'
 import { formatCurrency } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF, formatCurrencyPDF, formatDatePDF } from '@/lib/pdf'
-import { downloadWordDocument } from '@/lib/word'
 import { getCompanyWorkUnit, normalizeWorkUnit } from '@/lib/units'
 import {
   DEMO_COMPANY_ADDRESS,
@@ -28,7 +27,7 @@ import { Select } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from '@/components/ui/dialog'
-import { Pencil, Trash2, FileText, Loader2, ReceiptText, Plus, X, FileDown } from 'lucide-react'
+import { Pencil, Trash2, FileText, Loader2, ReceiptText, Plus, X } from 'lucide-react'
 
 
 
@@ -739,7 +738,7 @@ export default function Funcionarios() {
     `, clinic)
   }
 
-  function generateEmployeeContract(emp: Employee, format: 'pdf' | 'word' = 'pdf') {
+  function generateEmployeeContract(emp: Employee) {
     const amountStr = getEmployeeSalaryLabelPDF(emp)
     const admissao = formatDatePDF(emp.dataAdmissao)
     const today = new Date().toLocaleDateString('pt-BR', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -773,11 +772,7 @@ export default function Funcionarios() {
             today,
           })
 
-      if (format === 'word') {
-        downloadWordDocument(`Contrato - ${emp.nome}`, html, clinic, { hideTitle: true })
-      } else {
-        printPDF(`Contrato - ${emp.nome}`, html, clinic)
-      }
+      printPDF(`Contrato - ${emp.nome}`, html, clinic)
       return
     }
 
@@ -888,11 +883,7 @@ export default function Funcionarios() {
         </div>
       </div>
     `
-    if (format === 'word') {
-      downloadWordDocument(`Contrato - ${emp.nome}`, html, clinic, { hideTitle: true })
-    } else {
-      printPDF(`Contrato - ${emp.nome}`, html, clinic)
-    }
+    printPDF(`Contrato - ${emp.nome}`, html, clinic)
   }
 
   function printAutonomoDeclaration(employee: Employee) {
@@ -1120,9 +1111,6 @@ export default function Funcionarios() {
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => generateEmployeeContract(employee)} title="Imprimir Contrato">
                           <FileText className="h-4 w-4 text-blue-600" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => generateEmployeeContract(employee, 'word')} title="Baixar Contrato em Word">
-                          <FileDown className="h-4 w-4 text-blue-700" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => openEdit(employee)}>
                           <Pencil className="h-4 w-4" />
@@ -1727,4 +1715,3 @@ export default function Funcionarios() {
     </div>
   )
 }
-
