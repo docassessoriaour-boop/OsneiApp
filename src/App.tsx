@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { useAuth } from '@/hooks/useAuth'
 import { Loader2 } from 'lucide-react'
+import { AnnualExtraFee } from '@/components/AnnualExtraFee'
 
 import Login from '@/pages/Login'
 import Dashboard from '@/pages/Dashboard'
@@ -83,8 +84,8 @@ export default function App() {
           
           {/* Financeiro */}
           <Route path="/financeiro/contas-pagar" element={<ProtectedRoute><ContasPagar /></ProtectedRoute>} />
-          <Route path="/financeiro/contas-receber" element={<ProtectedRoute><ContasReceber /></ProtectedRoute>} />
-          <Route path="/financeiro/faturamento" element={<ProtectedRoute><Faturamento /></ProtectedRoute>} />
+          <Route path="/financeiro/contas-receber" element={<ProtectedRoute><AnnualExtraFee><ContasReceber /></AnnualExtraFee></ProtectedRoute>} />
+          <Route path="/financeiro/faturamento" element={<ProtectedRoute><AnnualExtraFee><Faturamento /></AnnualExtraFee></ProtectedRoute>} />
           <Route path="/financeiro/conciliacao" element={<ProtectedRoute><Conciliacao /></ProtectedRoute>} />
           <Route path="/financeiro/balanco-dre" element={<ProtectedRoute><BalancoDRE /></ProtectedRoute>} />
           <Route path="/financeiro/bancos" element={<ProtectedRoute><Bancos /></ProtectedRoute>} />
