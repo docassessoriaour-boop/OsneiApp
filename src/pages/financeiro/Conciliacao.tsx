@@ -1,9 +1,13 @@
-import { useState, useRef, useMemo } from 'react'
+import { useState, useRef, useMemo, useEffect } from 'react'
 import { useDb } from '@/hooks/useDb'
-import { formatCurrency, formatDate, generateId } from '@/lib/utils'
+import { useAuth } from '@/hooks/useAuth'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import { useClinic } from '@/lib/clinicConfig'
 import { printPDF, formatCurrencyPDF, formatDatePDF, printReceipt } from '@/lib/pdf'
-import type { Bill, Income, BankTransaction, BankAccount, TransactionCategory, Patient, Invoice } from '@/lib/types'
+import type { Bill, Income, TransactionCategory, Patient, Invoice } from '@/lib/types'
+import { supabase } from '@/lib/supabase'
+import { investmentMovement, suggestCounterpart, parseBankStatement, sameStatementTransaction, matchingEntries, safeAutomaticMatch, normalizeBankText } from '@/lib/bankReconciliation'
+import type { StatementTransaction as BankTransaction, ReconciliationAccount as BankAccount } from '@/lib/bankReconciliation'
 import { PageHeader } from '@/components/shared/PageHeader'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -14,15 +18,16 @@ import { Label } from '@/components/ui/label'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { EmptyState } from '@/components/shared/EmptyState'
 import { Dialog, DialogHeader, DialogTitle, DialogContent, DialogFooter } from '@/components/ui/dialog'
-import { Upload, FileText, Plus, Landmark, Tag, X, Save, Search, Link, CheckCircle2, Pencil } from 'lucide-react'
+import { Upload, FileText, X, Save, Search, Link, CheckCircle2, Pencil } from 'lucide-react'
 
 export default function Conciliacao() {
-  const { data: bills, update: updateBill, insert: insertBill } = useDb<Bill>('bills')
-  const { data: incomes, update: updateIncome, insert: insertIncome } = useDb<Income>('incomes')
-  const { data: dbTransactions, insert: insertTx, update: updateTx, remove: removeTx } = useDb<BankTransaction>('bank_transactions')
-  const { data: bankAccounts } = useDb<BankAccount>('bank_accounts')
+  const { profile } = useAuth()
+  const { data: bills, loading: loadingBills, error: billsError, reload: reloadBills, update: updateBill, insert: insertBill } = useDb<Bill>('bills')
+  const { data: incomes, loading: loadingIncomes, error: incomesError, reload: reloadIncomes, update: updateIncome, insert: insertIncome } = useDb<Income>('incomes')
+  const { data: dbTransactions, loading: loadingTransactions, error: transactionsError, reload: reloadTransactions, insert: insertTx, update: updateTx, remove: removeTx } = useDb<BankTransaction>('bank_transactions')
+  const { data: bankAccounts, loading: loadingAccounts, error: accountsError, reload: reloadAccounts } = useDb<BankAccount>('bank_accounts')
   const { data: categories } = useDb<TransactionCategory>('transaction_categories')
-  const { data: invoices, update: updateInvoice } = useDb<Invoice>('invoices')
+  const { data: invoices, reload: reloadInvoices, update: updateInvoice } = useDb<Invoice>('invoices')
   const { data: patients } = useDb<Patient>('patients')
   
   const [clinic] = useClinic()
@@ -40,6 +45,64 @@ export default function Conciliacao() {
   const [editingTx, setEditingTx] = useState<BankTransaction | null>(null)
   const [reconcileSearch, setReconcileSearch] = useState('')
   const [newEntryCategoryId, setNewEntryCategoryId] = useState('')
+
+  const [busy, setBusy] = useState(false)
+  const processing = useRef(false)
+  const [counterpartId, setCounterpartId] = useState('')
+  const [dialogCounterpartId, setDialogCounterpartId] = useState('')
+  const [feedback, setFeedback] = useState('')
+  const dataError = billsError || incomesError || transactionsError || accountsError
+  const loadingData = loadingBills || loadingIncomes || loadingTransactions || loadingAccounts || !!dataError
+  const pendingImports = importedTxs.filter(t => t.bank_account_id === selectedBankId)
+  const selectedMovement = selectedTx ? investmentMovement(selectedTx, bankAccounts.find(a => a.id === selectedTx.bank_account_id)) : null
+
+  useEffect(() => {
+    setCounterpartId(suggestCounterpart(bankAccounts.find(a => a.id === selectedBankId), bankAccounts))
+  }, [selectedBankId, bankAccounts])
+
+  useEffect(() => {
+    setImportedTxs([]); setSelectedBankId(''); setSelectedTx(null)
+    setReconcileDialogOpen(false); setFeedback('')
+  }, [profile?.company_id])
+
+  async function reloadFinancialData() {
+    await Promise.all([reloadTransactions(), reloadBills(), reloadIncomes(), reloadInvoices(), reloadAccounts()])
+  }
+
+  function reconciliationError(error: unknown) {
+    const detail = error as { code?: string; message?: string }
+    return detail.code === 'PGRST202'
+      ? 'A atualização da conciliação precisa ser ativada pela administração antes de processar o extrato.'
+      : detail.message || 'Não foi possível concluir a conciliação. Tente novamente.'
+  }
+
+  async function saveAccountLink() {
+    if (processing.current) return
+    processing.current = true; setBusy(true)
+    try {
+      const { error } = await supabase.rpc('save_reconciliation_account', { p_account_id: selectedBankId, p_counterpart_id: counterpartId || null })
+      if (error) throw error
+      await reloadAccounts()
+      setFeedback('Conta correspondente salva para as próximas importações.')
+    } catch (error) { setFeedback(reconciliationError(error)) }
+    finally { processing.current = false; setBusy(false) }
+  }
+
+  async function persistImported(tx: BankTransaction, item?: Income | Bill, transferAccount?: string) {
+    const movement = investmentMovement(tx, bankAccounts.find(a => a.id === tx.bank_account_id))
+    const otherAccount = transferAccount || (movement ? counterpartId : '')
+    if (movement && !movement.validDirection) throw new Error('Confira o sentido da aplicação ou resgate. Estornos precisam de revisão.')
+    if (movement && !otherAccount) throw new Error('Selecione a conta correspondente para aplicação e resgate.')
+    const { data, error } = await supabase.rpc('reconcile_statement_transaction', {
+      p_transaction: { ...tx, category_id: tx.category_id || null },
+      p_counterpart_id: otherAccount || null,
+      p_item_id: item?.id || null,
+      p_create_entry: !item
+    })
+    if (error) throw error
+    setImportedTxs(prev => prev.filter(t => t.id !== tx.id))
+    return data as { result: string }
+  }
 
   // Merge transactions
   const allTransactions = useMemo(() => {
@@ -61,239 +124,100 @@ export default function Conciliacao() {
     return { credit, debit, balance: credit - debit }
   }, [allTransactions])
 
-  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      const text = ev.target?.result as string
-      if (file.name.toLowerCase().endsWith('.ofx')) {
-        parseOFX(text)
-      } else {
-        parseCSV(text)
-      }
-    }
-    reader.readAsText(file)
     e.target.value = ''
+    if (!file || !selectedBankId || processing.current) return
+    try {
+      const buffer = await file.arrayBuffer()
+      let text: string
+      try { text = new TextDecoder('utf-8', { fatal: true }).decode(buffer) }
+      catch { text = new TextDecoder('windows-1252').decode(buffer) }
+      appendStatement(text, file.name.toLowerCase().endsWith('.ofx') ? 'ofx' : 'csv')
+    } catch { setFeedback('Não foi possível ler o arquivo. Confira o formato OFX ou CSV.') }
   }
 
   function applyAutoCategorization(newTxs: BankTransaction[]): BankTransaction[] {
     return newTxs.map(tx => {
-      // 1. Exact match
-      let match = dbTransactions.find(dbTx => 
-        dbTx.category_id && 
-        dbTx.tipo === tx.tipo &&
-        dbTx.descricao.trim().toLowerCase() === tx.descricao.trim().toLowerCase()
-      )
-
-      // 2. Partial match (starts with) if no exact match
-      if (!match) {
-        match = dbTransactions.find(dbTx => 
-          dbTx.category_id && 
-          dbTx.tipo === tx.tipo &&
-          dbTx.descricao.length > 8 && tx.descricao.length > 8 &&
-          (tx.descricao.toLowerCase().startsWith(dbTx.descricao.toLowerCase()) || 
-           dbTx.descricao.toLowerCase().startsWith(tx.descricao.toLowerCase()))
-        )
-      }
-
-      if (match) {
-        return {
-          ...tx,
-          category_id: match.category_id,
-          categoria: match.categoria
-        }
-      }
-      return tx
+      if (investmentMovement(tx, bankAccounts.find(a => a.id === tx.bank_account_id))) return tx
+      const history = dbTransactions.filter(t => t.category_id && t.tipo === tx.tipo && !t.transfer_id
+        && normalizeBankText(t.descricao) === normalizeBankText(tx.descricao))
+      const ids = new Set(history.map(t => t.category_id))
+      return ids.size === 1 ? { ...tx, category_id: history[0].category_id, categoria: history[0].categoria } : tx
     })
   }
 
-  function sameBankTransaction(a: BankTransaction, b: BankTransaction) {
-    return a.data === b.data &&
-      a.tipo === b.tipo &&
-      Math.abs((a.valor || 0) - (b.valor || 0)) < 0.01 &&
-      a.descricao.trim().toLowerCase() === b.descricao.trim().toLowerCase() &&
-      (!selectedBankId || b.bank_account_id === selectedBankId)
+  function appendStatement(text: string, format: 'ofx' | 'csv') {
+    const result = parseBankStatement(text, format, selectedBankId)
+    const accepted: BankTransaction[] = []
+    let duplicates = 0, outside = 0
+    for (const tx of result.transactions) {
+      if ((importStartDate && tx.data < importStartDate) || (importEndDate && tx.data > importEndDate)) { outside++; continue }
+      if ([...dbTransactions, ...importedTxs, ...accepted].some(existing => sameStatementTransaction(tx, existing))) { duplicates++; continue }
+      accepted.push(tx)
+    }
+    setImportedTxs(prev => [...prev, ...applyAutoCategorization(accepted)])
+    setFeedback(`${accepted.length} lançamento(s) importado(s). ${duplicates} duplicado(s), ${outside} fora do período e ${result.ignored} linha(s) inválida(s) ignorados.`)
   }
 
-  function removeDuplicateImported(newTxs: BankTransaction[]) {
-    const existing = [...dbTransactions, ...importedTxs]
-    return newTxs
-      .filter(t => (!importStartDate || t.data >= importStartDate) && (!importEndDate || t.data <= importEndDate))
-      .filter(t => !existing.some(e => sameBankTransaction(t, e)))
-  }
-
-  function parseCSV(text: string) {
-    const lines = text.trim().split('\n')
-    const newTxs: BankTransaction[] = []
-    const startIdx = (lines[0].toLowerCase().includes('data') || lines[0].toLowerCase().includes('date')) ? 1 : 0
-
-    for (let i = startIdx; i < lines.length; i++) {
-      const cols = lines[i].split(/[;,\t]/).map(c => c.trim().replace(/^"|"$/g, ''))
-      if (cols.length < 3) continue
-      const valor = parseFloat(cols[2].replace(/\./g, '').replace(',', '.'))
-      if (isNaN(valor)) continue
-      
-      const dateStr = cols[0]
-      let data = ''
-      const dParts = dateStr.match(/(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})/)
-      if (dParts) {
-        const y = dParts[3].length === 2 ? `20${dParts[3]}` : dParts[3]
-        data = `${y}-${dParts[2].padStart(2, '0')}-${dParts[1].padStart(2, '0')}`
-      }
-
-      newTxs.push({
-        id: 'temp-' + generateId(),
-        data,
-        descricao: cols[1],
-        valor: Math.abs(valor),
-        tipo: valor >= 0 ? 'credito' : 'debito',
-        origem: 'csv',
-        bank_account_id: selectedBankId
-      })
-    }
-    const uniqueTxs = removeDuplicateImported(newTxs)
-    if (newTxs.length > uniqueTxs.length) {
-      alert(`${newTxs.length - uniqueTxs.length} lançamento(s) duplicado(s) ou fora do período foram ignorados.`)
-    }
-    const categorized = applyAutoCategorization(uniqueTxs)
-    setImportedTxs([...importedTxs, ...categorized])
-  }
-
-  function parseOFX(text: string) {
-    const newTxs: BankTransaction[] = []
-    const stmtRegex = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/gi
-    let match
-    while ((match = stmtRegex.exec(text)) !== null) {
-      const block = match[1]
-      const get = (tag: string) => {
-        const m = block.match(new RegExp(`<${tag}>([^<\\n\\r]+)`, 'i'))
-        return m ? m[1].trim() : ''
-      }
-      const dtposted = get('DTPOSTED')
-      const trnamt = parseFloat(get('TRNAMT').replace(',', '.'))
-      const memo = get('MEMO') || get('NAME') || 'Sem descrição'
-      if (isNaN(trnamt)) continue
-      const data = dtposted.length >= 8 
-        ? `${dtposted.slice(0, 4)}-${dtposted.slice(4, 6)}-${dtposted.slice(6, 8)}`
-        : ''
-      
-      newTxs.push({
-        id: 'temp-' + generateId(),
-        data,
-        descricao: memo,
-        valor: Math.abs(trnamt),
-        tipo: trnamt >= 0 ? 'credito' : 'debito',
-        origem: 'ofx',
-        bank_account_id: selectedBankId
-      })
-    }
-    const uniqueTxs = removeDuplicateImported(newTxs)
-    if (newTxs.length > uniqueTxs.length) {
-      alert(`${newTxs.length - uniqueTxs.length} lançamento(s) duplicado(s) ou fora do período foram ignorados.`)
-    }
-    const categorized = applyAutoCategorization(uniqueTxs)
-    setImportedTxs([...importedTxs, ...categorized])
-  }
-
-  async function saveTransaction(t: BankTransaction) {
-    if (!selectedBankId) {
-      alert('Selecione uma conta bancária antes de salvar.')
-      return
-    }
+  async function processImported(transactions: BankTransaction[], onlyMatches = false) {
+    if (processing.current || loadingData) return
+    processing.current = true; setBusy(true)
+    let transfers = 0, matched = 0, created = 0, duplicates = 0, review = 0
+    const used = new Set<string>()
     try {
-      if (t.id.startsWith('temp-')) {
-        if (dbTransactions.some(existing => sameBankTransaction(t, existing))) {
-          alert('Este lançamento já foi salvo anteriormente e não será duplicado.')
-          setImportedTxs(prev => prev.filter(x => x.id !== t.id))
-          return
-        }
-        const cleaned = { ...t, bank_account_id: selectedBankId }
-        delete (cleaned as any).id
-        const newTx: any = await insertTx(cleaned)
-        const newTxId = newTx?.id || newTx?.[0]?.id || t.id
-
-        // Integração automática
-        const isIncome = t.tipo === 'credito'
-        if (isIncome) {
-          await insertIncome({
-            descricao: t.descricao,
-            categoria: t.categoria || 'Sem Categoria',
-            category_id: t.category_id || undefined,
-            valor: t.valor,
-            vencimento: t.data,
-            status: 'recebido',
-            payment_date: t.data,
-            bank_account_id: selectedBankId,
-            bank_transaction_id: newTxId
-          })
-        } else {
-          await insertBill({
-            descricao: t.descricao,
-            categoria: t.categoria || 'Sem Categoria',
-            category_id: t.category_id || undefined,
-            valor: t.valor,
-            vencimento: t.data,
-            status: 'pago',
-            payment_date: t.data,
-            bank_account_id: selectedBankId,
-            bank_transaction_id: newTxId
-          })
-        }
-        setImportedTxs(prev => prev.filter(x => x.id !== t.id))
-      } else {
-        await updateTx(t.id, t)
+      for (const tx of transactions) {
+        const movement = investmentMovement(tx, bankAccounts.find(a => a.id === tx.bank_account_id))
+        if (movement && (!movement.validDirection || !counterpartId)) { review++; continue }
+        const source = tx.tipo === 'credito' ? incomes : bills
+        const candidates = matchingEntries(tx, source, Infinity, dbTransactions)
+        const match = movement ? undefined : safeAutomaticMatch(tx, source, dbTransactions)
+        // Não repetir uma baixa no mesmo lote nem criar outra conta para um candidato incerto.
+        if (!movement && ((match && used.has(match.id)) || (!match && (onlyMatches || candidates.length > 0)))) { review++; continue }
+        const result = await persistImported(tx, match)
+        if (match) used.add(match.id)
+        if (result.result === 'duplicate') duplicates++
+        else if (movement) transfers++
+        else if (match) matched++
+        else created++
       }
-    } catch (e) {
-      alert('Erro ao salvar transação')
+      setFeedback(`${transfers} transferência(s), ${matched} baixa(s), ${created} novo(s) lançamento(s), ${duplicates} já processado(s). ${review} aguardando revisão.`)
+    } catch (error) {
+      setFeedback(`${reconciliationError(error)} O lote foi interrompido; os itens concluídos foram preservados e os restantes continuam pendentes.`)
+    } finally {
+      await reloadFinancialData()
+      processing.current = false; setBusy(false)
     }
   }
 
-  async function saveAllImported() {
-    if (!selectedBankId) {
-      alert('Selecione uma conta bancária antes de salvar.')
-      return
-    }
-    for (const t of importedTxs) {
-      if (dbTransactions.some(existing => sameBankTransaction(t, existing))) continue
-      const cleaned = { ...t, bank_account_id: selectedBankId }
-      delete (cleaned as any).id
-      const newTx: any = await insertTx(cleaned)
-      const newTxId = newTx?.id || newTx?.[0]?.id || t.id
-      
-      // Integração automática
-      const isIncome = t.tipo === 'credito'
-      if (isIncome) {
-        await insertIncome({
-          descricao: t.descricao,
-          categoria: t.categoria || 'Sem Categoria',
-          category_id: t.category_id || undefined,
-          valor: t.valor,
-          vencimento: t.data,
-          status: 'recebido',
-          payment_date: t.data,
-          bank_account_id: selectedBankId,
-          bank_transaction_id: newTxId
-        })
-      } else {
-        await insertBill({
-          descricao: t.descricao,
-          categoria: t.categoria || 'Sem Categoria',
-          category_id: t.category_id || undefined,
-          valor: t.valor,
-          vencimento: t.data,
-          status: 'pago',
-          payment_date: t.data,
-          bank_account_id: selectedBankId,
-          bank_transaction_id: newTxId
-        })
-      }
-    }
-    setImportedTxs([])
-    alert('Todas as transações foram salvas e interligadas ao financeiro.')
-  }
+  async function saveTransaction(t: BankTransaction) { await processImported([t]) }
+  async function saveAllImported() { await processImported(pendingImports) }
 
   async function handleReconcile(tx: BankTransaction, item: Income | Bill) {
+    if (processing.current) return
+    if (Math.round(item.valor * 100) !== Math.round(tx.valor * 100) || item.status === 'parcial'
+      || (item.bank_account_id && item.bank_account_id !== tx.bank_account_id)) {
+      alert('O valor e a conta devem corresponder ao lançamento. Pagamentos parciais precisam ser registrados no financeiro.')
+      return
+    }
+    if (tx.transfer_id || investmentMovement(tx, bankAccounts.find(a => a.id === tx.bank_account_id))) {
+      alert('Concilie aplicação e resgate como transferência entre contas.')
+      return
+    }
+    if (tx.id.startsWith('temp-')) {
+      processing.current = true; setBusy(true)
+      try {
+        await persistImported(tx, item)
+        setReconcileDialogOpen(false); setSelectedTx(null)
+        setFeedback('Lançamento conciliado e financeiro atualizado.')
+      } catch (error) { setFeedback(reconciliationError(error)) }
+      finally { await reloadFinancialData(); processing.current = false; setBusy(false) }
+      return
+    }
+    if (incomes.some(i => i.bank_transaction_id === tx.id) || bills.some(b => b.bank_transaction_id === tx.id)) {
+      alert('Esta transação já possui vínculo financeiro. Revise o vínculo antes de alterá-lo.')
+      return
+    }
     try {
       let newTxId = tx.id
       
@@ -366,10 +290,14 @@ export default function Conciliacao() {
 
   async function handleDeleteTx(t: BankTransaction) {
     const isTemp = t.id.startsWith('temp-')
-    if (!isTemp && !confirm('Deseja excluir permanentemente este lançamento do banco de dados?')) return
+    if (!isTemp && !confirm(t.transfer_id ? 'Excluir as duas movimentações desta transferência? Os saldos das duas contas serão atualizados.' : 'Deseja excluir permanentemente este lançamento do banco de dados?')) return
 
     try {
-      if (isTemp) {
+      if (t.transfer_id) {
+        const { error } = await supabase.rpc('delete_reconciled_transfer', { p_transfer_id: t.transfer_id })
+        if (error) throw error
+        await reloadFinancialData()
+      } else if (isTemp) {
         setImportedTxs(prev => prev.filter(x => x.id !== t.id))
       } else {
         // 1. Procurar e desvincular qualquer Receita, Conta a Pagar ou Fatura que aponte para esta transação
@@ -404,6 +332,26 @@ export default function Conciliacao() {
       return
     }
 
+    if (selectedMovement || selectedTx.transfer_id) {
+      alert('Concilie esta movimentação como transferência entre contas.')
+      return
+    }
+    if (selectedTx.id.startsWith('temp-')) {
+      if (processing.current) return
+      processing.current = true; setBusy(true)
+      try {
+        await persistImported({ ...selectedTx, category_id: newEntryCategoryId,
+          categoria: categories.find(c => c.id === newEntryCategoryId)?.nome })
+        setReconcileDialogOpen(false); setSelectedTx(null); setNewEntryCategoryId('')
+        setFeedback('Novo lançamento criado e conciliado.')
+      } catch (error) { setFeedback(reconciliationError(error)) }
+      finally { await reloadFinancialData(); processing.current = false; setBusy(false) }
+      return
+    }
+    if (incomes.some(i => i.bank_transaction_id === selectedTx.id) || bills.some(b => b.bank_transaction_id === selectedTx.id)) {
+      alert('Esta transação já possui vínculo financeiro.')
+      return
+    }
     try {
       const isIncome = selectedTx.tipo === 'credito'
       const categoryName = categories.find(c => c.id === newEntryCategoryId)?.nome || ''
@@ -499,30 +447,21 @@ export default function Conciliacao() {
     }
   }
 
-  async function autoReconcileAll() {
-    let count = 0
-    const txsToProcess = [...importedTxs]
-    
-    for (const tx of txsToProcess) {
-      const isIncome = tx.tipo === 'credito'
-      const source = isIncome ? incomes : bills
-      
-      const exactMatches = source.filter(item => 
-        (item.status === 'pendente') && 
-        Math.abs(item.valor - tx.valor) < 0.01
-      )
+  async function autoReconcileAll() { await processImported(pendingImports, true) }
 
-      if (exactMatches.length === 1) {
-        await handleReconcile(tx, exactMatches[0])
-        count++
-      }
+  async function reconcileTransfer() {
+    if (!selectedTx || !dialogCounterpartId || processing.current) return
+    if (!selectedTx.id.startsWith('temp-')) {
+      setFeedback('Para corrigir uma movimentação antiga já salva, revise seus vínculos financeiros antes de importar novamente.')
+      return
     }
-
-    if (count > 0) {
-      alert(`${count} transações foram conciliadas automaticamente!`)
-    } else {
-      alert('Nenhuma transação com valor exato correspondente foi encontrada.')
-    }
+    processing.current = true; setBusy(true)
+    try {
+      await persistImported(selectedTx, undefined, dialogCounterpartId)
+      setReconcileDialogOpen(false); setSelectedTx(null)
+      setFeedback('Transferência conciliada nas duas contas, sem gerar receita ou despesa.')
+    } catch (error) { setFeedback(reconciliationError(error)) }
+    finally { await reloadFinancialData(); processing.current = false; setBusy(false) }
   }
 
   const potentialMatches = useMemo(() => {
@@ -530,17 +469,11 @@ export default function Conciliacao() {
     const isIncome = selectedTx.tipo === 'credito'
     const source = isIncome ? incomes : bills
     
-    return source.filter(item => {
-      if (item.status === 'recebido' || item.status === 'pago') return false
-      
-      const matchesValue = Math.abs(item.valor - selectedTx.valor) < 0.01
-      const matchesSearch = !reconcileSearch || 
-        item.descricao.toLowerCase().includes(reconcileSearch.toLowerCase()) ||
-        item.valor.toString().includes(reconcileSearch)
-      
-      return matchesSearch && (matchesValue || reconcileSearch)
-    })
-  }, [selectedTx, incomes, bills, reconcileSearch])
+    return matchingEntries(selectedTx, source, Infinity, dbTransactions).filter(item =>
+      (selectedTx.id.startsWith('temp-') || !item.bank_transaction_id) && (!reconcileSearch ||
+        normalizeBankText(item.descricao).includes(normalizeBankText(reconcileSearch)) ||
+        item.valor.toString().includes(reconcileSearch)))
+  }, [selectedTx, incomes, bills, dbTransactions, reconcileSearch])
 
   const printReport = () => {
     const html = `
@@ -569,14 +502,14 @@ export default function Conciliacao() {
   return (
     <div className="space-y-6">
       <PageHeader 
-        title="Movimentação Financeira" 
-        description="Importe arquivos OFX/CSV e interligue seus lançamentos bancários" 
+        title="Conciliação Bancária"
+        description="Importe o extrato, reconheça aplicações e resgates e concilie o financeiro"
       />
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="w-64">
           <Label className="text-xs">Conta Bancária</Label>
-          <Select value={selectedBankId} onChange={e => setSelectedBankId(e.target.value)}>
+          <Select value={selectedBankId} disabled={busy} onChange={e => setSelectedBankId(e.target.value)}>
             <option value="">-- Selecione a Conta --</option>
             {bankAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.nome}</option>)}
           </Select>
@@ -592,17 +525,17 @@ export default function Conciliacao() {
         
         <div className="flex items-end gap-2 pt-5">
           <input type="file" ref={fileRef} accept=".csv,.ofx" className="hidden" onChange={handleFileUpload} />
-          <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={!selectedBankId} className="gap-2">
+          <Button variant="outline" onClick={() => fileRef.current?.click()} disabled={!selectedBankId || busy || loadingData} className="gap-2">
             <Upload className="h-4 w-4" /> Importar Arquivo
           </Button>
-          {importedTxs.length > 0 && (
-            <Button onClick={saveAllImported} className="gap-2 bg-green-600 hover:bg-green-700">
-              <Save className="h-4 w-4" /> Salvar {importedTxs.length} Lançamentos
+          {pendingImports.length > 0 && (
+            <Button disabled={busy || loadingData} onClick={saveAllImported} className="gap-2 bg-green-600 hover:bg-green-700">
+              <Save className="h-4 w-4" /> {busy ? 'Processando...' : `Processar ${pendingImports.length} Lançamentos`}
             </Button>
           )}
-          {importedTxs.length > 0 && (
-            <Button variant="outline" onClick={autoReconcileAll} className="gap-2 border-blue-500 text-blue-600 hover:bg-blue-50">
-              <CheckCircle2 className="h-4 w-4" /> Conciliação Automática
+          {pendingImports.length > 0 && (
+            <Button disabled={busy || loadingData} variant="outline" onClick={autoReconcileAll} className="gap-2 border-blue-500 text-blue-600 hover:bg-blue-50">
+              <CheckCircle2 className="h-4 w-4" /> Conciliar Correspondências
             </Button>
           )}
           <Button variant="outline" onClick={printReport} className="gap-2">
@@ -610,6 +543,25 @@ export default function Conciliacao() {
           </Button>
         </div>
       </div>
+
+      {selectedBankId && (
+        <Card className="p-4 space-y-3">
+          <div><p className="font-semibold">Aplicações e resgates entre contas</p>
+            <p className="text-sm text-muted-foreground">Selecione a outra conta da empresa. A conta de aplicação deve estar cadastrada como Investimento ou Poupança. O sistema registra a saída e a entrada e reconhece a contrapartida quando seu extrato for importado.</p></div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-64"><Label>Conta correspondente</Label>
+              <Select disabled={busy} value={counterpartId} onChange={e => setCounterpartId(e.target.value)}>
+                <option value="">-- Selecione para aplicações e resgates --</option>
+                {bankAccounts.filter(a => a.id !== selectedBankId).map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+              </Select>
+            </div>
+            <Button disabled={busy} variant="outline" onClick={saveAccountLink}>Salvar vínculo</Button>
+          </div>
+          <p className="text-sm text-muted-foreground">Processar também baixa correspondências seguras e cria novos lançamentos sem correspondência. Valores com mais de uma possibilidade ficam para revisão. Rendimentos, impostos e tarifas continuam separados das transferências.</p>
+        </Card>
+      )}
+      {dataError && <div role="alert" className="rounded-lg border border-red-300 p-4 text-sm flex items-center justify-between gap-3"><p>Não foi possível carregar todos os dados financeiros. Atualize antes de conciliar.</p><Button variant="outline" onClick={reloadFinancialData}>Atualizar dados</Button></div>}
+      {feedback && <div role="status" className="rounded-lg border bg-muted/30 p-4 text-sm">{feedback}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="p-4 bg-green-50">
@@ -666,7 +618,10 @@ export default function Conciliacao() {
                     <TableCell>{formatDate(t.data)}</TableCell>
                     <TableCell className="font-medium">{t.descricao}</TableCell>
                     <TableCell>
-                      <Select 
+                      {t.transfer_id || investmentMovement(t, bankAccounts.find(a => a.id === t.bank_account_id)) ? (
+                        <span className="text-sm">{t.transfer_id ? 'Transferência entre contas' : 'Aplicação / Resgate'}{t.counterpart_account_id && <span className="block text-xs text-muted-foreground">{bankAccounts.find(a => a.id === t.counterpart_account_id)?.nome}</span>}</span>
+                      ) : <Select
+                        disabled={busy}
                         value={t.category_id || ''} 
                         onChange={async (e) => {
                           const newCatId = e.target.value
@@ -693,22 +648,22 @@ export default function Conciliacao() {
                       >
                         <option value="">-- Selecione --</option>
                         {categories.filter(c => c.tipo === (t.tipo === 'credito' ? 'receita' : 'despesa')).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                      </Select>
+                      </Select>}
                     </TableCell>
                     <TableCell className={t.tipo === 'credito' ? 'text-green-600 font-bold' : 'text-red-600 font-bold'}>
                       {t.tipo === 'credito' ? '+' : '-'}{formatCurrency(t.valor)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={isTemp ? 'warning' : 'outline'}>{isTemp ? 'PENDENTE' : 'SALVO'}</Badge>
+                      <Badge variant={isTemp ? 'warning' : 'outline'}>{isTemp ? 'PENDENTE' : t.transfer_id ? (t.reconciliation_key ? 'CONCILIADO' : 'AGUARDANDO EXTRATO') : 'SALVO'}</Badge>
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         {isTemp && (
-                          <Button size="icon" variant="ghost" onClick={() => saveTransaction(t)} className="text-green-600" title="Salvar no banco">
+                          <Button size="icon" variant="ghost" disabled={busy || loadingData} onClick={() => saveTransaction(t)} className="text-green-600" title="Salvar no banco">
                             <Save className="h-4 w-4" />
                           </Button>
                         )}
-                        <Button size="icon" variant="ghost" onClick={() => setEditingTx(t)} className="text-muted-foreground" title="Editar">
+                        <Button size="icon" variant="ghost" disabled={busy || !!t.transfer_id} onClick={() => setEditingTx(t)} className="text-muted-foreground" title="Editar">
                            <Pencil className="h-4 w-4" />
                         </Button>
                         <Button 
@@ -716,15 +671,18 @@ export default function Conciliacao() {
                           variant="ghost" 
                           onClick={() => {
                             setSelectedTx(t)
+                            setDialogCounterpartId(t.bank_account_id === selectedBankId ? counterpartId : suggestCounterpart(bankAccounts.find(a => a.id === t.bank_account_id), bankAccounts))
+                            setNewEntryCategoryId('')
                             setReconcileSearch('')
                             setReconcileDialogOpen(true)
                           }} 
                           className="text-blue-600"
-                          title="Vincular e dar baixa"
+                          disabled={busy || loadingData || !!t.transfer_id}
+                          title="Conciliar lançamento ou transferência"
                         >
                           <Link className="h-4 w-4" />
                         </Button>
-                        <Button size="icon" variant="ghost" onClick={() => handleDeleteTx(t)} className="text-red-500">
+                        <Button size="icon" variant="ghost" disabled={busy} onClick={() => handleDeleteTx(t)} className="text-red-500">
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
@@ -758,8 +716,19 @@ export default function Conciliacao() {
                 </div>
               </div>
 
+              <div className="rounded-lg border p-4 space-y-3">
+                <Label>Transferência entre contas da empresa</Label>
+                <p className="text-sm text-muted-foreground">{selectedTx.tipo === 'debito' ? 'Saída da conta deste extrato e entrada na conta abaixo.' : 'Entrada na conta deste extrato e saída da conta abaixo.'} Não gera receita ou despesa.</p>
+                {selectedMovement && !selectedMovement.validDirection && <p className="text-sm text-red-600">O sentido da movimentação não corresponde ao tipo da conta. Confira a conta selecionada e eventuais estornos.</p>}
+                <Select disabled={busy} value={dialogCounterpartId} onChange={e => setDialogCounterpartId(e.target.value)}>
+                  <option value="">-- Outra conta da empresa --</option>
+                  {bankAccounts.filter(a => a.id !== selectedTx.bank_account_id).map(a => <option key={a.id} value={a.id}>{a.nome}</option>)}
+                </Select>
+                <Button disabled={busy || !dialogCounterpartId || (!!selectedMovement && !selectedMovement.validDirection)} onClick={reconcileTransfer}>Conciliar como transferência</Button>
+              </div>
+              {!selectedMovement && <>
               <div className="space-y-2">
-                <Label>Vincular a um lançamento pendente</Label>
+                <Label>Vincular a um lançamento existente</Label>
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input 
@@ -785,7 +754,7 @@ export default function Conciliacao() {
                     {potentialMatches.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
-                          Nenhum lançamento pendente encontrado{reconcileSearch ? ' com este critério' : ' com o mesmo valor'}.
+                          Nenhum lançamento compatível encontrado{reconcileSearch ? ' com este critério' : ' com o mesmo valor'}.
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -797,7 +766,7 @@ export default function Conciliacao() {
                           </TableCell>
                           <TableCell className="font-bold">{formatCurrency(item.valor)}</TableCell>
                           <TableCell className="text-right">
-                            <Button size="sm" onClick={() => handleReconcile(selectedTx, item)}>
+                            <Button disabled={busy} size="sm" onClick={() => handleReconcile(selectedTx, item)}>
                               Vincular e Baixar
                             </Button>
                           </TableCell>
@@ -815,11 +784,12 @@ export default function Conciliacao() {
                     <option value="">-- Selecione a categoria --</option>
                     {categories.filter(c => c.tipo === (selectedTx.tipo === 'credito' ? 'receita' : 'despesa')).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                   </Select>
-                  <Button onClick={handleCreateAndReconcile} className="whitespace-nowrap bg-green-600 hover:bg-green-700">
+                  <Button disabled={busy} onClick={handleCreateAndReconcile} className="whitespace-nowrap bg-green-600 hover:bg-green-700">
                     Criar Lançamento e Baixar
                   </Button>
                 </div>
               </div>
+              </>}
             </div>
           )}
           
