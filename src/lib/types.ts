@@ -111,6 +111,7 @@ export interface Patient {
   status: 'ativo' | 'inativo'
   unidade: WorkUnit
   data_entrada: string
+  data_saida?: string | null
   observacoes: string
   outros_responsaveis?: Responsible[]
   grau_dependencia?: '' | 'I' | 'II' | 'III'
@@ -246,7 +247,7 @@ export interface Income {
   category_id?: string
   valor: number
   vencimento: string
-  status: 'pendente' | 'recebido' | 'vencido' | 'parcial'
+  status: 'pendente' | 'recebido' | 'vencido' | 'parcial' | 'cancelado'
   invoiceId?: string
   payment_date?: string
   bank_account_id?: string

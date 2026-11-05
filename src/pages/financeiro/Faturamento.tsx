@@ -181,7 +181,8 @@ export default function Faturamento() {
     const activeContracts = contracts.filter(c => {
       const status = (c.status || '').toLowerCase();
       const val = Number(c.valor || 0);
-      return status === 'ativo' && val > 0;
+      const patientId = c.pacienteId || (c as any).paciente_id;
+      return status === 'ativo' && val > 0 && patients.some(p => p.id === patientId && p.status === 'ativo');
     });
 
     if (activeContracts.length === 0) {

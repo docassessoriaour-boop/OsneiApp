@@ -1,4 +1,5 @@
--- Executar uma vez no SQL Editor do Supabase, após multi_empresa_migration.sql.
+-- Executar no SQL Editor após multi_empresa_migration.sql e supabase_paciente_inativacao.sql.
+-- Reaplicar em instalações existentes para corrigir taxas pendentes para valor proporcional.
 -- Cláusula 2.3: uma cobrança por paciente ativo/empresa/ano, vencimento 15/12.
 BEGIN;
 
@@ -37,6 +38,18 @@ CREATE TABLE IF NOT EXISTS private.annual_extra_fees (
 );
 REVOKE ALL ON private.annual_extra_fees FROM PUBLIC, anon, authenticated;
 
+-- Regra comercial: 1/12 por mês civil, incluindo os meses de entrada e saída.
+-- Ausência da entrada legada considera janeiro; ativo projeta permanência até dezembro.
+CREATE OR REPLACE FUNCTION private.annual_fee_months(p_entry DATE, p_exit DATE, p_year INTEGER)
+RETURNS INTEGER LANGUAGE sql IMMUTABLE SET search_path = '' AS $$
+  SELECT CASE WHEN coalesce(p_entry, make_date(p_year, 1, 1)) > make_date(p_year, 12, 31)
+    OR coalesce(p_exit, make_date(p_year, 12, 31)) < make_date(p_year, 1, 1)
+    OR (p_entry IS NOT NULL AND p_exit IS NOT NULL AND p_exit < p_entry) THEN 0
+    ELSE greatest(0, extract(month FROM least(coalesce(p_exit, make_date(p_year, 12, 31)), make_date(p_year, 12, 31)))::int
+      - extract(month FROM greatest(coalesce(p_entry, make_date(p_year, 1, 1)), make_date(p_year, 1, 1)))::int + 1) END;
+$$;
+REVOKE ALL ON FUNCTION private.annual_fee_months(DATE, DATE, INTEGER) FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION private.generate_annual_extra_fees(p_company_id UUID)
 RETURNS JSONB
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
@@ -51,6 +64,8 @@ DECLARE
   claimed INTEGER;
   generated INTEGER := 0;
   description TEXT;
+  months INTEGER;
+  existing_fee RECORD;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM public.companies WHERE id = p_company_id AND active) THEN
     RAISE EXCEPTION 'Empresa não disponível.';
@@ -60,14 +75,18 @@ BEGIN
     RAISE EXCEPTION 'Salário mínimo de % ainda não disponível. A taxa anual será gerada após a atualização oficial.', current_year;
   END IF;
   fee := round(wage / 2, 2);
-  description := format('Taxa extra anual %s — cláusula 2.3 — ½ salário mínimo para despesas de final de ano e encargos', current_year);
+
 
   FOR patient IN
-    SELECT p.id, p.nome, p.cpf, p.resp_cpf FROM public.patients p
+    SELECT p.id, p.nome, p.cpf, p.resp_cpf, p.data_entrada, p.data_saida FROM public.patients p
     WHERE p.company_id = p_company_id AND p.status = 'ativo'
       AND (p.data_entrada IS NULL OR p.data_entrada <= today)
-    ORDER BY p.id
+    ORDER BY p.id FOR UPDATE
   LOOP
+    months := private.annual_fee_months(patient.data_entrada, patient.data_saida, current_year);
+    fee := round(wage / 2 * months / 12, 2);
+    IF months = 0 THEN CONTINUE; END IF;
+    description := format('Taxa extra anual %s — cláusula 2.3 — proporcional %s/12 de ½ salário mínimo', current_year, months);
     new_income := gen_random_uuid();
     new_invoice := gen_random_uuid();
     INSERT INTO private.annual_extra_fees
@@ -75,7 +94,32 @@ BEGIN
     VALUES (p_company_id, patient.id, current_year, wage, fee, new_income, new_invoice)
     ON CONFLICT DO NOTHING;
     GET DIAGNOSTICS claimed = ROW_COUNT;
-    IF claimed = 0 THEN CONTINUE; END IF;
+    IF claimed = 0 THEN
+      -- Corrige cobranças antigas ainda integralmente pendentes, sem recriar
+      -- faturas canceladas/excluídas e sem alterar pagamentos ou recebimentos.
+      SELECT f.*, i.id AS linked_invoice, r.id AS linked_income INTO existing_fee
+      FROM private.annual_extra_fees f
+      JOIN public.invoices i ON i.id = f.invoice_id AND i.company_id = f.company_id
+      JOIN public.incomes r ON r.id = f.income_id AND r.company_id = f.company_id
+      WHERE f.company_id = p_company_id AND f.patient_id = patient.id AND f.year = current_year
+        AND i.income_id = r.id AND i.patient_id = patient.id
+        AND i.status = 'pendente' AND r.status IN ('pendente', 'vencido')
+        AND coalesce(i.valor_pago, 0) = 0 AND coalesce(r.valor_pago, 0) = 0
+        AND i.payment_date IS NULL AND r.payment_date IS NULL
+        AND i.bank_transaction_id IS NULL AND r.bank_transaction_id IS NULL
+      FOR UPDATE OF f, i, r;
+      IF FOUND THEN
+        fee := round(existing_fee.minimum_wage / 2 * months / 12, 2);
+        UPDATE public.invoices SET total_amount = fee,
+          items = jsonb_build_array(jsonb_build_object('description', description, 'quantity', 1, 'price', fee))
+          WHERE id = existing_fee.linked_invoice;
+        UPDATE public.incomes SET valor = fee, descricao = description || ': ' || patient.nome
+          WHERE id = existing_fee.linked_income;
+        UPDATE private.annual_extra_fees SET amount = fee
+          WHERE company_id = p_company_id AND patient_id = patient.id AND year = current_year;
+      END IF;
+      CONTINUE;
+    END IF;
 
     INSERT INTO public.incomes (id, company_id, descricao, categoria, valor, vencimento, status)
     VALUES (new_income, p_company_id, description || ': ' || patient.nome,
@@ -88,7 +132,7 @@ BEGIN
       jsonb_build_array(jsonb_build_object('description', description, 'quantity', 1, 'price', fee)), new_income);
     generated := generated + 1;
   END LOOP;
-  RETURN jsonb_build_object('year', current_year, 'minimum_wage', wage, 'amount', fee,
+  RETURN jsonb_build_object('year', current_year, 'minimum_wage', wage, 'amount', round(wage / 2, 2),
     'due_date', make_date(current_year, 12, 15), 'generated', generated);
 END;
 $$;

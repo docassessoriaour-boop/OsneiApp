@@ -53,7 +53,7 @@ export function AnnualExtraFee({ children }: { children: ReactNode }) {
             <Button variant="outline" onClick={() => setAttempt(value => value + 1)}>Tentar novamente</Button>
           </div>
         ) : state.fee ? (
-          <p>{state.fee.year}: {formatCurrency(state.fee.amount)} por paciente ativo (½ do salário mínimo de {formatCurrency(state.fee.minimum_wage)}), com vencimento em {formatDate(state.fee.due_date)}. Lançamento automático em faturamento e contas a receber, uma vez por ano.</p>
+          <p>{state.fee.year}: taxa proporcional por paciente: ½ do salário mínimo de {formatCurrency(state.fee.minimum_wage)} × meses de permanência no ano ÷ 12 (até {formatCurrency(state.fee.amount)} para 12 meses), com vencimento em {formatDate(state.fee.due_date)}. Conta os meses de entrada e saída; para pacientes ativos, considera até dezembro. Lançamento automático em faturamento e contas a receber, uma vez por ano.</p>
         ) : <p>Aguardando identificação da empresa.</p>}
       </div>
       {!state.loading && children}

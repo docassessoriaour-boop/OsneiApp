@@ -22,7 +22,7 @@ function omitColumn<TPayload>(payload: TPayload, column: string): TPayload {
   return rest as TPayload
 }
 
-export function useDb<T>(table: string) {
+export function useDb<T>(table: string, requiredColumns: readonly string[] = []) {
   const { profile } = useAuth()
   const [data, setData] = useState<T[]>([])
   const [loading, setLoading] = useState(true)
@@ -153,6 +153,9 @@ export function useDb<T>(table: string) {
 
       const missingColumn = getMissingColumn(response.error)
       if (!missingColumn) throw response.error
+      if (requiredColumns.includes(missingColumn)) {
+        throw new Error('É necessário atualizar o banco de dados antes de salvar este cadastro. Contate a administração.')
+      }
 
       cleanedPayload = omitColumn(cleanedPayload, missingColumn)
     }
@@ -189,6 +192,9 @@ export function useDb<T>(table: string) {
 
       const missingColumn = getMissingColumn(error)
       if (!missingColumn) throw error
+      if (requiredColumns.includes(missingColumn)) {
+        throw new Error('É necessário atualizar o banco de dados antes de salvar este cadastro. Contate a administração.')
+      }
 
       cleanedItem = omitColumn(cleanedItem, missingColumn)
     }

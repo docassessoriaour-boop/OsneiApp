@@ -62,7 +62,7 @@ export default function ContasReceber() {
   
   const [clinic] = useClinic()
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'todos' | 'pendente' | 'recebido' | 'vencido'>('todos')
+  const [statusFilter, setStatusFilter] = useState<'todos' | 'pendente' | 'recebido' | 'vencido' | 'cancelado'>('todos')
   const [categoryFilter, setCategoryFilter] = useState('')
   const [startDate, setStartDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10))
   const [endDate, setEndDate] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString().slice(0, 10))
@@ -646,13 +646,13 @@ export default function ContasReceber() {
   }
 
   const statusBadge = (status: Income['status']) => {
-    const map = { pendente: 'warning', recebido: 'success', vencido: 'destructive' } as const
-    const labels = { pendente: 'Pendente', recebido: 'Recebido', vencido: 'Vencido' }
+    const map = { pendente: 'warning', recebido: 'success', vencido: 'destructive', parcial: 'warning', cancelado: 'outline' } as const
+    const labels = { pendente: 'Pendente', recebido: 'Recebido', vencido: 'Vencido', parcial: 'Parcial', cancelado: 'Cancelado' }
     return <Badge variant={map[status]}>{labels[status]}</Badge>
   }
 
   function printReport() {
-    const total = filtered.reduce((s, i) => s + i.valor, 0)
+    const total = filtered.filter(i => i.status !== 'cancelado').reduce((s, i) => s + i.valor, 0)
     const rows = filtered.map(i => `<tr><td>${i.descricao}</td><td>${i.categoria}</td><td class="text-right">${formatCurrencyPDF(i.valor)}</td><td>${formatDatePDF(i.vencimento)}</td><td>${i.payment_date ? formatDatePDF(i.payment_date) : '—'}</td><td>${i.status}</td></tr>`).join('')
     printPDF('Relatório de Contas a Receber', `
       <table><thead><tr><th>Descrição</th><th>Categoria</th><th class="text-right">Valor</th><th>Vencimento</th><th>Recebimento</th><th>Status</th></tr></thead>
@@ -726,6 +726,7 @@ export default function ContasReceber() {
                 <option value="pendente">Pendentes</option>
                 <option value="recebido">Recebidos</option>
                 <option value="vencido">Vencidos</option>
+                <option value="cancelado">Cancelados</option>
             </Select>
           </div>
 
@@ -853,7 +854,7 @@ export default function ContasReceber() {
                           </Button>
                         </>
                       )}
-                      <Button variant="ghost" size="icon" onClick={() => openEdit(i)} title="Editar"><Pencil className="h-4 w-4" /></Button>
+                      <Button disabled={i.status === 'cancelado'} variant="ghost" size="icon" onClick={() => openEdit(i)} title="Editar"><Pencil className="h-4 w-4" /></Button>
                       <Button variant="ghost" size="icon" onClick={() => handleDeleteClick(i.id)} title="Excluir"><Trash2 className="h-4 w-4 text-destructive" /></Button>
                     </div>
                   </TableCell>

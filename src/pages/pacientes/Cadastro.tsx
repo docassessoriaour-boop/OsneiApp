@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { supabase } from '@/lib/supabase'
 import { useDb } from '@/hooks/useDb'
 import { useCep } from '@/hooks/useCep'
 import { useClinic } from '@/lib/clinicConfig'
@@ -27,6 +28,7 @@ const emptyPatient: Omit<Patient, 'id'> = {
   resp_rg: '', resp_cpf: '', resp_endereco: '', resp_cidade: '', resp_uf: '', resp_cep: '', resp_email: '',
   resp_is_whatsapp: false,
   resp_nacionalidade: 'Brasileira', resp_estado_civil: 'Casado(a)', resp_profissao: '',
+  data_saida: '',
   status: 'ativo', unidade: 'Jardim Matilde', data_entrada: new Date().toISOString().slice(0, 10), observacoes: '',
   outros_responsaveis: [],
   grau_dependencia: '',
@@ -47,7 +49,7 @@ export default function Cadastro() {
   const { profile, isAdmin, isManager } = useAuth()
   const isStandard = profile?.role === 'user'
   
-  const { data: patients, loading: loadingPatients, insert, update, remove } = useDb<Patient>('patients')
+  const { data: patients, loading: loadingPatients, insert, update, remove } = useDb<Patient>('patients', ['data_saida'])
   const { data: allMedications, insert: insertMed, update: updateMed, remove: removeMed, reload: reloadMeds } = useDb<Medication>('medications')
   const { data: allMedEntries, insert: insertMedEntry, update: updateMedEntry, remove: removeMedEntry } = useDb<MedicationEntry>('medication_entries')
   const { data: allCompanionships, insert: insertComp, update: updateComp, remove: removeComp } = useDb<CompanionEntry>('patient_companionships')
@@ -60,6 +62,8 @@ export default function Cadastro() {
   const [statusFilter, setStatusFilter] = useState<'todos' | 'ativo' | 'inativo'>('ativo')
   const [unidadeFilter, setUnidadeFilter] = useState<string>('todos')
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [savingPatient, setSavingPatient] = useState(false)
+  const savingPatientRef = useRef(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState(emptyPatient)
   const [medDialogOpen, setMedDialogOpen] = useState(false)
@@ -299,24 +303,50 @@ export default function Cadastro() {
     }
   }
 
+  async function handleStatusChange(status: Patient['status']) {
+    setForm(current => ({ ...current, status, data_saida: status === 'ativo' ? '' : current.data_saida }))
+    if (status !== 'inativo' || form.data_saida) return
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+    let suggested = today
+    if (editingId && profile?.company_id) {
+      const { data } = await supabase.from('contracts').select('data_fim')
+        .eq('company_id', profile.company_id).eq('paciente_id', editingId)
+        .not('data_fim', 'is', null).order('data_fim', { ascending: false }).limit(1)
+      if (data?.[0]?.data_fim && data[0].data_fim <= today) suggested = data[0].data_fim
+    }
+    setForm(current => current.status === 'inativo' && !current.data_saida
+      ? { ...current, data_saida: suggested } : current)
+  }
+
   async function handleSave() {
+    if (savingPatientRef.current) return
     if (!form.nome || !form.cpf) {
       alert('Nome e CPF são obrigatórios.')
       return
     }
 
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })
+    if (form.status === 'inativo' && (!form.data_saida || form.data_saida > today || (form.data_entrada && form.data_saida < form.data_entrada))) {
+      alert('Informe uma data de inativação entre a entrada e a data de hoje.')
+      return
+    }
+    savingPatientRef.current = true
+    setSavingPatient(true)
     try {
       const { id, ...formData } = form as any
       const payload = {
         ...formData,
         data_nascimento: formData.data_nascimento || null,
         data_entrada: formData.data_entrada || null,
+        data_saida: formData.status === 'inativo' ? formData.data_saida : null,
         plano_cuidados_data: formData.plano_cuidados_data || null
       }
 
       if (editingId) {
         await update(editingId, payload)
-        alert('Paciente atualizado com sucesso!')
+        alert(form.status === 'inativo'
+          ? 'Paciente inativado. Faturas e contas a receber pendentes com vencimento após a saída foram canceladas automaticamente. Pagamentos realizados foram preservados.'
+          : 'Paciente atualizado com sucesso!')
       } else {
         await insert(payload)
         alert('Paciente cadastrado com sucesso!')
@@ -325,6 +355,9 @@ export default function Cadastro() {
     } catch (error: any) {
       console.error('Erro ao salvar:', error)
       alert(`Erro ao salvar paciente: ${error.message || 'Erro desconhecido'}`)
+    } finally {
+      savingPatientRef.current = false
+      setSavingPatient(false)
     }
   }
 
@@ -1090,7 +1123,7 @@ export default function Cadastro() {
             <h2 className="text-xl font-bold text-slate-800">{editingId ? 'Editar Paciente' : 'Novo Paciente'}</h2>
             <div className="flex items-center gap-3">
               {!isStandard && (
-                <Button onClick={handleSave} className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-lg">
+                <Button onClick={handleSave} disabled={savingPatient} className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-lg">
                   <Save className="h-4 w-4" /> SALVAR ALTERAÇÕES
                 </Button>
               )}
@@ -1133,7 +1166,16 @@ export default function Cadastro() {
                 <div><Label>Data de Nascimento</Label><Input type="date" value={form.data_nascimento} onChange={(e) => handleDobChange(e.target.value)} className="mt-1" /></div>
                 <div><Label>Idade</Label><Input type="number" value={form.idade} readOnly className="mt-1 bg-muted" /></div>
                 <div><Label>Data de Entrada</Label><Input type="date" value={form.data_entrada} onChange={(e) => setForm({ ...form, data_entrada: e.target.value })} className="mt-1" /></div>
-                <div><Label>Status</Label><Select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as Patient['status'] })} className="mt-1"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></Select></div>
+                <div><Label>Status</Label><Select value={form.status} onChange={(e) => void handleStatusChange(e.target.value as Patient['status'])} className="mt-1"><option value="ativo">Ativo</option><option value="inativo">Inativo</option></Select></div>
+                {form.status === 'inativo' && (
+                  <div>
+                    <Label>Data de inativação / saída *</Label>
+                    <Input type="date" value={form.data_saida || ''} min={form.data_entrada || undefined}
+                      max={new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' })}
+                      onChange={e => setForm({ ...form, data_saida: e.target.value })} className="mt-1" required />
+                    <p className="mt-1 text-xs text-muted-foreground">Sugestão pelo fim do último contrato vencido ou pela data de hoje. Confira a data: lançamentos pendentes após a saída, inclusive a taxa anual, serão cancelados automaticamente. Pagamentos realizados serão preservados.</p>
+                  </div>
+                )}
                 <div>
                   <Label>Unidade de Internação</Label>
                   <Select value={normalizeWorkUnit(form.unidade, clinic as any)} onChange={(e) => setForm({ ...form, unidade: e.target.value as Patient['unidade'] })} className="mt-1">
@@ -1791,7 +1833,7 @@ export default function Cadastro() {
             <div className="flex items-center gap-3">
               <Button variant="outline" onClick={() => setDialogOpen(false)}>Fechar</Button>
               {!isStandard && (
-                <Button onClick={handleSave}>Salvar Alterações</Button>
+                <Button onClick={handleSave} disabled={savingPatient}>Salvar Alterações</Button>
               )}
               {isStandard && (
                 <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200">

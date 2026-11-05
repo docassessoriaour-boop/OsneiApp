@@ -1,27 +1,36 @@
-# Taxa extra anual de pacientes — cláusula 2.3
+# Taxa extra anual proporcional e inativação de pacientes
 
-Uma fatura e uma conta a receber são geradas para cada paciente ativo, na empresa correspondente, com vencimento em **15 de dezembro do ano corrente**. O valor corresponde a metade do salário mínimo nacional daquele ano. Não depende do valor da mensalidade nem da quantidade de contratos do paciente.
+A taxa anual (13º dos pacientes, cláusula 2.3) usa metade do salário mínimo do ano como base, proporcional aos meses de permanência: **(salário mínimo ÷ 2) × meses ÷ 12**, arredondando somente o resultado para centavos. Cada mês civil conta uma vez, incluindo entrada e saída. Para pacientes ativos, a projeção vai até dezembro; entrada anterior ao ano conta a partir de janeiro. Cadastro legado sem entrada considera janeiro.
 
-Em 2026, o salário mínimo é R$ 1.621,00 e a taxa é **R$ 810,50**, conforme o [Decreto 12.797/2025](https://www2.camara.leg.br/legin/fed/decret/2025/decreto-12797-23-dezembro-2025-798569-publicacaooriginal-177587-pe.html).
+Exemplo com a referência cadastrada de 2026: entrada em setembro resulta em 4/12 de R$ 810,50 = **R$ 270,17**. O vencimento permanece em **15 de dezembro**. Não depende da mensalidade nem da quantidade de contratos.
 
-## Ativação no banco
+## Ativação no Supabase
 
-Executar `supabase_taxa_extra_anual.sql` no SQL Editor do projeto Supabase após a migração multiempresa. Requer as extensões oficiais `http` e `pg_cron`. O arquivo instala a rotina diária às 06:00 de São Paulo e gera os lançamentos do ano atual imediatamente. Publicar somente o frontend não instala a rotina no banco.
+Publicar o frontend no GitHub não aplica alterações no banco. No SQL Editor do projeto correto, após a migração multiempresa, executar nesta ordem:
 
-O início do arquivo instala a estrutura e a função usada pelas telas. A seção de agendamento fica em uma transação separada para que uma falha na habilitação das extensões possa ser corrigida sem perder a estrutura. Reaplicar o arquivo é seguro.
+1. `supabase_paciente_inativacao.sql`: adiciona a data de saída, validações e cancelamento automático transacional.
+2. `supabase_taxa_extra_anual.sql`: instala ou atualiza a proporção, corrige taxas anuais integralmente pendentes e configura a rotina diária às 06h de São Paulo. Requer `http` e `pg_cron`.
 
-## Funcionamento
+Ambos podem ser reaplicados. A atualização não altera cobranças recebidas, com pagamento parcial, com referência bancária, canceladas ou excluídas. Os valores antigos de taxas ainda integralmente pendentes são corrigidos na primeira execução, mantendo os mesmos IDs e a referência salarial original. Não executa alterações retroativas em pacientes já inativos sem data: abra o cadastro e informe a saída efetiva para cancelar os lançamentos posteriores.
 
-- A rotina diária consulta a série **SGS 1619** do Banco Central e aceita apenas observações do ano corrente, sem datas futuras. Não envia dados de pacientes ao BCB.
-- Se a fonte estiver indisponível, somente um salário mínimo já confirmado para o mesmo ano permite gerar cobranças. Sem esse valor, o job falha e tenta novamente no dia seguinte; nunca reaproveita o salário de outro ano.
-- A geração começa assim que o salário mínimo do ano está disponível. Novos pacientes ativos entram na próxima execução, inclusive após 15/12, sempre com o vencimento anual solicitado. Admissões futuras não são cobradas antes da entrada.
-- Faturamento e Contas a Receber também verificam automaticamente os lançamentos ao abrir, antes de carregar a listagem. As telas mostram a base de cálculo e o vencimento, ou um aviso em caso de falha.
-- A chave empresa/paciente/ano impede duplicidades, inclusive em acessos simultâneos. Fatura, receita e registro anual são criados na mesma transação. Pagamento, cancelamento ou exclusão não geram uma nova cobrança automática.
-- O registro anual preserva o valor utilizado. Atualizações futuras da fonte não alteram faturas já emitidas. A rotina não cancela taxas já emitidas se o paciente ficar inativo posteriormente.
-- A função pública deriva empresa e ano da sessão e aceita apenas administradores e gerentes. O agendamento opera no servidor, inclusive com o aplicativo fechado.
+## Inativação
 
-## Verificação
+Ao selecionar Inativo, informe a data de inativação/saída. O cadastro sugere o fim do último contrato caso já tenha vencido; caso contrário, sugere hoje. A data pode ser corrigida e deve estar entre a entrada e hoje.
 
-Consultar `cron.job` pelo nome `taxa-extra-anual-pacientes` e `cron.job_run_details` para confirmar execuções. O histórico e os valores de referência ficam em `private.annual_extra_fees` e `public.annual_minimum_wages`, acessíveis administrativamente.
+Salvar cancela automaticamente faturas pendentes e respectivas contas a receber com vencimento **posterior** à saída, incluindo taxas anuais. Vencimentos no próprio dia ou anteriores permanecem. Pagamentos integrais e parciais, referências bancárias e registros de outras empresas são preservados. O cancelamento mantém o histórico e não apaga documentos.
 
-Teste isolado em PostgreSQL: instalar `@electric-sql/pglite` sem salvar nas dependências e executar `node tests/annual-extra-fee.test.mjs`. A suíte usa dados fictícios e cobre mudança de ano, fonte indisponível, atomicidade, duplicidade, permissões e separação entre empresas. Não acessa o banco real.
+As contas são identificadas pelo vínculo explícito entre paciente, fatura e receita, sempre na mesma empresa. Receitas avulsas sem fatura vinculada não são associadas pelo nome. O lote de contratos exclui pacientes inativos. Uma sessão antiga que tente emitir nova fatura posterior à saída terá a fatura e a receita pendente canceladas pelo banco. Reativar não restaura documentos cancelados nem duplica a taxa anual.
+
+Contas a Receber mostra o status Cancelado e permite filtrar esses registros, que não entram no total do relatório. Edição e baixa de registros cancelados ficam indisponíveis nessa listagem.
+
+## Rotina anual
+
+- A consulta diária à série SGS 1619 do Banco Central aceita apenas valores do ano corrente e não envia dados de pacientes.
+- Se a fonte estiver indisponível, somente um salário já confirmado para o mesmo ano permite continuar. Nunca reutiliza a referência de outro ano.
+- Novos pacientes ativos entram após a admissão. A chave empresa/paciente/ano evita duplicidade mesmo após pagamento, exclusão ou cancelamento.
+- Fatura, receita e registro anual são gravados na mesma transação. Administradores e gerentes podem disparar a verificação pelas telas financeiras; empresa e ano são definidos pelo servidor.
+- Consultar `cron.job` e `cron.job_run_details` pelo nome `taxa-extra-anual-pacientes`. Referências em `public.annual_minimum_wages`; histórico em `private.annual_extra_fees`.
+
+## Validação
+
+`node tests/annual-extra-fee.test.mjs` executa PostgreSQL isolado com `@electric-sql/pglite`. Opcionalmente, `PGLITE_MODULE` indica o caminho da dependência fora do projeto. Cobre proporção e arredondamento, correção de pendentes, validação de saída, cancelamentos, pagamentos preservados, reativação, sessão antiga, isolamento de empresas, permissões, duplicidade, rollback, rotina diária e virada de ano. Não acessa dados reais.
